@@ -74,6 +74,14 @@ var allFeatures = []Feature{
 	FeatureMultiNode,
 }
 
+var featureSet = func() map[Feature]struct{} {
+	set := make(map[Feature]struct{}, len(allFeatures))
+	for _, feature := range allFeatures {
+		set[feature] = struct{}{}
+	}
+	return set
+}()
+
 var personalDisabledFeatures = map[Feature]struct{}{
 	FeatureRegistration:      {},
 	FeatureEmailVerification: {},
@@ -115,6 +123,9 @@ func IsPersonalUse() bool {
 // individual feature settings still decide whether a feature is configured.
 func IsFeatureEnabled(feature Feature) bool {
 	if !IsPersonalUse() {
+		return true
+	}
+	if _, known := featureSet[feature]; !known {
 		return true
 	}
 	_, disabled := personalDisabledFeatures[feature]
