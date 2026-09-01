@@ -22,6 +22,8 @@ import { useTranslation } from 'react-i18next'
 
 import { AnimateInView } from '@/components/animate-in-view'
 import { Button } from '@/components/ui/button'
+import { useStatus } from '@/hooks/use-status'
+import { featureAccessFromStatus, isFeatureEnabled } from '@/lib/feature-access'
 
 interface CTAProps {
   className?: string
@@ -30,8 +32,12 @@ interface CTAProps {
 
 export function CTA(props: CTAProps) {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const capabilities = featureAccessFromStatus(status)
+  const registrationEnabled = isFeatureEnabled(capabilities, 'registration')
+  const pricingEnabled = isFeatureEnabled(capabilities, 'pricing_portal')
 
-  if (props.isAuthenticated) {
+  if (props.isAuthenticated || (!registrationEnabled && !pricingEnabled)) {
     return null
   }
 
@@ -66,17 +72,24 @@ export function CTA(props: CTAProps) {
           )}
         </p>
         <div className='mt-8 flex items-center justify-center gap-3'>
-          <Button className='group rounded-lg' render={<Link to='/sign-up' />}>
-            {t('Get Started')}
-            <ArrowRight className='ml-1 size-3.5 transition-transform duration-200 group-hover:translate-x-0.5' />
-          </Button>
-          <Button
-            variant='outline'
-            className='border-border/50 hover:border-border hover:bg-muted/50 rounded-lg'
-            render={<Link to='/pricing' />}
-          >
-            {t('View Pricing')}
-          </Button>
+          {registrationEnabled && (
+            <Button
+              className='group rounded-lg'
+              render={<Link to='/sign-up' />}
+            >
+              {t('Get Started')}
+              <ArrowRight className='ml-1 size-3.5 transition-transform duration-200 group-hover:translate-x-0.5' />
+            </Button>
+          )}
+          {pricingEnabled && (
+            <Button
+              variant='outline'
+              className='border-border/50 hover:border-border hover:bg-muted/50 rounded-lg'
+              render={<Link to='/pricing' />}
+            >
+              {t('View Pricing')}
+            </Button>
+          )}
         </div>
       </AnimateInView>
     </section>

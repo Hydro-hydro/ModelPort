@@ -51,6 +51,7 @@ import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getUserModels } from '@/lib/api'
+import { useFeatureAccess } from '@/lib/feature-access'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
@@ -458,6 +459,9 @@ function CompactQuickAction(props: { action: QuickAction }) {
 export function OverviewDashboard() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
+  const { isEnabled } = useFeatureAccess()
+  const walletEnabled = isEnabled('wallet')
+  const pricingEnabled = isEnabled('pricing_portal')
   const { items: apiInfoItems } = useApiInfo()
   const {
     apiInfo: showApiInfoPanel,
@@ -506,13 +510,17 @@ export function OverviewDashboard() {
         icon: KeyRound,
         completed: Boolean(preferredKey),
       },
-      {
-        title: t('Add credits'),
-        description: t('Keep enough balance before production traffic'),
-        to: '/wallet',
-        icon: CreditCard,
-        completed: remainQuota > 0 || usedQuota > 0,
-      },
+      ...(walletEnabled
+        ? [
+            {
+              title: t('Add credits'),
+              description: t('Keep enough balance before production traffic'),
+              to: '/wallet' as const,
+              icon: CreditCard,
+              completed: remainQuota > 0 || usedQuota > 0,
+            },
+          ]
+        : []),
       {
         title: t('Send a request'),
         description: t('Verify routing with Playground or your client'),
@@ -521,7 +529,7 @@ export function OverviewDashboard() {
         completed: requestCount > 0,
       },
     ],
-    [preferredKey, remainQuota, requestCount, t, usedQuota]
+    [preferredKey, remainQuota, requestCount, t, usedQuota, walletEnabled]
   )
 
   const quickActions = useMemo<QuickAction[]>(
@@ -545,14 +553,18 @@ export function OverviewDashboard() {
         to: '/usage-logs',
         icon: FileText,
       },
-      {
-        title: t('Pricing'),
-        description: t('Review model rates before scaling traffic'),
-        to: '/pricing',
-        icon: BookOpen,
-      },
+      ...(pricingEnabled
+        ? [
+            {
+              title: t('Pricing'),
+              description: t('Review model rates before scaling traffic'),
+              to: '/pricing' as const,
+              icon: BookOpen,
+            },
+          ]
+        : []),
     ],
-    [t]
+    [pricingEnabled, t]
   )
 
   const visibleQuickActions = useMemo(

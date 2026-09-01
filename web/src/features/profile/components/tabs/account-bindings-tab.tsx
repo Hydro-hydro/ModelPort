@@ -41,6 +41,7 @@ import type { CustomOAuthProviderInfo } from '@/features/auth/types'
 import { useDialogs } from '@/hooks/use-dialog'
 import { useStatus } from '@/hooks/use-status'
 import { api } from '@/lib/api'
+import { featureAccessFromStatus, isFeatureEnabled } from '@/lib/feature-access'
 import {
   buildDiscordOAuthUrl,
   buildGitHubOAuthUrl,
@@ -90,6 +91,10 @@ export function AccountBindingsTab({
   const { t } = useTranslation()
   const dialogs = useDialogs<DialogKey>()
   const { status, loading } = useStatus()
+  const oauthEnabled = isFeatureEnabled(
+    featureAccessFromStatus(status),
+    'oauth'
+  )
   const [customBindings, setCustomBindings] = useState<CustomOAuthBinding[]>([])
   const [unbindTarget, setUnbindTarget] = useState<CustomOAuthBinding | null>(
     null
@@ -107,9 +112,9 @@ export function AccountBindingsTab({
     []
   )
 
-  const customProviders = status?.custom_oauth_providers as
-    | CustomOAuthProviderInfo[]
-    | undefined
+  const customProviders = oauthEnabled
+    ? (status?.custom_oauth_providers as CustomOAuthProviderInfo[] | undefined)
+    : undefined
   const customBindingsByProviderId = useMemo(
     () => indexCustomOAuthBindings(customBindings),
     [customBindings]
@@ -411,9 +416,11 @@ export function AccountBindingsTab({
           }
         },
       },
-    ].filter((binding) => binding.isEnabled)
+    ]
+      .filter((binding) => oauthEnabled || binding.id === 'email')
+      .filter((binding) => binding.isEnabled)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, status, t])
+  }, [oauthEnabled, profile, status, t])
 
   if (!profile || loading) return null
 
