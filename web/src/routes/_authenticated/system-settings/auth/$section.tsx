@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { AuthSettings } from '@/features/system-settings/auth'
-
 import {
   AUTH_DEFAULT_SECTION,
   AUTH_SECTION_IDS,

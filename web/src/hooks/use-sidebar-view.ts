@@ -21,7 +21,11 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { resolveSidebarView } from '@/components/layout/lib/sidebar-view-registry'
-import type { NavGroup, NavItem, ResolvedSidebarView } from '@/components/layout/types'
+import type {
+  NavGroup,
+  NavItem,
+  ResolvedSidebarView,
+} from '@/components/layout/types'
 import { type FeatureName, useFeatureAccess } from '@/lib/feature-access'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -43,8 +47,7 @@ function filterFeatureNavItems(
 
     if ('items' in item && item.items) {
       const nestedItems = item.items.filter(
-        (nestedItem) =>
-          !nestedItem.feature || isEnabled(nestedItem.feature)
+        (nestedItem) => !nestedItem.feature || isEnabled(nestedItem.feature)
       )
       if (nestedItems.length === 0) {
         return visibleItems

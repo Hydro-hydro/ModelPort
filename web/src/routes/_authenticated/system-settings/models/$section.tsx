@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { ModelSettings } from '@/features/system-settings/models'
-
 import {
   MODELS_DEFAULT_SECTION,
   MODELS_SECTION_IDS,
@@ -40,7 +39,9 @@ export const Route = createFileRoute(
       })
     }
 
-    const feature = getModelsSectionMeta(params.section as ModelSectionId).feature
+    const feature = getModelsSectionMeta(
+      params.section as ModelSectionId
+    ).feature
     if (feature) {
       const access = await getFreshFeatureAccess(feature)
       if (!access.enabled) {

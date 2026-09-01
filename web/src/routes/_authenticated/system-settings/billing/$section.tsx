@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { BillingSettings } from '@/features/system-settings/billing'
-
 import {
   BILLING_DEFAULT_SECTION,
   BILLING_SECTION_IDS,
@@ -40,7 +39,9 @@ export const Route = createFileRoute(
       })
     }
 
-    const feature = getBillingSectionMeta(params.section as BillingSectionId).feature
+    const feature = getBillingSectionMeta(
+      params.section as BillingSectionId
+    ).feature
     if (feature) {
       const access = await getFreshFeatureAccess(feature)
       if (!access.enabled) {

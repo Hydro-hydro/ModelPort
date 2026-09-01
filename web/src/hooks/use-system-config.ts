@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useCallback } from 'react'
 
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
-import type { FeatureName } from '@/lib/feature-access'
 import { applyFaviconToDom } from '@/lib/dom-utils'
+import type { FeatureName } from '@/lib/feature-access'
 import {
   useSystemConfigStore,
   type CurrencyConfig,

@@ -37,10 +37,13 @@ export type FeatureAccessData = {
 }
 
 export function featureAccessFromStatus(
-  status: {
-    usage_mode?: unknown
-    features?: unknown
-  } | null | undefined
+  status:
+    | {
+        usage_mode?: unknown
+        features?: unknown
+      }
+    | null
+    | undefined
 ): FeatureAccessData {
   return {
     usage_mode:
@@ -79,7 +82,7 @@ export function useFeatureAccess() {
   const { status } = useStatus()
   const capabilities = useMemo<FeatureAccessData>(
     () => featureAccessFromStatus(status),
-    [status?.features, status?.usage_mode]
+    [status]
   )
 
   return {

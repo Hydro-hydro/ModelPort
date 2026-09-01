@@ -20,10 +20,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
-import {
-  featureAccessFromStatus,
-  isFeatureEnabled,
-} from '@/lib/feature-access'
+import { featureAccessFromStatus, isFeatureEnabled } from '@/lib/feature-access'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
