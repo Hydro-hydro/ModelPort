@@ -17,25 +17,45 @@ const (
 type Feature string
 
 const (
-	FeatureRegistration      Feature = "registration"
-	FeatureEmailVerification Feature = "email_verification"
-	FeaturePasswordReset     Feature = "password_reset"
-	FeatureOAuth             Feature = "oauth"
-	FeatureUserManagement    Feature = "user_management"
-	FeatureAffiliation       Feature = "affiliation"
-	FeatureWallet            Feature = "wallet"
-	FeaturePayments          Feature = "payments"
-	FeatureSubscriptions     Feature = "subscriptions"
-	FeatureRedemptions       Feature = "redemptions"
-	FeatureCheckin           Feature = "checkin"
-	FeaturePricingPortal     Feature = "pricing_portal"
-	FeatureRankings          Feature = "rankings"
-	FeatureTaskPlugins       Feature = "task_plugins"
-	FeatureDeployments       Feature = "deployments"
-	FeatureMultiNode         Feature = "multi_node"
+	FeatureCoreRelay           Feature = "core_relay"
+	FeatureChannelManagement   Feature = "channel_management"
+	FeatureModelManagement     Feature = "model_management"
+	FeatureTokenManagement     Feature = "token_management"
+	FeatureRequestLogs         Feature = "request_logs"
+	FeatureProtocolDiagnostics Feature = "protocol_diagnostics"
+	FeatureBasicAuth           Feature = "basic_auth"
+	FeatureAdvancedAuth        Feature = "advanced_auth"
+	FeatureMediaTasks          Feature = "media_tasks"
+	FeaturePerformanceConsole  Feature = "performance_console"
+	FeatureRegistration        Feature = "registration"
+	FeatureEmailVerification   Feature = "email_verification"
+	FeaturePasswordReset       Feature = "password_reset"
+	FeatureOAuth               Feature = "oauth"
+	FeatureUserManagement      Feature = "user_management"
+	FeatureAffiliation         Feature = "affiliation"
+	FeatureWallet              Feature = "wallet"
+	FeaturePayments            Feature = "payments"
+	FeatureSubscriptions       Feature = "subscriptions"
+	FeatureRedemptions         Feature = "redemptions"
+	FeatureCheckin             Feature = "checkin"
+	FeaturePricingPortal       Feature = "pricing_portal"
+	FeatureRankings            Feature = "rankings"
+	FeatureTaskPlugins         Feature = "task_plugins"
+	FeatureDeployments         Feature = "deployments"
+	FeatureMultiNode           Feature = "multi_node"
 )
 
 var allFeatures = []Feature{
+	FeatureCoreRelay,
+	FeatureChannelManagement,
+	FeatureModelManagement,
+	FeatureTokenManagement,
+	FeatureRequestLogs,
+	FeatureProtocolDiagnostics,
+	FeatureBasicAuth,
+	FeatureAdvancedAuth,
+	FeatureMediaTasks,
+	FeaturePerformanceConsole,
 	FeatureRegistration,
 	FeatureEmailVerification,
 	FeaturePasswordReset,

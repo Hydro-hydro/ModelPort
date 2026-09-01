@@ -43,8 +43,8 @@ func TestPersonalCapabilitiesDisablePlatformFeaturesOnly(t *testing.T) {
 	assert.False(t, IsFeatureEnabled(FeatureRegistration))
 	assert.False(t, IsFeatureEnabled(FeaturePayments))
 	assert.False(t, IsFeatureEnabled(FeatureUserManagement))
-	assert.True(t, IsFeatureEnabled(Feature("core_relay")))
-	assert.True(t, IsFeatureEnabled(Feature("channel_management")))
+	assert.True(t, IsFeatureEnabled(FeatureCoreRelay))
+	assert.True(t, IsFeatureEnabled(FeatureChannelManagement))
 
 	capabilities := Capabilities()
 	assert.False(t, capabilities[string(FeatureSubscriptions)])
