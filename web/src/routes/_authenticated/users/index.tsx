@@ -20,6 +20,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { Users } from '@/features/users'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -39,7 +40,12 @@ const usersSearchSchema = z.object({
 })
 
 export const Route = createFileRoute('/_authenticated/users/')({
-  beforeLoad: () => {
+  beforeLoad: async () => {
+    const access = await getFreshFeatureAccess('user_management')
+    if (!access.enabled) {
+      throw redirect({ to: '/dashboard' })
+    }
+
     const { auth } = useAuthStore.getState()
 
     if (!auth.user || auth.user.role < ROLE.ADMIN) {

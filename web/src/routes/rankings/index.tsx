@@ -20,6 +20,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { Rankings } from '@/features/rankings'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 import { getFreshModuleAccess } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -33,8 +34,11 @@ const rankingsSearchSchema = z.object({
 export const Route = createFileRoute('/rankings/')({
   validateSearch: rankingsSearchSchema,
   beforeLoad: async ({ location }) => {
-    const access = await getFreshModuleAccess('rankings')
-    if (!access.enabled) {
+    const [access, featureAccess] = await Promise.all([
+      getFreshModuleAccess('rankings'),
+      getFreshFeatureAccess('rankings'),
+    ])
+    if (!access.enabled || !featureAccess.enabled) {
       throw redirect({ to: '/' })
     }
     if (access.requireAuth) {

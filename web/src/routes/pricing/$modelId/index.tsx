@@ -20,6 +20,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { ModelDetails } from '@/features/pricing/components/model-details'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 import { getFreshModuleAccess } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -39,8 +40,11 @@ const modelDetailsSearchSchema = z.object({
 export const Route = createFileRoute('/pricing/$modelId/')({
   validateSearch: modelDetailsSearchSchema,
   beforeLoad: async ({ location }) => {
-    const access = await getFreshModuleAccess('pricing')
-    if (!access.enabled) {
+    const [access, featureAccess] = await Promise.all([
+      getFreshModuleAccess('pricing'),
+      getFreshFeatureAccess('pricing_portal'),
+    ])
+    if (!access.enabled || !featureAccess.enabled) {
       throw redirect({ to: '/' })
     }
     if (access.requireAuth) {

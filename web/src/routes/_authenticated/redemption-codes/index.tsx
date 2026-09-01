@@ -21,6 +21,7 @@ import z from 'zod'
 
 import { Redemptions } from '@/features/redemption-codes'
 import { REDEMPTION_FILTER_VALUES } from '@/features/redemption-codes/constants'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -32,7 +33,12 @@ const redemptionsSearchSchema = z.object({
 })
 
 export const Route = createFileRoute('/_authenticated/redemption-codes/')({
-  beforeLoad: () => {
+  beforeLoad: async () => {
+    const access = await getFreshFeatureAccess('redemptions')
+    if (!access.enabled) {
+      throw redirect({ to: '/dashboard' })
+    }
+
     const { auth } = useAuthStore.getState()
 
     if (!auth.user || auth.user.role < ROLE.ADMIN) {

@@ -16,10 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { ForgotPassword } from '@/features/auth/forgot-password'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 
 export const Route = createFileRoute('/(auth)/forgot-password')({
+  beforeLoad: async () => {
+    const access = await getFreshFeatureAccess('password_reset')
+    if (!access.enabled) {
+      throw redirect({ to: '/sign-in' })
+    }
+  },
   component: ForgotPassword,
 })

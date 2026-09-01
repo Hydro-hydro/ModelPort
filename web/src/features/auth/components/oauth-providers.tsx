@@ -27,6 +27,7 @@ import {
   IconWeChat,
 } from '@/assets/brand-icons'
 import { Button } from '@/components/ui/button'
+import { featureAccessFromStatus, isFeatureEnabled } from '@/lib/feature-access'
 import { cn } from '@/lib/utils'
 
 import { useOAuthLogin } from '../hooks/use-oauth-login'
@@ -74,6 +75,10 @@ export function OAuthProviders({
     handleTelegramAuthorization,
     setIsTelegramDialogOpen,
   } = useOAuthLogin(status, redirectTo)
+
+  if (!isFeatureEnabled(featureAccessFromStatus(status), 'oauth')) {
+    return null
+  }
 
   const providerButtons: ProviderButton[] = []
 

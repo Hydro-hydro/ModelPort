@@ -19,21 +19,33 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { AuthSettings } from '@/features/system-settings/auth'
+
 import {
   AUTH_DEFAULT_SECTION,
   AUTH_SECTION_IDS,
+  getAuthSectionMeta,
+  type AuthSectionId,
 } from '@/features/system-settings/auth/section-registry.tsx'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 
 export const Route = createFileRoute(
   '/_authenticated/system-settings/auth/$section'
 )({
-  beforeLoad: ({ params }) => {
+  beforeLoad: async ({ params }) => {
     const validSections = AUTH_SECTION_IDS as unknown as string[]
     if (!validSections.includes(params.section)) {
       throw redirect({
         to: '/system-settings/auth/$section',
         params: { section: AUTH_DEFAULT_SECTION },
       })
+    }
+
+    const feature = getAuthSectionMeta(params.section as AuthSectionId).feature
+    if (feature) {
+      const access = await getFreshFeatureAccess(feature)
+      if (!access.enabled) {
+        throw redirect({ to: '/system-settings/site' })
+      }
     }
   },
   component: AuthSettings,

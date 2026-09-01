@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   createFileRoute,
+  redirect,
   useNavigate,
   useParams,
   useSearch,
@@ -43,6 +44,7 @@ import {
   resolveOAuthCallbackMode,
 } from '@/features/auth/lib/oauth-callback-mode'
 import { api, applyAuthBundle, isAuthBundle } from '@/lib/api'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
 
 type OAuthRequestConfig = AxiosRequestConfig & {
@@ -244,5 +246,11 @@ function OAuthCallback() {
 }
 
 export const Route = createFileRoute('/oauth/$provider')({
+  beforeLoad: async () => {
+    const access = await getFreshFeatureAccess('oauth')
+    if (!access.enabled) {
+      throw redirect({ to: '/sign-in' })
+    }
+  },
   component: OAuthCallback,
 })

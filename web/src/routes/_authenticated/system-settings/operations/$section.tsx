@@ -19,15 +19,19 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { OperationsSettings } from '@/features/system-settings/operations'
+
 import {
   OPERATIONS_DEFAULT_SECTION,
   OPERATIONS_SECTION_IDS,
+  getOperationsSectionMeta,
+  type OperationsSectionId,
 } from '@/features/system-settings/operations/section-registry.tsx'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 
 export const Route = createFileRoute(
   '/_authenticated/system-settings/operations/$section'
 )({
-  beforeLoad: ({ params }) => {
+  beforeLoad: async ({ params }) => {
     if (params.section === 'monitoring') {
       throw redirect({
         to: '/system-settings/models/$section',
@@ -41,6 +45,16 @@ export const Route = createFileRoute(
         to: '/system-settings/operations/$section',
         params: { section: OPERATIONS_DEFAULT_SECTION },
       })
+    }
+
+    const feature = getOperationsSectionMeta(
+      params.section as OperationsSectionId
+    ).feature
+    if (feature) {
+      const access = await getFreshFeatureAccess(feature)
+      if (!access.enabled) {
+        throw redirect({ to: '/system-settings/site' })
+      }
     }
   },
   component: OperationsSettings,

@@ -20,6 +20,7 @@ import { Link, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
+import { featureAccessFromStatus, isFeatureEnabled } from '@/lib/feature-access'
 
 import { AuthLayout } from '../auth-layout'
 import { TermsFooter } from '../components/terms-footer'
@@ -29,6 +30,10 @@ export function SignIn() {
   const { t } = useTranslation()
   const { redirect } = useSearch({ from: '/(auth)/sign-in' })
   const { status } = useStatus()
+  const registrationEnabled = isFeatureEnabled(
+    featureAccessFromStatus(status),
+    'registration'
+  )
 
   return (
     <AuthLayout>
@@ -38,6 +43,7 @@ export function SignIn() {
             {t('Sign in')}
           </h2>
           {!status?.self_use_mode_enabled &&
+            registrationEnabled &&
             status?.register_enabled !== false && (
               <p className='text-muted-foreground text-left text-sm sm:text-base'>
                 {t("Don't have an account?")}{' '}

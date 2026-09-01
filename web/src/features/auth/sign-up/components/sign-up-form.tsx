@@ -51,6 +51,7 @@ import {
 } from '@/features/auth/lib/storage'
 import { useStatus } from '@/hooks/use-status'
 import { isAuthBundle } from '@/lib/api'
+import { featureAccessFromStatus, isFeatureEnabled } from '@/lib/feature-access'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
@@ -98,15 +99,20 @@ export function SignUpForm({
   })
 
   const emailValue = form.watch('email')
-  const emailVerificationRequired = !!status?.email_verification
+  const capabilities = featureAccessFromStatus(status)
+  const emailVerificationRequired =
+    isFeatureEnabled(capabilities, 'email_verification') &&
+    !!status?.email_verification
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
   const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy
   const oauthRegisterEnabled =
-    status?.oauth_register_enabled ??
-    status?.data?.oauth_register_enabled ??
-    true
-  const hasWeChatLogin = Boolean(status?.wechat_login)
+    isFeatureEnabled(capabilities, 'oauth') &&
+    (status?.oauth_register_enabled ??
+      status?.data?.oauth_register_enabled ??
+      true)
+  const hasWeChatLogin =
+    isFeatureEnabled(capabilities, 'oauth') && Boolean(status?.wechat_login)
   const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
 
   const wechatQrCodeUrl = useMemo(() => {
