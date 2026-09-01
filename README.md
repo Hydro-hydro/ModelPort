@@ -4,20 +4,6 @@
 
 # New API
 
-## ModelPort 个人分支
-
-ModelPort 是基于 New API 的个人化精简增强分支，面向个人部署和多渠道模型聚合场景。
-
-本项目不追求完整保留所有平台化功能，而是保留统一 API、多渠道路由、基础密钥管理和用量统计等核心能力，移除或简化个人用户通常用不到的复杂功能，并重点改进 OpenAI、Anthropic、Gemini 等协议之间的转换稳定性。
-
-重点方向：
-
-- 更可靠的流式响应和 Tool Call 转换
-- 更一致的思考内容、Usage 和错误处理
-- 更轻量、易维护的个人部署体验
-
-本项目基于 New API，保留原项目及 QuantumNous 的相关标识和归属信息。
-
 🍥 **Next-Generation LLM Gateway and AI Asset Management System**
 
 <p align="center">
