@@ -11,9 +11,11 @@ import (
 )
 
 type Setup struct {
-	Status       bool   `json:"status"`
-	RootInit     bool   `json:"root_init"`
-	DatabaseType string `json:"database_type"`
+	Status             bool   `json:"status"`
+	RootInit           bool   `json:"root_init"`
+	DatabaseType       string `json:"database_type"`
+	SelfUseModeEnabled bool   `json:"SelfUseModeEnabled"`
+	DemoSiteEnabled    bool   `json:"DemoSiteEnabled"`
 }
 
 type SetupRequest struct {
@@ -26,7 +28,9 @@ type SetupRequest struct {
 
 func GetSetup(c *gin.Context) {
 	setup := Setup{
-		Status: constant.Setup,
+		Status:             constant.Setup,
+		SelfUseModeEnabled: operation_setting.SelfUseModeEnabled,
+		DemoSiteEnabled:    operation_setting.DemoSiteEnabled,
 	}
 	if constant.Setup {
 		c.JSON(200, gin.H{

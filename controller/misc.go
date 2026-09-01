@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/gin-gonic/gin"
 )
@@ -39,6 +40,17 @@ func TestStatus(c *gin.Context) {
 		"http_stats": httpStats,
 	})
 	return
+}
+
+func GetCapabilities(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"usage_mode": string(usage_mode.CurrentMode()),
+			"features":   usage_mode.Capabilities(),
+		},
+	})
 }
 
 func GetStatus(c *gin.Context) {
@@ -89,6 +101,8 @@ func GetStatus(c *gin.Context) {
 		"chats":                         setting.Chats,
 		"demo_site_enabled":             operation_setting.DemoSiteEnabled,
 		"self_use_mode_enabled":         operation_setting.SelfUseModeEnabled,
+		"usage_mode":                    string(usage_mode.CurrentMode()),
+		"features":                      usage_mode.Capabilities(),
 		"register_enabled":              common.RegisterEnabled,
 		"password_login_enabled":        common.PasswordLoginEnabled,
 		"password_register_enabled":     common.PasswordRegisterEnabled,
