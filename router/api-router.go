@@ -76,8 +76,8 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.GET("/login/encryption-key", middleware.DisableCache(), controller.GetPasswordEncryptionKey)
 			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.Login)
 			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.Verify2FALogin)
-			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.PasskeyLoginBegin)
-			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.PasskeyLoginFinish)
+			userRoute.POST("/passkey/login/begin", middleware.RequireFeature(usage_mode.FeatureAdvancedAuth), middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.PasskeyLoginBegin)
+			userRoute.POST("/passkey/login/finish", middleware.RequireFeature(usage_mode.FeatureAdvancedAuth), middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.PasskeyLoginFinish)
 			//userRoute.POST("/tokenlog", middleware.CriticalRateLimit(), controller.TokenLog)
 			userRoute.POST("/epay/notify", middleware.RequireFeature(usage_mode.FeaturePayments), anonymousRequestBodyLimit, controller.EpayNotify)
 			userRoute.GET("/epay/notify", middleware.RequireFeature(usage_mode.FeaturePayments), controller.EpayNotify)
@@ -95,12 +95,12 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.PUT("/self", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.UpdateSelf)
 				selfRoute.DELETE("/self", controller.DeleteSelf)
 				selfRoute.GET("/token", middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("access-token"), middleware.DisableCache(), controller.GenerateAccessToken)
-				selfRoute.GET("/passkey", controller.PasskeyStatus)
-				selfRoute.POST("/passkey/register/begin", middleware.DisableCache(), controller.PasskeyRegisterBegin)
-				selfRoute.POST("/passkey/register/finish", middleware.DisableCache(), controller.PasskeyRegisterFinish)
-				selfRoute.POST("/passkey/verify/begin", middleware.DisableCache(), controller.PasskeyVerifyBegin)
-				selfRoute.POST("/passkey/verify/finish", middleware.DisableCache(), controller.PasskeyVerifyFinish)
-				selfRoute.DELETE("/passkey", middleware.DisableCache(), controller.PasskeyDelete)
+				selfRoute.GET("/passkey", middleware.RequireFeature(usage_mode.FeatureAdvancedAuth), controller.PasskeyStatus)
+				selfRoute.POST("/passkey/register/begin", middleware.RequireFeature(usage_mode.FeatureAdvancedAuth), middleware.DisableCache(), controller.PasskeyRegisterBegin)
+				selfRoute.POST("/passkey/register/finish", middleware.RequireFeature(usage_mode.FeatureAdvancedAuth), middleware.DisableCache(), controller.PasskeyRegisterFinish)
+				selfRoute.POST("/passkey/verify/begin", middleware.RequireFeature(usage_mode.FeatureAdvancedAuth), middleware.DisableCache(), controller.PasskeyVerifyBegin)
+				selfRoute.POST("/passkey/verify/finish", middleware.RequireFeature(usage_mode.FeatureAdvancedAuth), middleware.DisableCache(), controller.PasskeyVerifyFinish)
+				selfRoute.DELETE("/passkey", middleware.RequireFeature(usage_mode.FeatureAdvancedAuth), middleware.DisableCache(), controller.PasskeyDelete)
 				selfRoute.GET("/aff", middleware.RequireFeature(usage_mode.FeatureAffiliation), controller.GetAffCode)
 				selfRoute.GET("/topup/info", middleware.RequireFeature(usage_mode.FeatureWallet), controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", middleware.RequireFeature(usage_mode.FeatureWallet), controller.GetUserTopUps)
@@ -129,8 +129,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/checkin", middleware.RequireFeature(usage_mode.FeatureCheckin), middleware.TurnstileCheck(), controller.DoCheckin)
 
 				// Custom OAuth bindings
-				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
-				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
+				selfRoute.GET("/oauth/bindings", middleware.RequireFeature(usage_mode.FeatureOAuth), controller.GetUserOAuthBindings)
+				selfRoute.DELETE("/oauth/bindings/:provider_id", middleware.RequireFeature(usage_mode.FeatureOAuth), controller.UnbindCustomOAuth)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -140,9 +140,9 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/topup", middleware.RequireFeature(usage_mode.FeatureWallet), controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", middleware.RequireFeature(usage_mode.FeatureWallet), controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
-				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
-				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
-				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
+				adminRoute.GET("/:id/oauth/bindings", middleware.RequireFeature(usage_mode.FeatureOAuth), controller.GetUserOAuthBindingsByAdmin)
+				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", middleware.RequireFeature(usage_mode.FeatureOAuth), controller.UnbindCustomOAuthByAdmin)
+				adminRoute.DELETE("/:id/bindings/:binding_type", middleware.RequireFeature(usage_mode.FeatureOAuth), controller.AdminClearUserBinding)
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
@@ -201,11 +201,11 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
 			optionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
 			optionRoute.POST("/rest_model_ratio", controller.ResetModelRatio)
-			optionRoute.GET("/waffo-pancake/catalog", controller.ListWaffoPancakeCatalog)
-			optionRoute.POST("/waffo-pancake/pair", controller.CreateWaffoPancakePair)
-			optionRoute.POST("/waffo-pancake/save", controller.SaveWaffoPancake)
-			optionRoute.POST("/waffo-pancake/subscription-product", controller.CreateWaffoPancakeSubscriptionProduct)
-			optionRoute.GET("/waffo-pancake/subscription-product-options", controller.ListWaffoPancakeSubscriptionProductOptions)
+			optionRoute.GET("/waffo-pancake/catalog", middleware.RequireFeature(usage_mode.FeaturePayments), controller.ListWaffoPancakeCatalog)
+			optionRoute.POST("/waffo-pancake/pair", middleware.RequireFeature(usage_mode.FeaturePayments), controller.CreateWaffoPancakePair)
+			optionRoute.POST("/waffo-pancake/save", middleware.RequireFeature(usage_mode.FeaturePayments), controller.SaveWaffoPancake)
+			optionRoute.POST("/waffo-pancake/subscription-product", middleware.RequireFeature(usage_mode.FeatureSubscriptions), controller.CreateWaffoPancakeSubscriptionProduct)
+			optionRoute.GET("/waffo-pancake/subscription-product-options", middleware.RequireFeature(usage_mode.FeatureSubscriptions), controller.ListWaffoPancakeSubscriptionProductOptions)
 		}
 
 		// Custom OAuth provider management (root only)
@@ -220,7 +220,7 @@ func SetApiRouter(router *gin.Engine) {
 			customOAuthRoute.DELETE("/:id", controller.DeleteCustomOAuthProvider)
 		}
 		performanceRoute := apiRouter.Group("/performance")
-		performanceRoute.Use(middleware.RootAuth())
+		performanceRoute.Use(middleware.RootAuth(), middleware.RequireFeature(usage_mode.FeaturePerformanceConsole))
 		{
 			performanceRoute.GET("/stats", controller.GetPerformanceStats)
 			performanceRoute.DELETE("/disk_cache", controller.ClearDiskCache)
@@ -230,7 +230,7 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
-		ratioSyncRoute.Use(middleware.RootAuth())
+		ratioSyncRoute.Use(middleware.RootAuth(), middleware.RequireFeature(usage_mode.FeatureChannelManagement))
 		{
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
@@ -255,7 +255,7 @@ func SetApiRouter(router *gin.Engine) {
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")
-		tokenRoute.Use(middleware.UserAuth())
+		tokenRoute.Use(middleware.UserAuth(), middleware.RequireFeature(usage_mode.FeatureTokenManagement))
 		{
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
@@ -280,7 +280,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		redemptionRoute := apiRouter.Group("/redemption")
-		redemptionRoute.Use(middleware.AdminAuth())
+		redemptionRoute.Use(middleware.AdminAuth(), middleware.RequireFeature(usage_mode.FeatureRedemptions))
 		{
 			redemptionRoute.GET("/", controller.GetAllRedemptions)
 			redemptionRoute.GET("/search", controller.SearchRedemptions)
@@ -291,6 +291,7 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
 		}
 		logRoute := apiRouter.Group("/log")
+		logRoute.Use(middleware.RequireFeature(usage_mode.FeatureRequestLogs))
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
@@ -342,10 +343,12 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		mjRoute := apiRouter.Group("/mj")
+		mjRoute.Use(middleware.RequireFeature(usage_mode.FeatureMediaTasks))
 		mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
 		mjRoute.GET("/", middleware.AdminAuth(), controller.GetAllMidjourney)
 
 		taskRoute := apiRouter.Group("/task")
+		taskRoute.Use(middleware.RequireFeature(usage_mode.FeatureMediaTasks))
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
 			taskRoute.GET("", middleware.AdminAuth(), controller.GetAllTask)
@@ -364,7 +367,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		modelsRoute := apiRouter.Group("/models")
-		modelsRoute.Use(middleware.AdminAuth())
+		modelsRoute.Use(middleware.AdminAuth(), middleware.RequireFeature(usage_mode.FeatureModelManagement))
 		{
 			modelsRoute.GET("/sync_upstream/preview", controller.SyncUpstreamPreview)
 			modelsRoute.POST("/sync_upstream", controller.SyncUpstreamModels)

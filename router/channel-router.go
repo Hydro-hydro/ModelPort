@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,7 +19,7 @@ type permissionRoute struct {
 
 func registerChannelRoutes(apiRouter *gin.RouterGroup) {
 	channelRoute := apiRouter.Group("/channel")
-	channelRoute.Use(middleware.AdminAuth())
+	channelRoute.Use(middleware.AdminAuth(), middleware.RequireFeature(usage_mode.FeatureChannelManagement))
 
 	channelRoute.POST("/:id/key",
 		middleware.RootAuth(),
