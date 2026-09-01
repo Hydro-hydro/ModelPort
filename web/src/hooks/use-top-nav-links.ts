@@ -20,6 +20,10 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
+import {
+  featureAccessFromStatus,
+  isFeatureEnabled,
+} from '@/lib/feature-access'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -59,6 +63,7 @@ export function useTopNavLinks(): TopNavLink[] {
   const docsLink: string | undefined = status?.docs_link as string | undefined
 
   const isAuthed = !!auth?.user
+  const capabilities = useMemo(() => featureAccessFromStatus(status), [status])
 
   const links: TopNavLink[] = []
 
@@ -74,14 +79,24 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // Pricing
   const pricing = modules?.pricing
-  if (pricing && typeof pricing === 'object' && pricing.enabled) {
+  if (
+    pricing &&
+    typeof pricing === 'object' &&
+    pricing.enabled &&
+    isFeatureEnabled(capabilities, 'pricing_portal')
+  ) {
     const requiresAuth = pricing.requireAuth && !isAuthed
     links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
   }
 
   // Rankings
   const rankings = modules?.rankings
-  if (rankings && typeof rankings === 'object' && rankings.enabled) {
+  if (
+    rankings &&
+    typeof rankings === 'object' &&
+    rankings.enabled &&
+    isFeatureEnabled(capabilities, 'rankings')
+  ) {
     const requiresAuth = rankings.requireAuth && !isAuthed
     links.push({ title: t('Rankings'), href: '/rankings', requiresAuth })
   }

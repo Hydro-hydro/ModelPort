@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { TFunction } from 'i18next'
+
+import type { FeatureName } from '@/lib/feature-access'
 import type { ReactNode } from 'react'
 
 /**
@@ -25,6 +27,7 @@ import type { ReactNode } from 'react'
 export type SectionDefinition<TSettings, TExtraArgs extends unknown[] = []> = {
   id: string
   titleKey: string
+  feature?: FeatureName
   build: (settings: TSettings, ...extraArgs: TExtraArgs) => ReactNode
 }
 
@@ -70,6 +73,7 @@ export function createSectionRegistry<
         urlStyle === 'path'
           ? `${basePath}/${section.id}`
           : `${basePath}?section=${section.id}`,
+      feature: section.feature,
     }))
   }
 
@@ -90,11 +94,16 @@ export function createSectionRegistry<
     return section
   }
 
+  function getSectionFeature(sectionId: SectionId): FeatureName | undefined {
+    return getSectionMeta(sectionId).feature
+  }
+
   return {
     sectionIds,
     defaultSection,
     getSectionNavItems,
     getSectionContent,
     getSectionMeta,
+    getSectionFeature,
   }
 }

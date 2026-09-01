@@ -117,6 +117,7 @@ const BILLING_SECTIONS = [
   },
   {
     id: 'group-pricing',
+    feature: 'user_management',
     titleKey: 'Group Pricing',
     build: (settings: BillingSettings) => (
       <RatioSettingsCard
@@ -130,6 +131,7 @@ const BILLING_SECTIONS = [
   },
   {
     id: 'payment',
+    feature: 'payments',
     titleKey: 'Payment Gateway',
     build: (settings: BillingSettings) => (
       <PaymentSettingsSection
@@ -190,6 +192,7 @@ const BILLING_SECTIONS = [
   },
   {
     id: 'checkin',
+    feature: 'checkin',
     titleKey: 'Check-in Rewards',
     build: (settings: BillingSettings) => (
       <CheckinSettingsSection

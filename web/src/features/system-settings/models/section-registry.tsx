@@ -171,6 +171,7 @@ const MODELS_SECTIONS = [
   },
   {
     id: 'model-deployment',
+    feature: 'deployments',
     titleKey: 'Model Deployment',
     build: (settings: ModelSettings) => (
       <IoNetDeploymentSettingsSection

@@ -42,6 +42,7 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'alerts',
+    feature: 'performance_console',
     titleKey: 'Monitoring & Alerts',
     build: (settings: OperationsSettings) => (
       <MonitoringSettingsSection
@@ -61,6 +62,7 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'email',
+    feature: 'email_verification',
     titleKey: 'SMTP Email',
     build: (settings: OperationsSettings) => (
       <EmailSettingsSection
@@ -80,6 +82,7 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'worker',
+    feature: 'media_tasks',
     titleKey: 'Worker Proxy',
     build: (settings: OperationsSettings) => (
       <WorkerSettingsSection

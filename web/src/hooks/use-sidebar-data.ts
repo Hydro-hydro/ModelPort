@@ -38,6 +38,7 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import { type SidebarData } from '@/components/layout/types'
+import { useFeatureAccess } from '@/lib/feature-access'
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -48,6 +49,7 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const { isEnabled } = useFeatureAccess()
 
   return {
     navGroups: [
@@ -81,16 +83,24 @@ export function useSidebarData(): SidebarData {
             url: '/dashboard/models',
             icon: LayoutDashboard,
           },
-          {
-            title: t('API Keys'),
-            url: '/keys',
-            icon: Key,
-          },
-          {
-            title: t('Usage Logs'),
-            url: '/usage-logs/common',
-            icon: FileText,
-          },
+          ...(isEnabled('token_management')
+            ? [
+                {
+                  title: t('API Keys'),
+                  url: '/keys' as const,
+                  icon: Key,
+                },
+              ]
+            : []),
+          ...(isEnabled('request_logs')
+            ? [
+                {
+                  title: t('Usage Logs'),
+                  url: '/usage-logs/common' as const,
+                  icon: FileText,
+                },
+              ]
+            : []),
           {
             title: t('Task Logs'),
             url: '/usage-logs/task',
@@ -104,11 +114,15 @@ export function useSidebarData(): SidebarData {
         id: 'personal',
         title: t('Personal'),
         items: [
-          {
-            title: t('Wallet'),
-            url: '/wallet',
-            icon: Wallet,
-          },
+          ...(isEnabled('wallet')
+            ? [
+                {
+                  title: t('Wallet'),
+                  url: '/wallet' as const,
+                  icon: Wallet,
+                },
+              ]
+            : []),
           {
             title: t('Profile'),
             url: '/profile',
@@ -130,33 +144,53 @@ export function useSidebarData(): SidebarData {
             url: '/models/metadata',
             icon: Box,
           },
-          {
-            title: t('Users'),
-            url: '/users',
-            icon: Users,
-          },
-          {
-            title: t('Redemption Codes'),
-            url: '/redemption-codes',
-            icon: Ticket,
-          },
-          {
-            title: t('Subscriptions'),
-            url: '/subscriptions',
-            icon: CreditCard,
-          },
-          {
-            title: t('System Info'),
-            url: '/system-info',
-            icon: ServerCog,
-            requiredRole: ROLE.SUPER_ADMIN,
-          },
-          {
-            title: t('Task Plugins'),
-            url: '/task-plugins',
-            icon: PlugZap,
-            requiredRole: ROLE.SUPER_ADMIN,
-          },
+          ...(isEnabled('user_management')
+            ? [
+                {
+                  title: t('Users'),
+                  url: '/users' as const,
+                  icon: Users,
+                },
+              ]
+            : []),
+          ...(isEnabled('redemptions')
+            ? [
+                {
+                  title: t('Redemption Codes'),
+                  url: '/redemption-codes' as const,
+                  icon: Ticket,
+                },
+              ]
+            : []),
+          ...(isEnabled('subscriptions')
+            ? [
+                {
+                  title: t('Subscriptions'),
+                  url: '/subscriptions' as const,
+                  icon: CreditCard,
+                },
+              ]
+            : []),
+          ...(isEnabled('multi_node')
+            ? [
+                {
+                  title: t('System Info'),
+                  url: '/system-info' as const,
+                  icon: ServerCog,
+                  requiredRole: ROLE.SUPER_ADMIN,
+                },
+              ]
+            : []),
+          ...(isEnabled('task_plugins')
+            ? [
+                {
+                  title: t('Task Plugins'),
+                  url: '/task-plugins' as const,
+                  icon: PlugZap,
+                  requiredRole: ROLE.SUPER_ADMIN,
+                },
+              ]
+            : []),
           {
             title: t('System Settings'),
             url: '/system-settings/site',

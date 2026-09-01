@@ -19,12 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 import { type LinkProps } from '@tanstack/react-router'
 import { type TFunction } from 'i18next'
 
+import type { FeatureName } from '@/lib/feature-access'
+
 /**
  * Base navigation item type
  */
 type BaseNavItem = {
   title: string
   badge?: string
+  feature?: FeatureName
   icon?: React.ElementType
   activeUrls?: (LinkProps['to'] | (string & {}))[]
   configUrls?: (LinkProps['to'] | (string & {}))[]

@@ -20,6 +20,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
+import type { FeatureName } from '@/lib/feature-access'
 
 export type CurrencyDisplayType = 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM'
 
@@ -42,6 +43,8 @@ export interface SystemConfig {
   systemName: string
   logo: string
   footerHtml?: string
+  usageMode?: string
+  features?: Partial<Record<FeatureName, boolean>>
   demoSiteEnabled?: boolean
   displayTokenStatEnabled?: boolean
   currency: CurrencyConfig

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useCallback } from 'react'
 
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
+import type { FeatureName } from '@/lib/feature-access'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import {
   useSystemConfigStore,
@@ -47,6 +48,8 @@ interface StatusApiResponse {
     usd_exchange_rate?: number
     custom_currency_symbol?: string
     custom_currency_exchange_rate?: number
+    usage_mode?: string
+    features?: Partial<Record<FeatureName, boolean>>
   }
 }
 
@@ -93,6 +96,8 @@ export function mapStatusDataToConfig(
   }
 
   return {
+    usageMode: data.usage_mode,
+    features: data.features,
     systemName: data.system_name || DEFAULT_SYSTEM_NAME,
     logo: data.logo || DEFAULT_LOGO,
     footerHtml: data.footer_html,

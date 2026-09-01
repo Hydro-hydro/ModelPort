@@ -44,6 +44,7 @@ const AUTH_SECTIONS = [
   },
   {
     id: 'oauth',
+    feature: 'oauth',
     titleKey: 'OAuth Integrations',
     build: (settings: AuthSettings) => (
       <OAuthSection
@@ -81,6 +82,7 @@ const AUTH_SECTIONS = [
   },
   {
     id: 'passkey',
+    feature: 'advanced_auth',
     titleKey: 'Passkey Authentication',
     build: (settings: AuthSettings) => (
       <PasskeySection
@@ -116,6 +118,7 @@ const AUTH_SECTIONS = [
   },
   {
     id: 'custom-oauth',
+    feature: 'oauth',
     titleKey: 'Custom OAuth',
     build: (settings: AuthSettings) => (
       <CustomOAuthSection serverAddress={settings.ServerAddress} />

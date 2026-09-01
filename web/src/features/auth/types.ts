@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { FeatureName } from '@/lib/feature-access'
+
 import type { AuthBundle } from '@/stores/auth-store'
 
 // ============================================================================
@@ -137,6 +139,8 @@ export interface SystemStatus {
     password_login_encryption_enabled?: boolean
     password_register_enabled?: boolean
     custom_oauth_providers?: CustomOAuthProviderInfo[]
+    usage_mode?: string
+    features?: Partial<Record<FeatureName, boolean>>
     [key: string]: unknown
   }
   // Allow direct access to common properties
@@ -183,6 +187,8 @@ export interface SystemStatus {
   password_login_encryption_enabled?: boolean
   password_register_enabled?: boolean
   custom_oauth_providers?: CustomOAuthProviderInfo[]
+  usage_mode?: string
+  features?: Partial<Record<FeatureName, boolean>>
   [key: string]: unknown
 }
 
