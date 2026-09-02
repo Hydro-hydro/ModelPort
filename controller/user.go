@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -18,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/QuantumNous/new-api/constant"
 
@@ -65,7 +65,7 @@ func Login(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	username := loginRequest.Username
+	username := strings.TrimSpace(loginRequest.Username)
 	password := loginRequest.Password
 	if common.PasswordLoginEncryptionEnabled {
 		if loginRequest.PasswordEncrypted == "" || loginRequest.EncryptionKeyID == "" {
@@ -78,63 +78,46 @@ func Login(c *gin.Context) {
 			return
 		}
 	}
-	if username == "" || password == "" {
+	if password == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	user := model.User{
-		Username: username,
-		Password: password,
-	}
-	err = user.ValidateAndFill()
-	if err != nil {
-		switch {
-		case errors.Is(err, model.ErrDatabase):
-			common.SysLog(fmt.Sprintf("Login database error for user %s: %v", username, err))
-			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-		case errors.Is(err, model.ErrUserEmptyCredentials):
-			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		default:
+
+	var user model.User
+	if usage_mode.IsPersonalUse() {
+		owner, ownerErr := model.GetPersonalOwner()
+		if ownerErr != nil {
+			common.SysLog(fmt.Sprintf("Personal owner login lookup failed: %v", ownerErr))
 			common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
-		}
-		return
-	}
-
-	// 检查是否启用2FA
-	twoFAEnabled, err := model.IsTwoFAEnabled(user.Id)
-	if err != nil {
-		common.SysLog(fmt.Sprintf("Login failed to load 2FA status for user %d: %v", user.Id, err))
-		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-		return
-	}
-	if twoFAEnabled {
-		expiresAt := time.Now().Add(5 * time.Minute)
-		payload, err := common.Marshal(twoFALoginFlowPayload{AuthVersion: user.AuthVersion})
-		if err != nil {
-			common.ApiError(c, err)
 			return
 		}
-		flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-			Purpose:   model.AuthFlowPurposeTwoFALogin,
-			UserId:    user.Id,
-			Payload:   string(payload),
-			ExpiresAt: expiresAt,
-		})
-		if err != nil {
-			common.ApiError(c, err)
+		if !common.ValidatePasswordAndHash(password, owner.Password) {
+			common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
 			return
 		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"message": i18n.T(c, i18n.MsgUserRequire2FA),
-			"success": true,
-			"data": map[string]interface{}{
-				"require_2fa": true,
-				"flow_token":  flowToken,
-				"expires_at":  expiresAt.Unix(),
-			},
-		})
-		return
+		user = *owner
+	} else {
+		if username == "" {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		user = model.User{
+			Username: username,
+			Password: password,
+		}
+		err = user.ValidateAndFill()
+		if err != nil {
+			switch {
+			case errors.Is(err, model.ErrDatabase):
+				common.SysLog(fmt.Sprintf("Login database error for user %s: %v", username, err))
+				common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+			case errors.Is(err, model.ErrUserEmptyCredentials):
+				common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			default:
+				common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
+			}
+			return
+		}
 	}
 
 	setupLogin(&user, c)

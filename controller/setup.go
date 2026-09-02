@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -72,11 +73,22 @@ func PostSetup(c *gin.Context) {
 
 	// If root doesn't exist, validate and create admin account
 	if !rootExists {
+		if req.SelfUseModeEnabled {
+			// 个人版只有一个固定的系统所有者，用户名仅作为兼容字段保存。
+			req.Username = "root"
+		}
 		// Validate username length: max 12 characters to align with model.User validation
 		if len(req.Username) > 12 {
 			c.JSON(200, gin.H{
 				"success": false,
 				"message": "用户名长度不能超过12个字符",
+			})
+			return
+		}
+		if strings.TrimSpace(req.Username) == "" {
+			c.JSON(200, gin.H{
+				"success": false,
+				"message": "管理员用户名不能为空",
 			})
 			return
 		}

@@ -331,6 +331,11 @@ func InitResources() error {
 		}
 	}
 	model.InitOptionMap()
+	if constant.Setup && operation_setting.SelfUseModeEnabled {
+		if err := model.EnsurePersonalOwner(); err != nil {
+			return fmt.Errorf("个人模式管理员账户校验失败: %w", err)
+		}
+	}
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
