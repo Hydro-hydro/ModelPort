@@ -15,8 +15,10 @@ import (
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestTaskModel2DtoNormalizesLegacyAction(t *testing.T) {
@@ -149,6 +151,62 @@ func saveBillingConfig(t *testing.T) {
 	})
 }
 
+func setupRelayTaskBillingFixture(t *testing.T) {
+	t.Helper()
+
+	const (
+		userID  = 7001
+		tokenID = 7001
+		quota   = 10_000_000
+		token   = "sk-relay-task-billing"
+	)
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+	require.NoError(t, db.Create(&model.User{
+		Id:       userID,
+		Username: "relay-task-billing-user",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		Quota:    quota,
+	}).Error)
+	require.NoError(t, db.Create(&model.Token{
+		Id:             tokenID,
+		UserId:         userID,
+		Key:            token,
+		Name:           "relay-task-billing-token",
+		Status:         common.TokenStatusEnabled,
+		RemainQuota:    quota,
+		UnlimitedQuota: false,
+	}).Error)
+
+	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousRedisEnabled := common.RedisEnabled
+	previousBatchUpdateEnabled := common.BatchUpdateEnabled
+	previousMainDatabaseType := common.MainDatabaseType()
+	previousLogDatabaseType := common.LogDatabaseType()
+
+	model.DB = db
+	model.LOG_DB = db
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.RedisEnabled = false
+	common.BatchUpdateEnabled = false
+
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.LOG_DB = previousLogDB
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
+		common.RedisEnabled = previousRedisEnabled
+		common.BatchUpdateEnabled = previousBatchUpdateEnabled
+		require.NoError(t, sqlDB.Close())
+	})
+}
+
 func TestRelayTaskSubmitAliasBillingIdentityAndExprFallback(t *testing.T) {
 	const mapping = `{"alias-model":"declared-model"}`
 	const aliasExpr = `tier("alias", 2)`
@@ -182,6 +240,7 @@ func TestRelayTaskSubmitAliasBillingIdentityAndExprFallback(t *testing.T) {
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
+			setupRelayTaskBillingFixture(t)
 			saveBillingConfig(t)
 			if len(testCase.modes) > 0 {
 				modeJSON, marshalErr := common.Marshal(testCase.modes)
@@ -201,6 +260,9 @@ func TestRelayTaskSubmitAliasBillingIdentityAndExprFallback(t *testing.T) {
 			}
 
 			c, info := newTaskSubmitContext(t, "alias-model", mapping)
+			info.UserId = 7001
+			info.TokenId = 7001
+			info.TokenKey = "sk-relay-task-billing"
 			c.Set("group", "default")
 			info.UserGroup = "default"
 			info.UsingGroup = "default"
