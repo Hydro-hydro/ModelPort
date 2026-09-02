@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -389,6 +390,13 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 			return nil, apiErr
 		}
 		return session, nil
+	}
+
+	// Personal mode uses the administrator's quota as the internal accounting
+	// source. It must not inspect or consume historical subscriptions, even if
+	// an old billing preference or subscription record is still present.
+	if usage_mode.IsPersonalUse() {
+		return tryWallet()
 	}
 
 	trySubscription := func() (*BillingSession, *types.NewAPIError) {
