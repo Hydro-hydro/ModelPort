@@ -23,7 +23,6 @@ import {
   Code,
   Gauge,
   DollarSign,
-  Users,
   HeartHandshake,
   type LucideIcon,
 } from 'lucide-react'
@@ -38,7 +37,6 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Code,
   Gauge,
   DollarSign,
-  Users,
   HeartHandshake,
 }
 

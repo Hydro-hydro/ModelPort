@@ -449,18 +449,3 @@ export interface FetchLogsConfig {
   searchParams: Record<string, unknown>
   columnFilters: Array<{ id: string; value: unknown }>
 }
-
-// ============================================================================
-// User Info Types
-// ============================================================================
-
-export interface UserInfo {
-  id: number
-  username: string
-  display_name?: string
-  quota: number
-  used_quota: number
-  request_count: number
-  group?: string
-  remark?: string
-}

@@ -36,10 +36,6 @@ export function resolveLogsViewAccess(
 }
 
 interface UsageLogsContextValue {
-  selectedUserId: number | null
-  setSelectedUserId: (userId: number | null) => void
-  userInfoDialogOpen: boolean
-  setUserInfoDialogOpen: (open: boolean) => void
   affinityTarget: ChannelAffinityInfo | null
   setAffinityTarget: (target: ChannelAffinityInfo | null) => void
   affinityDialogOpen: boolean
@@ -55,8 +51,6 @@ const UsageLogsContext = createContext<UsageLogsContextValue | undefined>(
 )
 
 export function UsageLogsProvider({ children }: { children: ReactNode }) {
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
-  const [userInfoDialogOpen, setUserInfoDialogOpen] = useState(false)
   const [affinityTarget, setAffinityTarget] =
     useState<ChannelAffinityInfo | null>(null)
   const [affinityDialogOpen, setAffinityDialogOpen] = useState(false)
@@ -66,10 +60,6 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
   return (
     <UsageLogsContext.Provider
       value={{
-        selectedUserId,
-        setSelectedUserId,
-        userInfoDialogOpen,
-        setUserInfoDialogOpen,
         affinityTarget,
         setAffinityTarget,
         affinityDialogOpen,

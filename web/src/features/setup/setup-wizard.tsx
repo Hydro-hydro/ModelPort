@@ -62,12 +62,8 @@ const STEPS = [
 ]
 
 const DEFAULT_FORM_VALUES: SetupFormValues = {
-  // Keep legacy fields for the setup API contract; the personal edition always
-  // submits the fixed root owner and personal mode values.
-  username: 'root',
   password: '',
   confirmPassword: '',
-  usageMode: 'self',
 }
 
 export function SetupWizard() {
@@ -300,9 +296,9 @@ export function SetupWizard() {
                       'rounded-xl border p-3',
                       isActive && 'border-primary ring-primary/20 ring-2',
                       !isActive &&
-                        isCompleted && 'border-primary/40 bg-primary/5',
-                      !isActive &&
-                        !isCompleted && 'border-muted bg-card'
+                        isCompleted &&
+                        'border-primary/40 bg-primary/5',
+                      !isActive && !isCompleted && 'border-muted bg-card'
                     )}
                   >
                     <div className='flex items-start gap-3'>

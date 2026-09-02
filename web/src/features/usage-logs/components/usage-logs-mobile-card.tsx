@@ -243,21 +243,12 @@ function MobileTokensField({ log }: { log: UsageLog }) {
 
 /** Mobile-only User block: own layout so avatar/name always line up on the same baseline. */
 function MobileUserField({ log }: { log: UsageLog }) {
-  const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
-    useUsageLogsContext()
+  const { sensitiveVisible } = useUsageLogsContext()
 
   if (!log.username) return null
 
   return (
-    <button
-      type='button'
-      className='bg-muted/20 flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left'
-      onClick={(e) => {
-        e.stopPropagation()
-        setSelectedUserId(log.user_id)
-        setUserInfoDialogOpen(true)
-      }}
-    >
+    <div className='bg-muted/20 flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left'>
       <Avatar className='ring-border/60 size-6 shrink-0 ring-1'>
         <AvatarFallback
           className={cn(
@@ -274,7 +265,7 @@ function MobileUserField({ log }: { log: UsageLog }) {
       <span className='text-foreground min-w-0 truncate text-sm'>
         {sensitiveVisible ? log.username : '••••'}
       </span>
-    </button>
+    </div>
   )
 }
 

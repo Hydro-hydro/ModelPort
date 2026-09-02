@@ -26,7 +26,6 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
 
-import { UserInfoDialog } from './components/dialogs/user-info-dialog'
 import {
   type LogsViewScope,
   UsageLogsProvider,
@@ -63,14 +62,8 @@ function UsageLogsContent() {
     params.section && isUsageLogsSectionId(params.section)
       ? params.section
       : USAGE_LOGS_DEFAULT_SECTION
-  const {
-    selectedUserId,
-    userInfoDialogOpen,
-    setUserInfoDialogOpen,
-    affinityTarget,
-    affinityDialogOpen,
-    setAffinityDialogOpen,
-  } = useUsageLogsContext()
+  const { affinityTarget, affinityDialogOpen, setAffinityDialogOpen } =
+    useUsageLogsContext()
   const { canManageScope, viewScope, setViewScope } = useLogsViewScope()
   const tabNavGroups = useMemo<NavGroup[]>(
     () => [
@@ -157,12 +150,6 @@ function UsageLogsContent() {
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
-
-      <UserInfoDialog
-        userId={selectedUserId}
-        open={userInfoDialogOpen}
-        onOpenChange={setUserInfoDialogOpen}
-      />
 
       <CacheStatsDialog
         open={affinityDialogOpen}

@@ -12,7 +12,6 @@ export type FeatureName =
   | 'protocol_diagnostics'
   | 'media_tasks'
   | 'performance_console'
-  | 'user_management'
   | 'task_plugins'
   | 'deployments'
   | 'multi_node'

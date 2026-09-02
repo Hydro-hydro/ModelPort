@@ -23,7 +23,6 @@ import {
   Code,
   Gauge,
   DollarSign,
-  Users,
   HeartHandshake,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -166,11 +165,6 @@ export function Features(_props: FeaturesProps) {
       icon: <DollarSign className='size-5' strokeWidth={1.5} />,
       title: t('Transparent Billing'),
       desc: t('Pay-as-you-go with real-time usage monitoring'),
-    },
-    {
-      icon: <Users className='size-5' strokeWidth={1.5} />,
-      title: t('Team Collaboration'),
-      desc: t('Multi-user management with flexible permission allocation'),
     },
     {
       icon: <HeartHandshake className='size-5' strokeWidth={1.5} />,

@@ -28,7 +28,6 @@ import type {
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
   TaskArtifactsResponse,
-  UserInfo,
 } from './types'
 
 // ============================================================================
@@ -85,13 +84,6 @@ export const getLogStats = (params: GetLogStatsParams = {}) =>
 export const getUserLogStats = (
   params: Omit<GetLogStatsParams, 'username' | 'channel'> = {}
 ) => fetchLogStats('/api/log', params, false)
-
-export async function getUserInfo(
-  userId: number
-): Promise<{ success: boolean; message?: string; data?: UserInfo }> {
-  const res = await api.get(`/api/user/${userId}`)
-  return res.data
-}
 
 // ============================================================================
 // MjProxy (Drawing) Logs API

@@ -144,8 +144,6 @@ export const STATIC_I18N_KEYS = [
   'Support for high concurrency with automatic load balancing',
   'Transparent Billing',
   'Pay-as-you-go with real-time usage monitoring',
-  'Team Collaboration',
-  'Multi-user management with flexible permission allocation',
   'Technical Support',
   'Professional team providing 24/7 technical support',
 

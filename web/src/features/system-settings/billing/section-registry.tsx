@@ -106,7 +106,6 @@ const BILLING_SECTIONS = [
   },
   {
     id: 'group-pricing',
-    feature: 'user_management',
     titleKey: 'Group Pricing',
     build: (settings: BillingSettings) => (
       <RatioSettingsCard
