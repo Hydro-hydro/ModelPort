@@ -27,8 +27,6 @@ var TaskEnabled = true
 var DataExportEnabled = true
 var DataExportInterval = 5         // unit: minute
 var DataExportDefaultTime = "hour" // unit: minute
-var DefaultCollapseSidebar = false // default value of collapse sidebar
-
 // Any options with "Secret", "Token" in its key won't be return by GetOptions
 
 var SessionSecret = uuid.New().String()
@@ -88,7 +86,6 @@ var SMTPToken = ""
 var TurnstileSiteKey = ""
 var TurnstileSecretKey = ""
 
-var QuotaForNewUser = 0
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

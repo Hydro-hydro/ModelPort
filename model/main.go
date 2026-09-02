@@ -393,6 +393,8 @@ var removedPersonalOptionKeys = []string{
 	"EmailDomainWhitelist",
 	"DemoSiteEnabled",
 	"SelfUseModeEnabled",
+	"QuotaForNewUser",
+	"DefaultCollapseSidebar",
 }
 
 func cleanupRemovedPersonalSchema(db *gorm.DB) error {

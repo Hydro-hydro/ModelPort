@@ -25,7 +25,6 @@ import {
 } from './section-registry.tsx'
 
 const defaultBillingSettings: BillingSettings = {
-  QuotaForNewUser: 0,
   PreConsumedQuota: 0,
   'general_setting.docs_link': '',
   'quota_setting.enable_free_model_pre_consume': true,

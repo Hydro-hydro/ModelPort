@@ -54,7 +54,7 @@ func testPersonalSchemaCleanupOnDSN(t *testing.T, databaseType common.DatabaseTy
 	for _, table := range removedPersonalTables {
 		require.NoError(t, db.Exec("CREATE TABLE "+quote(table)+" ("+quote("id")+" BIGINT)").Error)
 	}
-	for _, key := range []string{"GitHubOAuthEnabled", "discord.enabled", "oidc.enabled", "passkey.enabled", "SelfUseModeEnabled", "DemoSiteEnabled", "ModelRatio"} {
+	for _, key := range []string{"GitHubOAuthEnabled", "discord.enabled", "oidc.enabled", "passkey.enabled", "SelfUseModeEnabled", "DemoSiteEnabled", "QuotaForNewUser", "DefaultCollapseSidebar", "ModelRatio"} {
 		require.NoError(t, db.Create(&Option{Key: key, Value: "legacy"}).Error)
 	}
 

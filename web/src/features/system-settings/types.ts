@@ -201,7 +201,6 @@ export type ModelSettings = {
 }
 
 export type BillingSettings = {
-  QuotaForNewUser: number
   PreConsumedQuota: number
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean
@@ -233,7 +232,6 @@ export type BillingSettings = {
 }
 
 export type OperationsSettings = {
-  DefaultCollapseSidebar: boolean
   QuotaRemindThreshold: string
   SMTPServer: string
   SMTPPort: string

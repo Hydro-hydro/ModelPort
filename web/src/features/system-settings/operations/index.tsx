@@ -27,7 +27,6 @@ import {
 } from './section-registry.tsx'
 
 const defaultOperationsSettings: OperationsSettings = {
-  DefaultCollapseSidebar: false,
   QuotaRemindThreshold: '',
   SMTPServer: '',
   SMTPPort: '',

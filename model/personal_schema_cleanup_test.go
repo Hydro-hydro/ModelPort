@@ -80,6 +80,8 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 		"passkey.enabled",
 		"SelfUseModeEnabled",
 		"DemoSiteEnabled",
+		"QuotaForNewUser",
+		"DefaultCollapseSidebar",
 		"ModelRatio",
 	} {
 		require.NoError(t, db.Create(&Option{Key: key, Value: "legacy"}).Error)

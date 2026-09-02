@@ -33,7 +33,6 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { formatQuota } from '@/lib/format'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -50,7 +49,6 @@ import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 
 const quotaSchema = z.object({
-  QuotaForNewUser: z.coerce.number().min(0),
   PreConsumedQuota: z.coerce.number().min(0),
   general_setting: z.object({
     docs_link: z.string(),
@@ -62,10 +60,6 @@ const quotaSchema = z.object({
 
 type QuotaFormValues = z.infer<typeof quotaSchema>
 type QuotaInputValue = number | ''
-
-function formatQuotaInputValue(value: QuotaInputValue): string {
-  return formatQuota(value === '' ? 0 : value)
-}
 
 type QuotaSettingsSectionProps = {
   defaultValues: QuotaFormValues
@@ -113,35 +107,6 @@ export function QuotaSettingsSection({
           />
           <FormDirtyIndicator isDirty={isDirty} />
           <SettingsFormGrid>
-            <FormField
-              control={form.control}
-              name='QuotaForNewUser'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('New User Quota')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type='number'
-                      value={field.value ?? ''}
-                      onChange={handleNumberChange(field.onChange)}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t(
-                      'Initial quota given to new users ({{formattedQuota}})',
-                      {
-                        formattedQuota: formatQuotaInputValue(field.value),
-                      }
-                    )}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <FormField
               control={form.control}
               name='PreConsumedQuota'

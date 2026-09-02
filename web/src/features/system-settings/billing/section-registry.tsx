@@ -56,7 +56,6 @@ const BILLING_SECTIONS = [
     build: (settings: BillingSettings) => (
       <QuotaSettingsSection
         defaultValues={{
-          QuotaForNewUser: settings.QuotaForNewUser,
           PreConsumedQuota: settings.PreConsumedQuota,
           general_setting: {
             docs_link: settings['general_setting.docs_link'],
