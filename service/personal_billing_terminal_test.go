@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,13 +24,14 @@ func TestPersonalBillingTerminalRefundsPreConsumedQuotaExactlyOnce(t *testing.T)
 	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
 	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
 	require.NotNil(t, relayInfo.Billing)
+	var accounting relaycommon.UsageAccounting = relayInfo.Billing
 	assert.Equal(t, initialQuota-preConsumedQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-preConsumedQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
 
 	context := newPersonalBillingTestContext()
-	relayInfo.Billing.Refund(context)
-	relayInfo.Billing.Refund(context)
+	accounting.Refund(context)
+	accounting.Refund(context)
 
 	require.Eventually(t, func() bool {
 		var user model.User
@@ -77,15 +79,16 @@ func TestPersonalBillingTerminalSettlementIsIdempotentAndKeepsQuotasInSync(t *te
 			relayInfo := personalBillingRelayInfo(test.userID, test.tokenID, tokenKey)
 			require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
 			require.NotNil(t, relayInfo.Billing)
+			var accounting relaycommon.UsageAccounting = relayInfo.Billing
 
-			require.NoError(t, relayInfo.Billing.Settle(test.actualQuota))
+			require.NoError(t, accounting.Settle(test.actualQuota))
 			assert.Equal(t, initialQuota-test.actualQuota, getUserQuota(t, test.userID))
 			assert.Equal(t, initialTokenQuota-test.actualQuota, getTokenRemainQuota(t, test.tokenID))
 			assert.Equal(t, test.actualQuota, getTokenUsedQuota(t, test.tokenID))
 
 			// A settled request is terminal; a later, different actual quota must not
 			// apply another adjustment.
-			require.NoError(t, relayInfo.Billing.Settle(test.actualQuota+50))
+			require.NoError(t, accounting.Settle(test.actualQuota+50))
 			assert.Equal(t, initialQuota-test.actualQuota, getUserQuota(t, test.userID))
 			assert.Equal(t, initialTokenQuota-test.actualQuota, getTokenRemainQuota(t, test.tokenID))
 			assert.Equal(t, test.actualQuota, getTokenUsedQuota(t, test.tokenID))
@@ -108,15 +111,16 @@ func TestPersonalBillingTerminalZeroUsageSettlesOnlyOnce(t *testing.T) {
 	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
 	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
 	require.NotNil(t, relayInfo.Billing)
+	var accounting relaycommon.UsageAccounting = relayInfo.Billing
 
 	// 当前服务约定中，未取得最终 Usage 时以 actualQuota=0 结算。
-	require.NoError(t, relayInfo.Billing.Settle(0))
+	require.NoError(t, accounting.Settle(0))
 	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, 0, getTokenUsedQuota(t, tokenID))
 
 	// 第二次传入不同的终态也不能再次调整已经结算的请求。
-	require.NoError(t, relayInfo.Billing.Settle(300))
+	require.NoError(t, accounting.Settle(300))
 	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, 0, getTokenUsedQuota(t, tokenID))
@@ -137,7 +141,8 @@ func TestPersonalBillingTerminalCommittedFundingIsNotRefunded(t *testing.T) {
 	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
 	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
 	require.NotNil(t, relayInfo.Billing)
-	require.NoError(t, relayInfo.Billing.Settle(actualQuota))
+	var accounting relaycommon.UsageAccounting = relayInfo.Billing
+	require.NoError(t, accounting.Settle(actualQuota))
 
 	assert.Equal(t, initialQuota-actualQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
@@ -145,8 +150,8 @@ func TestPersonalBillingTerminalCommittedFundingIsNotRefunded(t *testing.T) {
 
 	// 资金来源已完成结算后，失败清理路径不能再退款预扣额度。
 	context := newPersonalBillingTestContext()
-	relayInfo.Billing.Refund(context)
-	relayInfo.Billing.Refund(context)
+	accounting.Refund(context)
+	accounting.Refund(context)
 
 	assert.False(t, relayInfo.Billing.NeedsRefund())
 	assert.Equal(t, initialQuota-actualQuota, getUserQuota(t, userID))

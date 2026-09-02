@@ -50,7 +50,10 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 // 否则回退到旧的 PostConsumeQuota 路径（兼容按次计费等场景）。
 func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
 	if relayInfo.Billing != nil {
-		preConsumed := relayInfo.Billing.GetPreConsumedQuota()
+		// 普通请求的终态结算只依赖 UsageAccounting；完整的
+		// BillingSettler 能力仍保留给追加预扣和会话状态调用点。
+		var accounting relaycommon.UsageAccounting = relayInfo.Billing
+		preConsumed := accounting.GetPreConsumedQuota()
 		delta := actualQuota - preConsumed
 
 		if delta > 0 {
@@ -71,7 +74,7 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 			))
 		}
 
-		if err := relayInfo.Billing.Settle(actualQuota); err != nil {
+		if err := accounting.Settle(actualQuota); err != nil {
 			return err
 		}
 

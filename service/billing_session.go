@@ -37,6 +37,9 @@ type BillingSession struct {
 	mu               sync.Mutex
 }
 
+var _ relaycommon.UsageAccounting = (*BillingSession)(nil)
+var _ relaycommon.BillingSettler = (*BillingSession)(nil)
+
 // Settle 根据实际消耗额度进行结算。
 // 资金来源和令牌额度分两步提交：若资金来源已提交但令牌调整失败，
 // 会标记 fundingSettled 防止 Refund 对已提交的资金来源执行退款。
