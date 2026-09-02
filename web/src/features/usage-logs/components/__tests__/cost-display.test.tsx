@@ -38,8 +38,6 @@ function normalizedText(value: string | null): string {
 describe('log cost display', () => {
   beforeAll(() => {
     i18next.addResourceBundle('en', 'translation', {
-      Subscription: 'Subscription',
-      'Deducted by subscription': 'Deducted by subscription',
       'Includes tool-call surcharge': 'Includes tool-call surcharge',
     })
   })
@@ -62,22 +60,5 @@ describe('log cost display', () => {
     })
     expect(marker).toHaveAttribute('data-tool-surcharge-indicator', 'true')
     expect(marker).toHaveAttribute('tabindex', '0')
-  })
-
-  test('preserves the subscription badge and adds the same legacy surcharge marker', () => {
-    renderCost({
-      quota: 5000,
-      other: {
-        billing_source: 'subscription',
-        web_search: true,
-        web_search_call_count: 1,
-        web_search_price: 10,
-      },
-    })
-
-    expect(screen.getByText('Subscription')).toBeInTheDocument()
-    expect(
-      screen.getByRole('img', { name: 'Includes tool-call surcharge' })
-    ).toHaveAttribute('data-tool-surcharge-indicator', 'true')
   })
 })

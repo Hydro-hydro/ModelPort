@@ -52,17 +52,6 @@ token.auto_groups_too_many: "每個令牌最多可選擇 {{.Max}} 個 Auto 分�
 token.auto_groups_duplicate: "Auto 分組 {{.Group}} 重複"
 token.auto_groups_invalid: "Auto 分組 {{.Group}} 不可用或無權存取"
 
-# Redemption messages
-redemption.name_length: "兌換碼名稱長度必須在1-20之間"
-redemption.count_positive: "兌換碼個數必須大於0"
-redemption.count_max: "一次兌換碼批量生成的個數不能大於 100"
-redemption.create_failed: "建立兌換碼失敗，請稍後重試"
-redemption.invalid: "無效的兌換碼"
-redemption.used: "該兌換碼已被使用"
-redemption.expired: "該兌換碼已過期"
-redemption.failed: "兌換失敗，請稍後重試"
-redemption.not_provided: "未提供兌換碼"
-redemption.expire_time_invalid: "過期時間不能早於當前時間"
 
 # User messages
 user.password_login_disabled: "管理員關閉了密碼登錄"
@@ -92,14 +81,8 @@ user.already_admin: "該使用者已經是管理員"
 user.already_common: "該使用者已經是普通使用者"
 user.admin_cannot_promote: "普通管理員使用者無法提升其他使用者為管理員"
 user.original_password_error: "原密碼錯誤"
-user.invite_quota_insufficient: "邀請額度不足！"
-user.transfer_quota_minimum: "轉移額度最小為{{.Min}}！"
-user.transfer_success: "劃轉成功"
-user.transfer_failed: "劃轉失敗 {{.Error}}"
-user.topup_processing: "充值處理中，請稍後重試"
 user.register_failed: "使用者註冊失敗或使用者ID獲取失敗"
 user.default_token_failed: "生成預設令牌失敗"
-user.aff_code_empty: "affCode 為空！"
 user.email_empty: "email 為空！"
 user.github_id_empty: "GitHub id 為空！"
 user.discord_id_empty: "discord id 為空！"
@@ -117,38 +100,8 @@ quota.insufficient: "額度不足"
 quota.warning_invalid: "無效的預警類型"
 quota.threshold_gt_zero: "預警閾值必須大於0"
 
-# Subscription messages
-subscription.not_enabled: "訂閱方案未啟用"
-subscription.title_empty: "訂閱方案標題不能為空"
-subscription.price_negative: "價格不能為負數"
-subscription.price_max: "價格不能超過9999"
-subscription.purchase_limit_negative: "購買上限不能為負數"
-subscription.quota_negative: "總額度不能為負數"
-subscription.group_not_exists: "升級分組不存在"
-subscription.reset_cycle_gt_zero: "自訂重置週期需大於0秒"
-subscription.purchase_max: "已達到該訂閱方案購買上限"
-subscription.invalid_id: "無效的訂閱ID"
-subscription.invalid_user_id: "無效的使用者ID"
 
-# Payment messages
-payment.not_configured: "當前管理員未設定支付資訊"
-payment.method_not_exists: "不存在此支付方式"
-payment.callback_error: "回調位址設定錯誤"
-payment.create_failed: "建立訂單失敗"
-payment.start_failed: "啟用支付失敗"
-payment.amount_too_low: "訂閱方案金額過低"
-payment.stripe_not_configured: "Stripe 未設定或密鑰無效"
-payment.webhook_not_configured: "Webhook 未設定"
-payment.price_id_not_configured: "該訂閱方案未設定 StripePriceId"
-payment.creem_not_configured: "該訂閱方案未設定 CreemProductId"
-payment.compliance_required: "支付、兌換碼、訂閱方案和邀請返利功能已停用。管理員需先確認合規聲明後方可啟用。"
 
-# Topup messages
-topup.not_provided: "未提供支付單號"
-topup.order_not_exists: "充值訂單不存在"
-topup.order_status: "充值訂單狀態錯誤"
-topup.failed: "充值失敗，請稍後重試"
-topup.invalid_quota: "無效的充值額度"
 
 # Channel messages
 channel.not_exists: "管道不存在"
@@ -181,11 +134,6 @@ group.name_type_empty: "組名稱和類型不能為空"
 group.name_exists: "組名稱已存在"
 group.id_missing: "缺少組 ID"
 
-# Checkin messages
-checkin.disabled: "簽到功能未啟用"
-checkin.already_today: "今日已簽到"
-checkin.failed: "簽到失敗，請稍後重試"
-checkin.quota_failed: "簽到失敗：更新額度出錯"
 
 # Passkey messages
 passkey.create_failed: "無法建立 Passkey 憑證"
@@ -255,8 +203,6 @@ oauth.token_failed: "{{.Provider}} 獲取 Token 失敗，請檢查設定"
 oauth.user_info_empty: "{{.Provider}} 獲取使用者資訊為空，請檢查設定"
 oauth.trust_level_low: "Linux DO 信任等級未達到管理員設定的最低信任等級"
 
-# Model layer error messages
-redeem.failed: "兌換失敗，請稍後重試"
 user.create_default_token_error: "建立預設令牌失敗"
 common.uuid_duplicate: "請重試，系統生成的 UUID 竟然重複了！"
 common.invalid_input: "輸入不合法"

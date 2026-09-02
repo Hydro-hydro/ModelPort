@@ -60,20 +60,6 @@ const (
 	MsgTokenAutoGroupsInvalid    = "token.auto_groups_invalid"
 )
 
-// Redemption related messages
-const (
-	MsgRedemptionNameLength        = "redemption.name_length"
-	MsgRedemptionCountPositive     = "redemption.count_positive"
-	MsgRedemptionCountMax          = "redemption.count_max"
-	MsgRedemptionCreateFailed      = "redemption.create_failed"
-	MsgRedemptionInvalid           = "redemption.invalid"
-	MsgRedemptionUsed              = "redemption.used"
-	MsgRedemptionExpired           = "redemption.expired"
-	MsgRedemptionFailed            = "redemption.failed"
-	MsgRedemptionNotProvided       = "redemption.not_provided"
-	MsgRedemptionExpireTimeInvalid = "redemption.expire_time_invalid"
-)
-
 // User related messages
 const (
 	MsgUserPasswordLoginDisabled     = "user.password_login_disabled"
@@ -103,14 +89,8 @@ const (
 	MsgUserAlreadyCommon             = "user.already_common"
 	MsgUserAdminCannotPromote        = "user.admin_cannot_promote"
 	MsgUserOriginalPasswordError     = "user.original_password_error"
-	MsgUserInviteQuotaInsufficient   = "user.invite_quota_insufficient"
-	MsgUserTransferQuotaMinimum      = "user.transfer_quota_minimum"
-	MsgUserTransferSuccess           = "user.transfer_success"
-	MsgUserTransferFailed            = "user.transfer_failed"
-	MsgUserTopUpProcessing           = "user.topup_processing"
 	MsgUserRegisterFailed            = "user.register_failed"
 	MsgUserDefaultTokenFailed        = "user.default_token_failed"
-	MsgUserAffCodeEmpty              = "user.aff_code_empty"
 	MsgUserEmailEmpty                = "user.email_empty"
 	MsgUserGitHubIdEmpty             = "user.github_id_empty"
 	MsgUserDiscordIdEmpty            = "user.discord_id_empty"
@@ -129,45 +109,6 @@ const (
 	MsgQuotaInsufficient    = "quota.insufficient"
 	MsgQuotaWarningInvalid  = "quota.warning_invalid"
 	MsgQuotaThresholdGtZero = "quota.threshold_gt_zero"
-)
-
-// Subscription related messages
-const (
-	MsgSubscriptionNotEnabled       = "subscription.not_enabled"
-	MsgSubscriptionTitleEmpty       = "subscription.title_empty"
-	MsgSubscriptionPriceNegative    = "subscription.price_negative"
-	MsgSubscriptionPriceMax         = "subscription.price_max"
-	MsgSubscriptionPurchaseLimitNeg = "subscription.purchase_limit_negative"
-	MsgSubscriptionQuotaNegative    = "subscription.quota_negative"
-	MsgSubscriptionGroupNotExists   = "subscription.group_not_exists"
-	MsgSubscriptionResetCycleGtZero = "subscription.reset_cycle_gt_zero"
-	MsgSubscriptionPurchaseMax      = "subscription.purchase_max"
-	MsgSubscriptionInvalidId        = "subscription.invalid_id"
-	MsgSubscriptionInvalidUserId    = "subscription.invalid_user_id"
-)
-
-// Payment related messages
-const (
-	MsgPaymentNotConfigured      = "payment.not_configured"
-	MsgPaymentMethodNotExists    = "payment.method_not_exists"
-	MsgPaymentCallbackError      = "payment.callback_error"
-	MsgPaymentCreateFailed       = "payment.create_failed"
-	MsgPaymentStartFailed        = "payment.start_failed"
-	MsgPaymentAmountTooLow       = "payment.amount_too_low"
-	MsgPaymentStripeNotConfig    = "payment.stripe_not_configured"
-	MsgPaymentWebhookNotConfig   = "payment.webhook_not_configured"
-	MsgPaymentPriceIdNotConfig   = "payment.price_id_not_configured"
-	MsgPaymentCreemNotConfig     = "payment.creem_not_configured"
-	MsgPaymentComplianceRequired = "payment.compliance_required"
-)
-
-// Topup related messages
-const (
-	MsgTopupNotProvided    = "topup.not_provided"
-	MsgTopupOrderNotExists = "topup.order_not_exists"
-	MsgTopupOrderStatus    = "topup.order_status"
-	MsgTopupFailed         = "topup.failed"
-	MsgTopupInvalidQuota   = "topup.invalid_quota"
 )
 
 // Channel related messages
@@ -207,14 +148,6 @@ const (
 	MsgGroupNameTypeEmpty = "group.name_type_empty"
 	MsgGroupNameExists    = "group.name_exists"
 	MsgGroupIdMissing     = "group.id_missing"
-)
-
-// Checkin related messages
-const (
-	MsgCheckinDisabled     = "checkin.disabled"
-	MsgCheckinAlreadyToday = "checkin.already_today"
-	MsgCheckinFailed       = "checkin.failed"
-	MsgCheckinQuotaFailed  = "checkin.quota_failed"
 )
 
 // Passkey related messages
@@ -303,7 +236,6 @@ const (
 
 // Model layer error messages (for translation in controller)
 const (
-	MsgRedeemFailed          = "redeem.failed"
 	MsgCreateDefaultTokenErr = "user.create_default_token_error"
 	MsgUuidDuplicate         = "common.uuid_duplicate"
 	MsgInvalidInput          = "common.invalid_input"

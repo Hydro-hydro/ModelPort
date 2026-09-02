@@ -52,17 +52,6 @@ token.auto_groups_too_many: "每个令牌最多可选择 {{.Max}} 个 Auto 分�
 token.auto_groups_duplicate: "Auto 分组 {{.Group}} 重复"
 token.auto_groups_invalid: "Auto 分组 {{.Group}} 不可用或无权访问"
 
-# Redemption messages
-redemption.name_length: "兑换码名称长度必须在1-20之间"
-redemption.count_positive: "兑换码个数必须大于0"
-redemption.count_max: "一次兑换码批量生成的个数不能大于 100"
-redemption.create_failed: "创建兑换码失败，请稍后重试"
-redemption.invalid: "无效的兑换码"
-redemption.used: "该兑换码已被使用"
-redemption.expired: "该兑换码已过期"
-redemption.failed: "兑换失败，请稍后重试"
-redemption.not_provided: "未提供兑换码"
-redemption.expire_time_invalid: "过期时间不能早于当前时间"
 
 # User messages
 user.password_login_disabled: "管理员关闭了密码登录"
@@ -92,14 +81,8 @@ user.already_admin: "该用户已经是管理员"
 user.already_common: "该用户已经是普通用户"
 user.admin_cannot_promote: "普通管理员用户无法提升其他用户为管理员"
 user.original_password_error: "原密码错误"
-user.invite_quota_insufficient: "邀请额度不足！"
-user.transfer_quota_minimum: "转移额度最小为{{.Min}}！"
-user.transfer_success: "划转成功"
-user.transfer_failed: "划转失败 {{.Error}}"
-user.topup_processing: "充值处理中，请稍后重试"
 user.register_failed: "用户注册失败或用户ID获取失败"
 user.default_token_failed: "生成默认令牌失败"
-user.aff_code_empty: "affCode 为空！"
 user.email_empty: "email 为空！"
 user.github_id_empty: "GitHub id 为空！"
 user.discord_id_empty: "discord id 为空！"
@@ -117,38 +100,8 @@ quota.insufficient: "额度不足"
 quota.warning_invalid: "无效的预警类型"
 quota.threshold_gt_zero: "预警阈值必须大于0"
 
-# Subscription messages
-subscription.not_enabled: "套餐未启用"
-subscription.title_empty: "套餐标题不能为空"
-subscription.price_negative: "价格不能为负数"
-subscription.price_max: "价格不能超过9999"
-subscription.purchase_limit_negative: "购买上限不能为负数"
-subscription.quota_negative: "总额度不能为负数"
-subscription.group_not_exists: "升级分组不存在"
-subscription.reset_cycle_gt_zero: "自定义重置周期需大于0秒"
-subscription.purchase_max: "已达到该套餐购买上限"
-subscription.invalid_id: "无效的订阅ID"
-subscription.invalid_user_id: "无效的用户ID"
 
-# Payment messages
-payment.not_configured: "当前管理员未配置支付信息"
-payment.method_not_exists: "支付方式不存在"
-payment.callback_error: "回调地址配置错误"
-payment.create_failed: "创建订单失败"
-payment.start_failed: "拉起支付失败"
-payment.amount_too_low: "套餐金额过低"
-payment.stripe_not_configured: "Stripe 未配置或密钥无效"
-payment.webhook_not_configured: "Webhook 未配置"
-payment.price_id_not_configured: "该套餐未配置 StripePriceId"
-payment.creem_not_configured: "该套餐未配置 CreemProductId"
-payment.compliance_required: "支付、兑换码、订阅计划和邀请返利功能已禁用。管理员需先确认合规声明后方可启用。"
 
-# Topup messages
-topup.not_provided: "未提供支付单号"
-topup.order_not_exists: "充值订单不存在"
-topup.order_status: "充值订单状态错误"
-topup.failed: "充值失败，请稍后重试"
-topup.invalid_quota: "无效的充值额度"
 
 # Channel messages
 channel.not_exists: "渠道不存在"
@@ -181,11 +134,6 @@ group.name_type_empty: "组名称和类型不能为空"
 group.name_exists: "组名称已存在"
 group.id_missing: "缺少组 ID"
 
-# Checkin messages
-checkin.disabled: "签到功能未启用"
-checkin.already_today: "今日已签到"
-checkin.failed: "签到失败，请稍后重试"
-checkin.quota_failed: "签到失败：更新额度出错"
 
 # Passkey messages
 passkey.create_failed: "无法创建 Passkey 凭证"
@@ -255,8 +203,6 @@ oauth.token_failed: "{{.Provider}} 获取 Token 失败，请检查设置"
 oauth.user_info_empty: "{{.Provider}} 获取用户信息为空，请检查设置"
 oauth.trust_level_low: "Linux DO 信任等级未达到管理员设置的最低信任等级"
 
-# Model layer error messages
-redeem.failed: "兑换失败，请稍后重试"
 user.create_default_token_error: "创建默认令牌失败"
 common.uuid_duplicate: "请重试，系统生成的 UUID 竟然重复了！"
 common.invalid_input: "输入不合法"

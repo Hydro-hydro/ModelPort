@@ -20,7 +20,6 @@ import { Wrench01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useTranslation } from 'react-i18next'
 
-import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import {
   Tooltip,
@@ -92,36 +91,10 @@ function QuotaBadge(props: { quota: number }) {
   )
 }
 
-function SubscriptionBadge(props: { quota: number }) {
-  const { t } = useTranslation()
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <StatusBadge
-            label={t('Subscription')}
-            variant='success'
-            size='sm'
-            copyable={false}
-            className='cursor-help'
-          />
-        }
-      />
-      <TooltipContent>
-        <span>
-          {t('Deducted by subscription')}: {formatLogQuota(props.quota)}
-        </span>
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
 export function LogCostDisplay(props: LogCostDisplayProps) {
-  const isSubscription = props.other?.billing_source === 'subscription'
   const showToolSurcharge = hasToolSurcharge(props.other)
 
-  if (!isSubscription && !showToolSurcharge) {
+  if (!showToolSurcharge) {
     return (
       <div className='flex flex-col gap-0.5'>
         <QuotaBadge quota={props.quota} />
@@ -132,11 +105,7 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
   return (
     <TooltipProvider>
       <div className='inline-flex items-center gap-1'>
-        {isSubscription ? (
-          <SubscriptionBadge quota={props.quota} />
-        ) : (
-          <QuotaBadge quota={props.quota} />
-        )}
+        <QuotaBadge quota={props.quota} />
         {showToolSurcharge ? <ToolSurchargeMarker /> : null}
       </div>
     </TooltipProvider>

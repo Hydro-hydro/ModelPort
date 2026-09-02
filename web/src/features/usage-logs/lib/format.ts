@@ -402,12 +402,10 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'user.2fa_disable': 'Force-disabled two-factor authentication for the user',
   'user.passkey_register': 'Registered a passkey',
   'user.passkey_delete': 'Deleted a passkey',
-  'user.topup_complete': 'Completed top-up order for the user',
   'user.reset_passkey': 'Reset the user passkey',
   'user.oauth_unbind': 'Removed an OAuth binding for the user',
   // System settings
   'option.update': 'Updated system setting {{key}}',
-  'option.payment_compliance': 'Confirmed payment compliance',
   'option.reset_ratio': 'Reset model ratios',
   'option.clear_affinity_cache': 'Cleared channel affinity cache',
   // Custom OAuth
@@ -437,12 +435,6 @@ const AUDIT_TEMPLATES: Record<string, string> = {
     'Applied upstream model changes to channel (ID: {{id}})',
   'channel.upstream_apply_all':
     'Applied upstream model changes to {{count}} channels',
-  // Redemption codes
-  'redemption.create':
-    'Created {{count}} redemption codes named {{name}} ({{quota}} each)',
-  'redemption.update': 'Updated a redemption code',
-  'redemption.delete': 'Deleted a redemption code',
-  'redemption.delete_invalid': 'Deleted invalid redemption codes',
   // Prefill groups
   'prefill_group.create': 'Created a prefill group',
   'prefill_group.update': 'Updated a prefill group',
@@ -460,10 +452,6 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'deployment.create': 'Created a deployment',
   'deployment.update': 'Updated a deployment',
   'deployment.delete': 'Deleted a deployment',
-  // Subscriptions
-  'subscription.plan_create': 'Created a subscription plan',
-  'subscription.plan_update': 'Updated a subscription plan',
-  'subscription.bind': 'Bound a subscription',
   // Logs
   'log.clear': 'Cleared historical logs',
   'log.cleanup_start': 'Log cleanup task started.',

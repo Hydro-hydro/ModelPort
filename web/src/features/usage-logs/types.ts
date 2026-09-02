@@ -242,15 +242,6 @@ export interface LogOtherData {
   is_task?: boolean
   task_id?: string
   reason?: string
-  // Subscription billing fields
-  subscription_plan_id?: string
-  subscription_plan_title?: string
-  subscription_id?: string
-  subscription_pre_consumed?: number
-  subscription_post_delta?: number
-  subscription_consumed?: number
-  subscription_remain?: number
-  subscription_total?: number
 }
 
 /**
@@ -478,8 +469,5 @@ export interface UserInfo {
   used_quota: number
   request_count: number
   group?: string
-  aff_code?: string
-  aff_count?: number
-  aff_quota?: number
   remark?: string
 }
