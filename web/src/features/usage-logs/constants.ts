@@ -53,7 +53,6 @@ export const DEFAULT_LOGS_DATA = {
  */
 export const LOG_TYPE_ENUM = {
   UNKNOWN: 0,
-  TOPUP: 1,
   CONSUME: 2,
   MANAGE: 3,
   SYSTEM: 4,
@@ -91,7 +90,6 @@ export const TIME_RANGE_PRESETS = [
  */
 export const LOG_TYPES = [
   { value: 0, label: 'Unknown', color: 'default' },
-  { value: 1, label: 'Top-up', color: 'cyan' },
   { value: 2, label: 'Consume', color: 'green' },
   { value: 3, label: 'Manage', color: 'orange' },
   { value: 4, label: 'System', color: 'purple' },

@@ -47,7 +47,6 @@ import {
   Globe,
   ShieldCheck,
   UserCog,
-  Info,
   LogIn,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -510,7 +509,6 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isViolation = isViolationFeeLog(other)
   const isRefund = props.log.type === 6
   const isConsume = props.log.type === 2
-  const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
   const isTieredBilling =
     isConsume &&
@@ -523,43 +521,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
   )?.billing_usage_schema
   const hasAudioTokens = other?.ws || other?.audio
   const showTiming = isTimingLogType(props.log.type)
-  const showAdminIp =
-    !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
+  const showAdminIp = !!props.log.ip && showTiming
   const adminInfo = other?.admin_info
-  const topupAuditFields =
-    isTopup && props.isAdmin && adminInfo
-      ? ([
-          adminInfo.payment_method && {
-            label: t('Order Payment Method'),
-            value: adminInfo.payment_method,
-          },
-          adminInfo.callback_payment_method && {
-            label: t('Callback Payment Method'),
-            value: adminInfo.callback_payment_method,
-          },
-          adminInfo.caller_ip && {
-            label: t('Callback Caller IP'),
-            value: adminInfo.caller_ip,
-          },
-          adminInfo.server_ip && {
-            label: t('Server IP'),
-            value: adminInfo.server_ip,
-          },
-          adminInfo.node_name && {
-            label: t('Node Name'),
-            value: adminInfo.node_name,
-          },
-          adminInfo.version && {
-            label: t('System Version'),
-            value: adminInfo.version,
-          },
-        ].filter(Boolean) as Array<{ label: string; value: string }>)
-      : []
-  const showLegacyTopupWarning = isTopup && props.isAdmin && !adminInfo
-  const showTopupAuditSection =
-    isTopup &&
-    props.isAdmin &&
-    (topupAuditFields.length > 0 || showLegacyTopupWarning)
   const manageOperator = (() => {
     if (!isManage || !props.isAdmin || !adminInfo) return null
     const username = adminInfo.admin_username
@@ -951,34 +914,6 @@ export function DetailsDialog(props: DetailsDialogProps) {
             ) : null}
           </DetailSection>
         ) : null}
-
-        {/* Top-up audit info (type=1, admin only) */}
-        {showTopupAuditSection && (
-          <DetailSection
-            icon={<ShieldCheck className='size-3.5' aria-hidden='true' />}
-            iconTone='success'
-            label={t('Top-up Audit Info')}
-          >
-            {topupAuditFields.map((field) => (
-              <DetailRow
-                key={field.label}
-                label={field.label}
-                value={field.value}
-                mono
-              />
-            ))}
-            {showLegacyTopupWarning && (
-              <div className='flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400'>
-                <Info className='mt-0.5 size-3.5 shrink-0' aria-hidden='true' />
-                <span>
-                  {t(
-                    'This historical record predates audit-info tracking and cannot be backfilled. The current instance already records server IP, callback IP, payment method, and system version for new top-ups going forward.'
-                  )}
-                </span>
-              </div>
-            )}
-          </DetailSection>
-        )}
 
         {/* Manage operator (type=3, admin only) */}
         {manageOperator && (

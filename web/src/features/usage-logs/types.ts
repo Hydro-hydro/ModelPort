@@ -121,13 +121,6 @@ export interface LogOtherData {
     local_count_tokens?: boolean
     usage_billing_path?: UsageBillingPath | string
     channel_affinity?: ChannelAffinityInfo
-    // Top-up audit fields (type=1, admin only)
-    payment_method?: string
-    callback_payment_method?: string
-    caller_ip?: string
-    server_ip?: string
-    version?: string
-    node_name?: string
     // Operator identity for audit logs (type=3, admin only)
     admin_username?: string
     admin_id?: number | string
