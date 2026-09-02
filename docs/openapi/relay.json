@@ -4549,32 +4549,6 @@
           }
         }
       },
-      "Redemption": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer"
-          },
-          "name": {
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "status": {
-            "type": "integer"
-          },
-          "quota": {
-            "type": "integer"
-          },
-          "created_time": {
-            "type": "integer"
-          },
-          "redeemed_time": {
-            "type": "integer"
-          }
-        }
-      },
       "Log": {
         "type": "object",
         "properties": {
@@ -4613,7 +4587,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT or PAT",
-        "description": "面板短期 JWT 或 User.AccessToken PAT；不再要求 New-Api-User"
+        "description": "面板短期 JWT 或管理员 User.AccessToken PAT；不再要求 New-Api-User"
       },
       "NewApiUser": {
         "type": "apiKey",

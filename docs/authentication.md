@@ -140,7 +140,7 @@ Redis 限流使用原子 Lua 固定窗口，替代旧的近似滑动窗口 List 
 
 ## PAT 调用契约
 
-`User.AccessToken`（面板 PAT）继续支持 `Authorization: Bearer <pat>`，也兼容原有的单值 `Authorization: <pat>`。`New-Api-User` 不再参与鉴权，外部脚本不需要再发送 Bearer 与用户 ID 双请求头。这是有意的调用契约简化；旧 PAT 本身无需重新生成。
+`User.AccessToken`（管理员 API Token / 面板 PAT）继续支持 `Authorization: Bearer <pat>`，也兼容原有的单值 `Authorization: <pat>`。`New-Api-User` 不再参与鉴权，外部脚本不需要再发送 Bearer 与用户 ID 双请求头。这是有意的调用契约简化；旧 PAT 本身无需重新生成。
 
 PAT 不是浏览器登录会话，不能调用登录会话管理接口，也不能签发绑定具体登录会话的 Security Proof。
 
@@ -152,9 +152,9 @@ Proof 同时绑定管理员账户、登录会话、鉴权版本、会话版本�
 
 ## 升级注意事项
 
-
 - 旧 `session` Cookie 不再使用；升级后现有面板登录会失效，管理员需要重新登录。
 - 数据库迁移会保留 `user_sessions`、`tokens` 和 `users.auth_version`，并清理认证扩展表及用户第三方身份字段；不会删除用户、Token、日志、任务和统计数据。
+- `users` 表和 `user_id` 关联仅作为个人版所有者、Token、日志、任务和额度的兼容主体保留；普通用户历史记录不会恢复为可登录账户。
 - 数据库迁移会为 Session 签发计数和分批清理新增索引；已有 `user_sessions` 很大时应为首次启动预留维护窗口。
 - `user_sessions.previous_refresh_hash` 会从定长 `char(64)` 迁移为 `varchar(64)`。应用会兼容读取历史定长字段留下的空格填充；迁移后的目标结构必须保持幂等，连续启动不应反复执行列类型变更。
 - 仅 master 节点定时清理过期登录会话和超过配置保留期的 revoked 会话。

@@ -1,18 +1,18 @@
 # 翻译术语表 (Translation Glossary)
 
-本文档为翻译贡献者提供项目中关键术语的标准翻译参考，以确保翻译的一致性和准确性。
+本文档为翻译贡献者提供个人版当前仍使用的核心术语，确保模型聚合、路由、计费和管理员界面的文案一致。
 
-This document provides standard translation references for key terminology in the project to ensure consistency and accuracy for translation contributors.
+This document lists the core terminology still used by the personal edition so that model aggregation, routing, billing, and administrator UI translations stay consistent.
 
 ## 核心概念 (Core Concepts)
 
 | 中文 | English | 说明 | Description |
 |------|---------|------|-------------|
-| 倍率 | Ratio | 用于计算价格的乘数因子 | Multiplier factor used for price calculation |
-| 令牌 | Token | API访问凭证，也指模型处理的文本单元 | API access credentials or text units processed by models |
-| 渠道 | Channel | API服务提供商的接入通道 | Access channel for API service providers |
-| 分组 | Group | 用户或令牌的分类，影响价格倍率 | Classification of users or tokens, affecting price ratios |
-| 额度 | Quota | 用户可用的服务额度 | Available service quota for users |
+| 倍率 | Ratio | 用于计算模型和任务价格的乘数因子 | Multiplier used to calculate model and task prices |
+| 令牌 | Token | API 访问凭证，也指模型处理的文本单元 | API access credential or text unit processed by a model |
+| 渠道 | Channel | 上游 API 服务提供商的接入通道 | Access channel for an upstream API provider |
+| 路由分组 | Route Group | 决定渠道路由、模型可用范围和计费倍率 | Selects routing, model availability, and billing ratio |
+| 额度 | Quota | 管理员钱包或 API Token 的服务额度 | Service quota held by the administrator wallet or an API Token |
 
 ## 模型相关 (Model Related)
 
@@ -25,62 +25,48 @@ This document provides standard translation references for key terminology in th
 | 模型倍率 | Model Ratio | 不同模型的计费倍率 | Billing ratio for different models |
 | 补全倍率 | Completion Ratio | 输出内容的额外计费倍率 | Additional billing ratio for output content |
 | 固定价格 | Price per call | 按次计费的价格 | Fixed price per call |
-| 按量计费 | Pay-as-you-go | 根据使用量计费 | Billing based on usage |
-| 按次计费 | Pay-per-view | 每次调用固定价格 | Fixed price per invocation |
+| 按量计费 | Pay-as-you-go | 根据实际用量计费 | Billing based on actual usage |
+| 按次计费 | Pay-per-call | 每次调用固定价格 | Fixed price per invocation |
 
-## 用户管理 (User Management)
-
-| 中文 | English | 说明 | Description |
-|------|---------|------|-------------|
-| 超级管理员 | Root User | 最高权限管理员 | Administrator with highest privileges |
-| 管理员 | Admin User | 系统管理员 | System administrator |
-| 普通用户 | Normal User | 普通权限用户 | Regular user with standard privileges |
-
-## 充值与兑换 (Recharge & Redemption)
+## 管理员账户 (Administrator Account)
 
 | 中文 | English | 说明 | Description |
 |------|---------|------|-------------|
-| 充值 | Top Up | 为账户增加额度 | Add quota to account |
-| 兑换码 | Redemption Code | 可兑换额度的代码 | Code that can be redeemed for quota |
+| root 管理员 | Root Administrator | 个人版唯一的后台所有者 | The single dashboard owner of the personal edition |
+| 管理员 Session | Administrator Session | 管理后台的登录会话 | Login session for the administrator dashboard |
+| API Token | API Token | 调用 Relay 和任务接口的访问凭证 | Credential for Relay and task API calls |
+| 安全证明 | Security Proof | 绑定管理员 Session 的短期敏感操作凭证 | Short-lived credential bound to an administrator Session for sensitive actions |
 
 ## 渠道管理 (Channel Management)
 
 | 中文 | English | 说明 | Description |
 |------|---------|------|-------------|
-| 渠道 | Channel | API服务提供通道 | API service provider channel |
-| 密钥 | Key | API访问密钥 | API access key |
+| 密钥 | Key | 上游 API 访问密钥或渠道凭证 | Upstream API key or channel credential |
 | 优先级 | Priority | 渠道选择优先级 | Channel selection priority |
-| 权重 | Weight | 负载均衡权重 | Load balancing weight |
+| 权重 | Weight | 负载均衡权重 | Load-balancing weight |
 | 代理 | Proxy | 代理服务器地址 | Proxy server address |
-| 模型重定向 | Model Mapping | 请求体中模型名称替换 | Model name replacement in request body |
-
-## 安全相关 (Security Related)
-
-| 中文 | English | 说明 | Description |
-|------|---------|------|-------------|
-| 两步验证 | Two-Factor Authentication | 为账户提供额外安全保护的验证方式 | Additional security verification method for accounts |
-| 2FA | Two-Factor Authentication | 两步验证的缩写 | Abbreviation for Two-Factor Authentication |
+| 模型映射 | Model Mapping | 请求模型名到上游模型名的替换 | Replacement from the request model name to the upstream model name |
+| 厂商 | Vendor | 提供模型或 API 服务的厂商 | Provider of a model or API service |
 
 ## 计费相关 (Billing Related)
 
 | 中文 | English | 说明 | Description |
 |------|---------|------|-------------|
-| 倍率 | Ratio | 价格计算的乘数因子 | Multiplier factor used for price calculation |
-| 倍率 | Multiplier | 价格计算的乘数因子（同义词） | Multiplier factor used for price calculation (synonym) |
+| 预扣 | Pre-consumption | 请求开始前暂时扣除预计额度 | Temporarily deduct estimated quota before a request starts |
+| 结算 | Settlement | 按实际用量调整预扣额度 | Adjust the pre-consumed quota to actual usage |
+| 退款 | Refund | 异常终态退回未使用的预扣额度 | Return unused pre-consumed quota after an error terminal state |
+| 自动分组 | Auto Groups | 按配置顺序尝试可用路由分组 | Try route groups in configured order |
 
 ## 翻译注意事项 (Translation Guidelines)
 
-- **提示 (Prompt)** = 模型输入内容 / Model input content
-- **补全 (Completion)** = 模型输出内容 / Model output content
-- **倍率 (Ratio)** = 价格计算的乘数因子 / Multiplier factor for price calculation
-- **额度 (Quota)** = 可用的用户服务额度，有时也翻译为 Credit / Available service quota for users, sometimes also translated as Credit
-- **Token** = 根据上下文可能指 / Depending on context, may refer to:
-  - API访问令牌 (API Token)
-  - 模型处理的文本单元 (Text Token)
-  - 系统访问令牌 (Access Token)
+- **路由分组 (Route Group)** 只表示模型路由和计费分组，不表示账户等级或用户权限。
+- **额度 (Quota)** 根据上下文可以指管理员钱包额度、API Token 额度或模型处理额度。
+- **Token** 根据上下文可能指 API Token、Access Token 或文本 Token。
+- **模型价格 (Model Price)** 是模型目录和计费配置，不表示充值、订阅或公开商业售卖价格。
+- **倍率 (Ratio)** 应保持为价格计算的乘数因子。
 
 ---
 
 **贡献说明**: 如发现术语翻译不一致或有更好的翻译建议，欢迎提交 Issue 或 Pull Request。
 
-**Contribution Note**: If you find any inconsistencies in terminology translations or have better translation suggestions, please feel free to submit an Issue or Pull Request.
+**Contribution Note**: If you find terminology inconsistencies or better translations, please submit an Issue or Pull Request.

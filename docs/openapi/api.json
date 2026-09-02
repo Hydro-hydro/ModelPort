@@ -316,7 +316,7 @@
       "get": {
         "summary": "获取模型列表",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "系统"
         ],
@@ -366,7 +366,7 @@
       "get": {
         "summary": "获取模型价格和目录信息",
         "deprecated": false,
-        "description": "🔐 需要 root 管理员权限",
+        "description": "🔐 需要 root 管理员权限。返回模型广场所需的模型价格、厂商、接口类型、路由分组倍率和自动分组信息。",
         "tags": [
           "模型管理"
         ],
@@ -587,9 +587,9 @@
     },
     "/api/user/groups": {
       "get": {
-        "summary": "获取用户分组列表",
+        "summary": "获取路由分组列表",
         "deprecated": false,
-        "description": "🔓 无需鉴权",
+        "description": "🔐 需要 root 管理员权限",
         "tags": [
           "分组"
         ],
@@ -612,9 +612,9 @@
     },
     "/api/user/self/groups": {
       "get": {
-        "summary": "获取当前用户分组",
+        "summary": "获取当前路由分组",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "分组"
         ],
@@ -637,9 +637,9 @@
     },
     "/api/user/self": {
       "get": {
-        "summary": "获取当前用户信息",
+        "summary": "获取管理员账户信息",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "管理员账户"
         ],
@@ -660,9 +660,9 @@
         ]
       },
       "put": {
-        "summary": "更新当前用户信息",
+        "summary": "更新管理员账户信息",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "管理员账户"
         ],
@@ -704,36 +704,13 @@
             "Combination1243": []
           }
         ]
-      },
-      "delete": {
-        "summary": "注销当前用户",
-        "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
-        "tags": [
-          "管理员账户"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "headers": {}
-          }
-        },
-        "security": [
-          {
-            "Combination343": []
-          },
-          {
-            "Combination1243": []
-          }
-        ]
       }
     },
     "/api/user/models": {
       "get": {
-        "summary": "获取用户可用模型",
+        "summary": "获取可用模型",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录。可按路由分组筛选模型。",
         "tags": [
           "模型管理"
         ],
@@ -756,9 +733,9 @@
     },
     "/api/user/token": {
       "get": {
-        "summary": "生成访问令牌",
+        "summary": "生成管理员访问令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "令牌管理"
         ],
@@ -781,9 +758,9 @@
     },
     "/api/user/setting": {
       "put": {
-        "summary": "更新用户设置",
+        "summary": "更新管理员设置",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "管理员账户"
         ],
@@ -829,34 +806,9 @@
     },
     "/api/verify": {
       "post": {
-        "summary": "通用安全验证",
+        "summary": "管理员安全验证",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
-        "tags": [
-          "安全验证"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "headers": {}
-          }
-        },
-        "security": [
-          {
-            "Combination343": []
-          },
-          {
-            "Combination1243": []
-          }
-        ]
-      }
-    },
-    "/api/verify/status": {
-      "get": {
-        "summary": "获取验证状态",
-        "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录。用于签发短期、绑定当前 Session 的敏感操作安全证明。",
         "tags": [
           "安全验证"
         ],
@@ -1875,7 +1827,7 @@
       "get": {
         "summary": "获取所有令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "令牌管理"
         ],
@@ -1917,7 +1869,7 @@
       "post": {
         "summary": "创建令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "令牌管理"
         ],
@@ -1949,7 +1901,7 @@
       "put": {
         "summary": "更新令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "令牌管理"
         ],
@@ -1983,7 +1935,7 @@
       "get": {
         "summary": "搜索令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "令牌管理"
         ],
@@ -2018,7 +1970,7 @@
       "get": {
         "summary": "获取指定令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "令牌管理"
         ],
@@ -2052,7 +2004,7 @@
       "delete": {
         "summary": "删除令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "令牌管理"
         ],
@@ -2088,7 +2040,7 @@
       "post": {
         "summary": "批量删除令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "令牌管理"
         ],
@@ -2270,7 +2222,7 @@
       "get": {
         "summary": "获取个人日志统计",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "日志"
         ],
@@ -2330,7 +2282,7 @@
       "get": {
         "summary": "获取个人日志",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "日志"
         ],
@@ -2355,7 +2307,7 @@
       "get": {
         "summary": "搜索个人日志",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "日志"
         ],
@@ -2448,9 +2400,9 @@
     },
     "/api/data/self": {
       "get": {
-        "summary": "获取个人额度数据",
+        "summary": "获取管理员额度数据",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "数据统计"
         ],
@@ -2632,7 +2584,7 @@
       "get": {
         "summary": "获取个人Midjourney任务",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "任务"
         ],
@@ -2682,7 +2634,7 @@
       "get": {
         "summary": "获取个人任务",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要管理员登录",
         "tags": [
           "任务"
         ],
@@ -3465,7 +3417,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT or PAT",
-        "description": "面板短期 JWT 或 User.AccessToken PAT；不再要求 New-Api-User"
+        "description": "面板短期 JWT 或管理员 User.AccessToken PAT；不再要求 New-Api-User"
       },
       "NewApiUser1": {
         "type": "apiKey",
@@ -3483,7 +3435,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-Security-Proof",
-        "description": "绑定用户、登录会话和 scope 的短期二次验证 Proof"
+        "description": "绑定管理员、登录会话和 scope 的短期二次验证 Proof"
       },
       "Combination222": {
         "group": [

@@ -10,7 +10,6 @@
 
 | 区域 | 范围 | 生态系统 | 依赖项 | 版本 | 许可证 |
 |-------------|-------------|-----------|-------------------------------------------------------|--------------------------------------|----------------------------------------------------|
-| 后端 | 生产环境 | Go | `github.com/Calcium-Ion/go-epay` | `v0.0.4` | 专有/内部依赖 - 由项目维护者所有 |
 | 后端 | 生产环境 | Go | `github.com/abema/go-mp4` | `v1.4.1` | MIT |
 | 后端 | 测试环境 | Go | `github.com/alicebob/miniredis/v2` | `v2.38.0` | MIT |
 | 后端 | 生产环境 | Go | `github.com/andybalholm/brotli` | `v1.1.1` | MIT |
@@ -29,7 +28,6 @@
 | 后端 | 生产环境 | Go | `github.com/go-audio/wav` | `v1.1.0` | Apache-2.0 |
 | 后端 | 生产环境 | Go | `github.com/go-playground/validator/v10` | `v10.20.0` | MIT |
 | 后端 | 生产环境 | Go | `github.com/go-redis/redis/v8` | `v8.11.5` | BSD-2-Clause |
-| 后端 | 生产环境 | Go | `github.com/go-webauthn/webauthn` | `v0.14.0` | BSD-3-Clause |
 | 后端 | 生产环境 | Go | `github.com/golang-jwt/jwt/v5` | `v5.3.0` | MIT |
 | 后端 | 生产环境 | Go | `github.com/google/uuid` | `v1.6.0` | BSD-3-Clause |
 | 后端 | 生产环境 | Go | `github.com/gorilla/websocket` | `v1.5.0` | BSD-2-Clause |
@@ -42,19 +40,16 @@
 | 后端 | 生产环境 | Go | `github.com/nicksnyder/go-i18n/v2` | `v2.6.1` | MIT |
 | 后端 | 测试环境 | Go | `github.com/openai/openai-go` | `v1.12.0` | Apache-2.0 |
 | 后端 | 生产环境 | Go | `github.com/pkg/errors` | `v0.9.1` | BSD-2-Clause |
-| 后端 | 生产环境 | Go | `github.com/pquerna/otp` | `v1.5.0` | Apache-2.0 |
 | 后端 | 生产环境 | Go | `github.com/samber/hot` | `v0.11.0` | MIT |
 | 后端 | 生产环境 | Go | `github.com/samber/lo` | `v1.52.0` | MIT |
 | 后端 | 生产环境 | Go | `github.com/shirou/gopsutil` | `v3.21.11+incompatible` | BSD-3-Clause |
 | 后端 | 生产环境 | Go | `github.com/shopspring/decimal` | `v1.4.0` | MIT |
 | 后端 | 生产环境 | Go | `github.com/stretchr/testify` | `v1.11.1` | MIT |
-| 后端 | 生产环境 | Go | `github.com/stripe/stripe-go/v81` | `v81.4.0` | MIT |
 | 后端 | 生产环境 | Go | `github.com/tcolgate/mp3` | `v0.0.0-20170426193717-e79c5a46d300` | MIT |
 | 后端 | 生产环境 | Go | `github.com/thanhpk/randstr` | `v1.0.6` | MIT |
 | 后端 | 生产环境 | Go | `github.com/tidwall/gjson` | `v1.18.0` | MIT |
 | 后端 | 生产环境 | Go | `github.com/tidwall/sjson` | `v1.2.5` | MIT |
 | 后端 | 生产环境 | Go | `github.com/tiktoken-go/tokenizer` | `v0.6.2` | MIT |
-| 后端 | 生产环境 | Go | `github.com/waffo-com/waffo-go` | `v1.3.1` | MIT |
 | 后端 | 生产环境 | Go | `github.com/yapingcat/gomedia` | `v0.0.0-20240906162731-17feea57090c` | MIT |
 | 后端 | 生产环境 | Go | `golang.org/x/crypto` | `v0.45.0` | BSD-3-Clause |
 | 后端 | 生产环境 | Go | `golang.org/x/image` | `v0.38.0` | BSD-3-Clause |
@@ -96,14 +91,12 @@
 | 前端 | 生产环境 | npm | `dompurify` | `3.4.11` | Apache-2.0 OR MPL-2.0 |
 | 前端 | 生产环境 | npm | `i18next` | `26.3.6` | MIT |
 | 前端 | 生产环境 | npm | `i18next-browser-languagedetector` | `8.2.1` | MIT |
-| 前端 | 生产环境 | npm | `input-otp` | `1.4.2` | MIT |
 | 前端 | 生产环境 | npm | `katex` | `0.17.0` | MIT |
 | 前端 | 生产环境 | npm | `lucide-react` | `1.25.0` | ISC |
 | 前端 | 生产环境 | npm | `marked` | `18.0.6` | MIT |
 | 前端 | 生产环境 | npm | `motion` | `12.42.2` | MIT |
 | 前端 | 生产环境 | npm | `nanoid` | `5.1.16` | MIT |
 | 前端 | 生产环境 | npm | `next-themes` | `0.4.6` | MIT |
-| 前端 | 生产环境 | npm | `qrcode.react` | `4.2.0` | ISC |
 | 前端 | 生产环境 | npm | `react` | `19.2.7` | MIT |
 | 前端 | 生产环境 | npm | `react-day-picker` | `10.0.1` | MIT |
 | 前端 | 生产环境 | npm | `react-dom` | `19.2.7` | MIT |
