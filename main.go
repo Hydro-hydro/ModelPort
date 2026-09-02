@@ -22,7 +22,6 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/oauth"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
@@ -30,6 +29,7 @@ import (
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -367,13 +367,6 @@ func InitResources() error {
 	}
 	// Register user language loader for lazy loading
 	i18n.SetUserLangLoader(model.GetUserLanguage)
-
-	// Load custom OAuth providers from database
-	err = oauth.LoadCustomProviders()
-	if err != nil {
-		common.SysError("failed to load custom OAuth providers: " + err.Error())
-		// Don't return error, custom OAuth is not critical
-	}
 
 	service.StartAuthArtifactCleanup()
 

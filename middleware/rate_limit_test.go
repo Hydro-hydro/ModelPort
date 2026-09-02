@@ -93,28 +93,6 @@ func TestRedisUserRateLimiterUsesSharedFixedWindow(t *testing.T) {
 	assert.Equal(t, 23*time.Second, redisServer.TTL(key))
 }
 
-func TestRedisEmailVerificationRateLimiterPreservesResponseAndTTL(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	redisServer, _ := useRateLimitMiniRedis(t)
-
-	router := gin.New()
-	require.NoError(t, router.SetTrustedProxies(nil))
-	router.GET("/verify", EmailVerificationRateLimit(), func(c *gin.Context) {
-		c.Status(http.StatusNoContent)
-	})
-
-	remoteAddr := "192.0.2.30:12345"
-	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/verify", remoteAddr).Code)
-	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/verify", remoteAddr).Code)
-	response := performRateLimitRequest(router, "/verify", remoteAddr)
-	assert.Equal(t, http.StatusTooManyRequests, response.Code)
-	assert.JSONEq(t, `{"success":false,"message":"发送过于频繁，请等待 30 秒后再试"}`, response.Body.String())
-
-	key := redisIPRateLimitKey(EmailVerificationRateLimitMark, "192.0.2.30")
-	assert.True(t, redisServer.Exists(key))
-	assert.Equal(t, time.Duration(EmailVerificationDuration)*time.Second, redisServer.TTL(key))
-}
-
 func TestRedisFixedWindowIsAtomicUnderConcurrency(t *testing.T) {
 	redisServer, _ := useRateLimitMiniRedis(t)
 	const (
@@ -211,9 +189,6 @@ func TestRedisFailurePolicies(t *testing.T) {
 		userRateLimitFactory(1, 30, "FAIL-USER"),
 		func(c *gin.Context) { c.Status(http.StatusNoContent) },
 	)
-	router.GET("/email", EmailVerificationRateLimit(), func(c *gin.Context) {
-		c.Status(http.StatusNoContent)
-	})
 
 	ipResponse := performRateLimitRequest(router, "/ip", "192.0.2.60:12345")
 	assert.Equal(t, http.StatusInternalServerError, ipResponse.Code)
@@ -221,5 +196,4 @@ func TestRedisFailurePolicies(t *testing.T) {
 	userResponse := performRateLimitRequest(router, "/user", "192.0.2.61:12345")
 	assert.Equal(t, http.StatusInternalServerError, userResponse.Code)
 	assert.Empty(t, userResponse.Body.String())
-	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/email", "192.0.2.62:12345").Code)
 }

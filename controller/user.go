@@ -16,10 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/usage_mode"
-
-	"github.com/QuantumNous/new-api/constant"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -128,19 +125,6 @@ func loginMethodFromContext(c *gin.Context) string {
 	switch c.FullPath() {
 	case "/api/user/login":
 		return "password"
-	case "/api/user/login/2fa":
-		return "2fa"
-	case "/api/user/passkey/login/finish":
-		return "passkey"
-	case "/api/oauth/wechat":
-		return "wechat"
-	case "/api/oauth/telegram/login":
-		return "telegram"
-	case "/api/oauth/:provider":
-		if provider := c.Param("provider"); provider != "" {
-			return "oauth:" + provider
-		}
-		return "oauth"
 	default:
 		return "unknown"
 	}
@@ -212,123 +196,6 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c *gin
 			"user":              buildSelfUserData(currentUser),
 		},
 	})
-}
-
-func Register(c *gin.Context) {
-	if !common.RegisterEnabled {
-		common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
-		return
-	}
-	if !common.PasswordRegisterEnabled {
-		common.ApiErrorI18n(c, i18n.MsgUserPasswordRegisterDisabled)
-		return
-	}
-	var user model.User
-	err := common.DecodeJson(c.Request.Body, &user)
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-	user.Username = strings.TrimSpace(user.Username)
-	user.Email = model.NormalizeEmail(user.Email)
-	if user.Username == "" {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-	if err := common.Validate.Struct(&user); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
-		return
-	}
-	if common.EmailVerificationEnabled {
-		if user.Email == "" || user.VerificationCode == "" {
-			common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
-			return
-		}
-		if !common.VerifyCodeWithKey(user.Email, user.VerificationCode, common.EmailVerificationPurpose) {
-			common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
-			return
-		}
-		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
-			if errors.Is(err, model.ErrEmailAlreadyTaken) {
-				common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
-				return
-			}
-			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-			return
-		}
-	}
-	emailForExistCheck := ""
-	if common.EmailVerificationEnabled {
-		emailForExistCheck = user.Email
-	}
-	exist, err := model.CheckUserExistOrDeleted(user.Username, emailForExistCheck)
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-		common.SysLog(fmt.Sprintf("CheckUserExistOrDeleted error: %v", err))
-		return
-	}
-	if exist {
-		common.ApiErrorI18n(c, i18n.MsgUserExists)
-		return
-	}
-	cleanUser := model.User{
-		Username:    user.Username,
-		Password:    user.Password,
-		DisplayName: user.Username,
-		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
-	}
-	if common.EmailVerificationEnabled {
-		cleanUser.Email = user.Email
-	}
-	if err := cleanUser.Insert(); err != nil {
-		if errors.Is(err, model.ErrEmailAlreadyTaken) {
-			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
-			return
-		}
-		common.ApiError(c, err)
-		return
-	}
-
-	// 获取插入后的用户ID
-	var insertedUser model.User
-	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
-		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
-		return
-	}
-	// 生成默认令牌
-	if constant.GenerateDefaultToken {
-		key, err := common.GenerateKey()
-		if err != nil {
-			common.ApiErrorI18n(c, i18n.MsgUserDefaultTokenFailed)
-			common.SysLog("failed to generate token key: " + err.Error())
-			return
-		}
-		// 生成默认令牌
-		token := model.Token{
-			UserId:             insertedUser.Id, // 使用插入后的用户ID
-			Name:               cleanUser.Username + "的初始令牌",
-			Key:                key,
-			CreatedTime:        common.GetTimestamp(),
-			AccessedTime:       common.GetTimestamp(),
-			ExpiredTime:        -1,     // 永不过期
-			RemainQuota:        500000, // 示例额度
-			UnlimitedQuota:     true,
-			ModelLimitsEnabled: false,
-		}
-		if setting.DefaultUseAutoGroup {
-			token.Group = "auto"
-		}
-		if err := token.Insert(); err != nil {
-			common.ApiErrorI18n(c, i18n.MsgCreateDefaultTokenErr)
-			return
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-	})
-	return
 }
 
 func GetAllUsers(c *gin.Context) {
@@ -471,16 +338,10 @@ func buildSelfUserData(user *model.User) map[string]interface{} {
 		"role":            user.Role,
 		"status":          user.Status,
 		"email":           user.Email,
-		"github_id":       user.GitHubId,
-		"discord_id":      user.DiscordId,
-		"oidc_id":         user.OidcId,
-		"wechat_id":       user.WeChatId,
-		"telegram_id":     user.TelegramId,
 		"group":           user.Group,
 		"quota":           user.Quota,
 		"used_quota":      user.UsedQuota,
 		"request_count":   user.RequestCount,
-		"linux_do_id":     user.LinuxDOId,
 		"setting":         user.Setting,
 		"sidebar_modules": userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":     permissions,
@@ -683,47 +544,6 @@ func UpdateUser(c *gin.Context) {
 		"message": "",
 	})
 	return
-}
-
-func AdminClearUserBinding(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-
-	bindingType := strings.ToLower(strings.TrimSpace(c.Param("binding_type")))
-	if bindingType == "" {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-
-	user, err := model.GetUserById(id, false)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
-	myRole := c.GetInt("role")
-	if !canManageTargetRole(myRole, user.Role) {
-		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
-		return
-	}
-
-	if err := user.ClearBinding(bindingType); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
-	recordManageAuditFor(c, user.Id, "user.binding_clear", map[string]interface{}{
-		"bindingType": bindingType,
-		"username":    user.Username,
-	})
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "success",
-	})
 }
 
 func UpdateSelf(c *gin.Context) {
@@ -1212,51 +1032,6 @@ func ManageUser(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    clearUser,
-	})
-	return
-}
-
-type emailBindRequest struct {
-	Email string `json:"email"`
-	Code  string `json:"code"`
-}
-
-func EmailBind(c *gin.Context) {
-	var req emailBindRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiError(c, errors.New("invalid request body"))
-		return
-	}
-	email := req.Email
-	email = model.NormalizeEmail(email)
-	code := req.Code
-	if !common.VerifyCodeWithKey(email, code, common.EmailVerificationPurpose) {
-		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
-		return
-	}
-	user := model.User{
-		Id: c.GetInt("id"),
-	}
-	if user.Id == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "not authenticated"})
-		return
-	}
-	err := user.FillUserById()
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if err := model.BindEmailToUser(&user, email); err != nil {
-		if errors.Is(err, model.ErrEmailAlreadyTaken) {
-			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
-			return
-		}
-		common.ApiError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
 	})
 	return
 }
