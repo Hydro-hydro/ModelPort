@@ -17,6 +17,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var commonGroupCol string
@@ -268,7 +269,7 @@ func InitLogDB() (err error) {
 	return err
 }
 
-var userQuotaColumns = []string{"quota", "used_quota", "aff_quota", "aff_history"}
+var userQuotaColumns = []string{"quota", "used_quota"}
 
 // ensureUserQuotaColumns rejects a legacy 32-bit wallet schema before any
 // migrations run. The 64-bit-only build intentionally does not auto-upgrade
@@ -314,6 +315,126 @@ func is64BitIntegerType(dbType common.DatabaseType, dataType string) bool {
 	}
 }
 
+var removedPersonalTables = []string{
+	"subscription_pre_consume_records",
+	"user_subscriptions",
+	"subscription_orders",
+	"subscription_plans",
+	"top_ups",
+	"redemptions",
+	"checkins",
+}
+
+var removedPersonalUserColumns = []string{
+	"aff_code",
+	"aff_count",
+	"aff_quota",
+	"aff_history",
+	"inviter_id",
+	"stripe_customer",
+}
+
+var removedPersonalOptionKeys = []string{
+	"PayAddress",
+	"CustomCallbackAddress",
+	"EpayId",
+	"EpayKey",
+	"Price",
+	"USDExchangeRate",
+	"MinTopUp",
+	"StripeMinTopUp",
+	"StripeApiSecret",
+	"StripeWebhookSecret",
+	"StripePriceId",
+	"StripeUnitPrice",
+	"StripePromotionCodesEnabled",
+	"CreemApiKey",
+	"CreemProducts",
+	"CreemTestMode",
+	"CreemWebhookSecret",
+	"WaffoEnabled",
+	"WaffoApiKey",
+	"WaffoPrivateKey",
+	"WaffoPublicCert",
+	"WaffoSandboxPublicCert",
+	"WaffoSandboxApiKey",
+	"WaffoSandboxPrivateKey",
+	"WaffoSandbox",
+	"WaffoMerchantId",
+	"WaffoNotifyUrl",
+	"WaffoReturnUrl",
+	"WaffoSubscriptionReturnUrl",
+	"WaffoCurrency",
+	"WaffoUnitPrice",
+	"WaffoMinTopUp",
+	"WaffoPayMethods",
+	"WaffoPancakeMerchantID",
+	"WaffoPancakePrivateKey",
+	"WaffoPancakeReturnURL",
+	"WaffoPancakeUnitPrice",
+	"WaffoPancakeMinTopUp",
+	"WaffoPancakeStoreID",
+	"WaffoPancakeProductID",
+	"TopupGroupRatio",
+	"PayMethods",
+	"QuotaForInviter",
+	"QuotaForInvitee",
+}
+
+func cleanupRemovedPersonalSchema(db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+
+	for _, table := range removedPersonalTables {
+		if !db.Migrator().HasTable(table) {
+			continue
+		}
+		if err := db.Exec("DROP TABLE IF EXISTS ?", clause.Table{Name: table}).Error; err != nil {
+			return fmt.Errorf("drop removed personal table %s: %w", table, err)
+		}
+	}
+
+	if db.Migrator().HasTable("users") {
+		usedFallback := false
+		for _, column := range removedPersonalUserColumns {
+			if !db.Migrator().HasColumn("users", column) {
+				continue
+			}
+			if err := dropRemovedPersonalColumn(db, "users", column); err != nil {
+				return fmt.Errorf("drop removed personal column users.%s: %w", column, err)
+			}
+			usedFallback = usedFallback || common.UsingMainDatabase(common.DatabaseTypeSQLite)
+		}
+		if usedFallback {
+			// Older SQLite versions may use GORM's table-rebuild fallback. Re-run
+			// AutoMigrate to restore indexes declared by the current User model.
+			if err := db.AutoMigrate(&User{}); err != nil {
+				return fmt.Errorf("restore users schema after legacy column cleanup: %w", err)
+			}
+		}
+	}
+
+	query := db.Where(commonKeyCol+" IN ?", removedPersonalOptionKeys).
+		Or(commonKeyCol+" LIKE ?", "payment_setting.%").
+		Or(commonKeyCol+" LIKE ?", "checkin_setting.%")
+	if err := query.Delete(&Option{}).Error; err != nil {
+		return fmt.Errorf("delete removed personal options: %w", err)
+	}
+	return nil
+}
+
+func dropRemovedPersonalColumn(db *gorm.DB, table, column string) error {
+	err := db.Exec("ALTER TABLE ? DROP COLUMN ?", clause.Table{Name: table}, clause.Column{Name: column}).Error
+	if err == nil || common.MainDatabaseType() != common.DatabaseTypeSQLite {
+		return err
+	}
+	// SQLite before 3.35 has no native DROP COLUMN. The driver fallback
+	// rebuilds the table; migrateDB restores the current model indexes after
+	// all legacy columns have been removed.
+	return db.Migrator().DropColumn(table, column)
+}
+
 func migrateDB() error {
 	if err := migrateTokenKeyUniqueness(DB); err != nil {
 		return err
@@ -321,8 +442,6 @@ func migrateDB() error {
 	if err := migratePrefillGroupUniqueness(DB); err != nil {
 		return err
 	}
-	// Migrate price_amount column from float/double to decimal for existing tables
-	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
@@ -338,11 +457,9 @@ func migrateDB() error {
 		&PasskeyCredential{},
 		&Option{},
 		&LoginEncryptionKey{},
-		&Redemption{},
 		&Ability{},
 		&Log{},
 		&Midjourney{},
-		&TopUp{},
 		&QuotaData{},
 		&Task{},
 		&TaskPlugin{},
@@ -352,10 +469,6 @@ func migrateDB() error {
 		&Setup{},
 		&TwoFA{},
 		&TwoFABackupCode{},
-		&Checkin{},
-		&SubscriptionOrder{},
-		&UserSubscription{},
-		&SubscriptionPreConsumeRecord{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
@@ -368,20 +481,14 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := cleanupRemovedPersonalSchema(DB); err != nil {
+		return err
+	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}
 	if err := InitializeExternalIdentityClaims(); err != nil {
 		return err
-	}
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
-			return err
-		}
-	} else {
-		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -487,87 +594,6 @@ type sqliteColumnDef struct {
 	DDL  string
 }
 
-func ensureSubscriptionPlanTableSQLite() error {
-	if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		return nil
-	}
-	tableName := "subscription_plans"
-	if !DB.Migrator().HasTable(tableName) {
-		createSQL := `CREATE TABLE ` + "`" + tableName + "`" + ` (
-` + "`id`" + ` integer,
-` + "`title`" + ` varchar(128) NOT NULL,
-` + "`subtitle`" + ` varchar(255) DEFAULT '',
-` + "`price_amount`" + ` decimal(10,6) NOT NULL,
-` + "`currency`" + ` varchar(8) NOT NULL DEFAULT 'USD',
-` + "`duration_unit`" + ` varchar(16) NOT NULL DEFAULT 'month',
-` + "`duration_value`" + ` integer NOT NULL DEFAULT 1,
-` + "`custom_seconds`" + ` bigint NOT NULL DEFAULT 0,
-` + "`enabled`" + ` numeric DEFAULT 1,
-` + "`sort_order`" + ` integer DEFAULT 0,
-` + "`allow_balance_pay`" + ` numeric DEFAULT 1,
-` + "`allow_wallet_overflow`" + ` numeric DEFAULT 1,
-` + "`stripe_price_id`" + ` varchar(128) DEFAULT '',
-` + "`creem_product_id`" + ` varchar(128) DEFAULT '',
-` + "`waffo_pancake_product_id`" + ` varchar(128) DEFAULT '',
-` + "`max_purchase_per_user`" + ` integer DEFAULT 0,
-` + "`upgrade_group`" + ` varchar(64) DEFAULT '',
-` + "`downgrade_group`" + ` varchar(64) DEFAULT '',
-` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
-` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
-` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
-` + "`created_at`" + ` bigint,
-` + "`updated_at`" + ` bigint,
-PRIMARY KEY (` + "`id`" + `)
-)`
-		return DB.Exec(createSQL).Error
-	}
-	var cols []struct {
-		Name string `gorm:"column:name"`
-	}
-	if err := DB.Raw("PRAGMA table_info(`" + tableName + "`)").Scan(&cols).Error; err != nil {
-		return err
-	}
-	existing := make(map[string]struct{}, len(cols))
-	for _, c := range cols {
-		existing[c.Name] = struct{}{}
-	}
-	required := []sqliteColumnDef{
-		{Name: "title", DDL: "`title` varchar(128) NOT NULL"},
-		{Name: "subtitle", DDL: "`subtitle` varchar(255) DEFAULT ''"},
-		{Name: "price_amount", DDL: "`price_amount` decimal(10,6) NOT NULL"},
-		{Name: "currency", DDL: "`currency` varchar(8) NOT NULL DEFAULT 'USD'"},
-		{Name: "duration_unit", DDL: "`duration_unit` varchar(16) NOT NULL DEFAULT 'month'"},
-		{Name: "duration_value", DDL: "`duration_value` integer NOT NULL DEFAULT 1"},
-		{Name: "custom_seconds", DDL: "`custom_seconds` bigint NOT NULL DEFAULT 0"},
-		{Name: "enabled", DDL: "`enabled` numeric DEFAULT 1"},
-		{Name: "sort_order", DDL: "`sort_order` integer DEFAULT 0"},
-		{Name: "allow_balance_pay", DDL: "`allow_balance_pay` numeric DEFAULT 1"},
-		{Name: "allow_wallet_overflow", DDL: "`allow_wallet_overflow` numeric DEFAULT 1"},
-		{Name: "stripe_price_id", DDL: "`stripe_price_id` varchar(128) DEFAULT ''"},
-		{Name: "creem_product_id", DDL: "`creem_product_id` varchar(128) DEFAULT ''"},
-		{Name: "waffo_pancake_product_id", DDL: "`waffo_pancake_product_id` varchar(128) DEFAULT ''"},
-		{Name: "max_purchase_per_user", DDL: "`max_purchase_per_user` integer DEFAULT 0"},
-		{Name: "upgrade_group", DDL: "`upgrade_group` varchar(64) DEFAULT ''"},
-		{Name: "downgrade_group", DDL: "`downgrade_group` varchar(64) DEFAULT ''"},
-		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
-		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
-		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
-		{Name: "created_at", DDL: "`created_at` bigint"},
-		{Name: "updated_at", DDL: "`updated_at` bigint"},
-	}
-	for _, col := range required {
-		if _, ok := existing[col.Name]; ok {
-			continue
-		}
-		if err := DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// migrateTokenModelLimitsToText migrates model_limits column from varchar(1024) to text
-// This is safe to run multiple times - it checks the column type first
 func migrateTokenModelLimitsToText() error {
 	// SQLite uses type affinity, so TEXT and VARCHAR are effectively the same — no migration needed
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
@@ -617,66 +643,6 @@ func migrateTokenModelLimitsToText() error {
 		common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to text", tableName, columnName))
 	}
 	return nil
-}
-
-// migrateSubscriptionPlanPriceAmount migrates price_amount column from float/double to decimal(10,6)
-// This is safe to run multiple times - it checks the column type first
-func migrateSubscriptionPlanPriceAmount() {
-	// SQLite doesn't support ALTER COLUMN, and its type affinity handles this automatically
-	// Skip early to avoid GORM parsing the existing table DDL which may cause issues
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		return
-	}
-
-	tableName := "subscription_plans"
-	columnName := "price_amount"
-
-	// Check if table exists first
-	if !DB.Migrator().HasTable(tableName) {
-		return
-	}
-
-	// Check if column exists
-	if !DB.Migrator().HasColumn(&SubscriptionPlan{}, columnName) {
-		return
-	}
-
-	var alterSQL string
-	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		// PostgreSQL: Check if already decimal/numeric
-		var dataType string
-		if err := DB.Raw(`SELECT data_type FROM information_schema.columns
-			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
-			tableName, columnName).Scan(&dataType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
-		} else if dataType == "numeric" {
-			return // Already decimal/numeric
-		}
-		alterSQL = fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN %s TYPE decimal(10,6) USING %s::decimal(10,6)`,
-			tableName, columnName, columnName)
-	} else if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-		// MySQL: Check if already decimal
-		var columnType string
-		if err := DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
-				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
-			tableName, columnName).Scan(&columnType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
-		} else if strings.HasPrefix(strings.ToLower(columnType), "decimal") {
-			return // Already decimal
-		}
-		alterSQL = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s decimal(10,6) NOT NULL DEFAULT 0",
-			tableName, columnName)
-	} else {
-		return
-	}
-
-	if alterSQL != "" {
-		if err := DB.Exec(alterSQL).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to migrate %s.%s to decimal: %v", tableName, columnName, err))
-		} else {
-			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
-		}
-	}
 }
 
 func closeDB(db *gorm.DB) error {
