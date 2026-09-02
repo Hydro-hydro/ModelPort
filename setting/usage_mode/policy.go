@@ -96,9 +96,6 @@ var personalDisabledFeatures = map[Feature]struct{}{
 	FeatureCheckin:           {},
 	FeaturePricingPortal:     {},
 	FeatureRankings:          {},
-	FeatureTaskPlugins:       {},
-	FeatureDeployments:       {},
-	FeatureMultiNode:         {},
 }
 
 // CurrentMode resolves the persisted operation flags into one mode. Demo mode

@@ -48,7 +48,9 @@ func TestPersonalCapabilitiesDisablePlatformFeaturesOnly(t *testing.T) {
 
 	capabilities := Capabilities()
 	assert.False(t, capabilities[string(FeatureSubscriptions)])
-	assert.False(t, capabilities[string(FeatureDeployments)])
+	assert.True(t, capabilities[string(FeatureTaskPlugins)])
+	assert.True(t, capabilities[string(FeatureDeployments)])
+	assert.True(t, capabilities[string(FeatureMultiNode)])
 	assert.Len(t, capabilities, len(allFeatures))
 }
 
