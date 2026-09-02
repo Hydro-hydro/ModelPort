@@ -63,7 +63,7 @@ const options = [
     desc: 'Global automatic routing',
     ratio: '自动',
   },
-  { value: 'default', label: 'default', desc: 'User group', ratio: 1 },
+  { value: 'default', label: 'default', desc: 'Route group', ratio: 1 },
   { value: 'vip', label: 'vip', desc: 'Priority group', ratio: 3 },
 ]
 
@@ -150,7 +150,7 @@ describe('API key group combobox Auto effect', () => {
       optionRatio?.querySelector('[data-auto-group-flow-border]')
     ).toBeInTheDocument()
 
-    const defaultOption = getCommandItem('User group')
+    const defaultOption = getCommandItem('Route group')
     expect(defaultOption).not.toHaveAttribute('data-auto-group-effect')
     expect(defaultOption.querySelector('[data-auto-group-flow-border]')).toBe(
       null
