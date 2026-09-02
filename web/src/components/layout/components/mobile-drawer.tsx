@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { X, User, Wallet, LogOut } from 'lucide-react'
+import { X, User, LogOut } from 'lucide-react'
 import { AnimatePresence, motion, type Variants } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
@@ -27,7 +27,6 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import useDialogState from '@/hooks/use-dialog'
 import { useUserDisplay } from '@/hooks/use-user-display'
-import { useFeatureAccess } from '@/lib/feature-access'
 import type { AuthUser } from '@/stores/auth-store'
 
 import { MOBILE_DRAWER_ANIMATION, MOBILE_DRAWER_CONFIG } from '../constants'
@@ -82,8 +81,6 @@ function MobileUserProfile({ user, onNavigate }: MobileUserProfileProps) {
   const { t } = useTranslation()
   const [signOutOpen, setSignOutOpen] = useDialogState()
   const { displayName, initials, roleLabel } = useUserDisplay(user)
-  const { isEnabled } = useFeatureAccess()
-
   if (!user) return null
 
   return (
@@ -123,17 +120,6 @@ function MobileUserProfile({ user, onNavigate }: MobileUserProfileProps) {
           <User className='size-4' />
           {t('Profile')}
         </Link>
-
-        {isEnabled('wallet') && (
-          <Link
-            to='/wallet'
-            onClick={onNavigate}
-            className='text-primary/60 hover:text-primary/80 border-border flex items-center gap-2.5 border-b p-2.5 transition-colors'
-          >
-            <Wallet className='size-4' />
-            {t('Wallet')}
-          </Link>
-        )}
 
         {/* Sign out - consistent style */}
         <Button

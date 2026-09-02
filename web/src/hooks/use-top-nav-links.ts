@@ -20,9 +20,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
-import { featureAccessFromStatus, isFeatureEnabled } from '@/lib/feature-access'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
-import { useAuthStore } from '@/stores/auth-store'
 
 export type TopNavLink = {
   title: string
@@ -38,8 +36,6 @@ export type TopNavLink = {
  * {
  *   home: true,
  *   console: true,
- *   pricing: { enabled: true, requireAuth: false },
- *   rankings: { enabled: true, requireAuth: false },
  *   docs: true,
  *   about: true
  * }
@@ -47,8 +43,6 @@ export type TopNavLink = {
 export function useTopNavLinks(): TopNavLink[] {
   const { t } = useTranslation()
   const { status } = useStatus()
-  const { auth } = useAuthStore()
-
   // Parse HeaderNavModules
   const modules = useMemo(() => {
     return parseHeaderNavModulesFromStatus(
@@ -58,9 +52,6 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // Documentation link (may be external)
   const docsLink: string | undefined = status?.docs_link as string | undefined
-
-  const isAuthed = !!auth?.user
-  const capabilities = useMemo(() => featureAccessFromStatus(status), [status])
 
   const links: TopNavLink[] = []
 
@@ -72,30 +63,6 @@ export function useTopNavLinks(): TopNavLink[] {
   // Console -> /dashboard (new console path)
   if (modules?.console !== false) {
     links.push({ title: t('Console'), href: '/dashboard' })
-  }
-
-  // Pricing
-  const pricing = modules?.pricing
-  if (
-    pricing &&
-    typeof pricing === 'object' &&
-    pricing.enabled &&
-    isFeatureEnabled(capabilities, 'pricing_portal')
-  ) {
-    const requiresAuth = pricing.requireAuth && !isAuthed
-    links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
-  }
-
-  // Rankings
-  const rankings = modules?.rankings
-  if (
-    rankings &&
-    typeof rankings === 'object' &&
-    rankings.enabled &&
-    isFeatureEnabled(capabilities, 'rankings')
-  ) {
-    const requiresAuth = rankings.requireAuth && !isAuthed
-    links.push({ title: t('Rankings'), href: '/rankings', requiresAuth })
   }
 
   // Docs (supports external links)

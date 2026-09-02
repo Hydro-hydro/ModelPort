@@ -37,11 +37,6 @@ export interface AuthUser {
   quota?: number
   used_quota?: number
   request_count?: number
-  aff_code?: string
-  aff_count?: number
-  aff_quota?: number
-  aff_history_quota?: number
-  inviter_id?: number
   github_id?: string
   discord_id?: string
   oidc_id?: string
@@ -50,7 +45,6 @@ export interface AuthUser {
   linux_do_id?: string
   language?: string
   setting?: Record<string, unknown> | string
-  stripe_customer?: string
   sidebar_modules?: string
   permissions?: UserPermissions
 }

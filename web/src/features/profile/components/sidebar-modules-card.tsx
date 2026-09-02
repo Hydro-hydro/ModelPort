@@ -111,11 +111,6 @@ export function SidebarModulesCard() {
       description: t('User personal functions'),
       modules: [
         {
-          key: 'topup',
-          title: t('Wallet Management'),
-          description: t('Balance and top-up management'),
-        },
-        {
           key: 'personal',
           title: t('Personal Settings'),
           description: t('Personal info settings'),
@@ -129,8 +124,20 @@ export function SidebarModulesCard() {
       const res = await api.get('/api/user/self')
       if (res.data.success && res.data.data?.sidebar_modules) {
         const raw = res.data.data.sidebar_modules
-        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
-        setConfig(parsed)
+        const parsed = (
+          typeof raw === 'string' ? JSON.parse(raw) : raw
+        ) as SidebarModulesConfig | null
+        const sanitized: SidebarModulesConfig = {}
+        for (const section of sectionDefs) {
+          const source = parsed?.[section.key]
+          sanitized[section.key] = {
+            enabled: source?.enabled !== false,
+          }
+          for (const mod of section.modules) {
+            sanitized[section.key][mod.key] = source?.[mod.key] !== false
+          }
+        }
+        setConfig(sanitized)
       } else {
         const defaults: SidebarModulesConfig = {}
         for (const sec of sectionDefs) {

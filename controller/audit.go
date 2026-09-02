@@ -44,11 +44,6 @@ var auditContentTemplates = map[string]string{
 	"channel.multi_key_manage":   "Multi-key management ${action} on channel (ID: ${id})",
 	"channel.upstream_apply":     "Applied upstream model changes to channel (ID: ${id})",
 	"channel.upstream_apply_all": "Applied upstream model changes to ${count} channels",
-
-	"redemption.create": "Created ${count} redemption codes named ${name} (${quota} each)",
-
-	"subscription.plan_reset":      "Reset active subscriptions for plan ${plan_id}",
-	"subscription.user_plan_reset": "Reset active plan ${plan_id} subscriptions for user ${target_user_id}",
 }
 
 // auditContentEN 按 action 模板渲染英文兜底文本；未登记的 action 退回 action 本身。
@@ -89,7 +84,7 @@ func markAuditLogged(c *gin.Context) {
 }
 
 // recordManageAudit 记录一条由操作者本人归属的管理/高危审计日志（资源类操作：
-// 渠道 / 系统设置 / 兑换码等）。content 由 action+params 自动渲染。
+// 渠道 / 系统设置等）。content 由 action+params 自动渲染。
 func recordManageAudit(c *gin.Context, action string, params map[string]interface{}) {
 	recordManageAuditFor(c, c.GetInt("id"), action, params)
 }

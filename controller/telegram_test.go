@@ -97,7 +97,7 @@ func createTelegramBindTestFlow(t *testing.T, db *gorm.DB, name string, status i
 	t.Helper()
 	user := &model.User{
 		Username: name, Password: "password-placeholder", Role: common.RoleCommonUser,
-		Status: status, Group: "default", AuthVersion: 1, AffCode: name,
+		Status: status, Group: "default", AuthVersion: 1,
 	}
 	require.NoError(t, db.Create(user).Error)
 	session := &model.UserSession{
@@ -188,7 +188,7 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 
 	user := &model.User{
 		Username: "telegram-bind-user", Password: "password-placeholder", Role: common.RoleCommonUser,
-		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "telegram-bind-user",
+		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
 	}
 	require.NoError(t, db.Create(user).Error)
 	now := time.Now()
@@ -272,7 +272,7 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 
 	competingUser := &model.User{
 		Username: "telegram-bind-competing-user", Password: "password-placeholder", Role: common.RoleCommonUser,
-		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "telegram-bind-competing-user",
+		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
 	}
 	require.NoError(t, db.Create(competingUser).Error)
 	competingSession := &model.UserSession{

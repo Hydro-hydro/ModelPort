@@ -4,7 +4,8 @@ import "errors"
 
 // Common errors
 var (
-	ErrDatabase = errors.New("database error")
+	ErrDatabase                 = errors.New("database error")
+	ErrWalletQuotaLimitExceeded = errors.New("wallet quota limit exceeded")
 )
 
 // User auth errors
@@ -21,9 +22,6 @@ var (
 	ErrTokenNotProvided = errors.New("token not provided")
 	ErrTokenInvalid     = errors.New("token invalid")
 )
-
-// Redemption errors
-var ErrRedeemFailed = errors.New("redeem.failed")
 
 // 2FA errors
 var ErrTwoFANotEnabled = errors.New("2fa not enabled")

@@ -25,7 +25,6 @@ import {
   clearPasswordEncryptionCache,
   encryptPassword,
 } from './lib/password-encryption'
-import { getAffiliateCode } from './lib/storage'
 import type { TelegramAuthorization } from './lib/telegram-login'
 import type {
   LoginPayload,
@@ -168,10 +167,9 @@ export async function createOAuthFlow(
   provider: string,
   intent: 'login' | 'bind'
 ): Promise<string> {
-  const aff = intent === 'login' ? getAffiliateCode() : ''
   const res = await api.post(
     '/api/oauth/state',
-    { provider, intent, aff: aff || undefined },
+    { provider, intent },
     { skipAuthRefresh: intent === 'login' }
   )
   if (res.data?.success) {

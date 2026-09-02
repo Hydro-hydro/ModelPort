@@ -35,9 +35,8 @@ export function CTA(props: CTAProps) {
   const { status } = useStatus()
   const capabilities = featureAccessFromStatus(status)
   const registrationEnabled = isFeatureEnabled(capabilities, 'registration')
-  const pricingEnabled = isFeatureEnabled(capabilities, 'pricing_portal')
 
-  if (props.isAuthenticated || (!registrationEnabled && !pricingEnabled)) {
+  if (props.isAuthenticated || !registrationEnabled) {
     return null
   }
 
@@ -79,15 +78,6 @@ export function CTA(props: CTAProps) {
             >
               {t('Get Started')}
               <ArrowRight className='ml-1 size-3.5 transition-transform duration-200 group-hover:translate-x-0.5' />
-            </Button>
-          )}
-          {pricingEnabled && (
-            <Button
-              variant='outline'
-              className='border-border/50 hover:border-border hover:bg-muted/50 rounded-lg'
-              render={<Link to='/pricing' />}
-            >
-              {t('View Pricing')}
             </Button>
           )}
         </div>

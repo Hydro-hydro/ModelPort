@@ -11,8 +11,8 @@ import (
 func TestExternalIdentityClaimEnforcesSingleOwnerAtomically(t *testing.T) {
 	truncateTables(t)
 
-	first := User{Username: "telegram-owner-one", Password: "password", AffCode: "telegram-owner-one"}
-	second := User{Username: "telegram-owner-two", Password: "password", AffCode: "telegram-owner-two"}
+	first := User{Username: "telegram-owner-one", Password: "password"}
+	second := User{Username: "telegram-owner-two", Password: "password"}
 	require.NoError(t, DB.Create(&first).Error)
 	require.NoError(t, DB.Create(&second).Error)
 
@@ -77,8 +77,8 @@ func TestInitializeExternalIdentityClaimsIsIdempotent(t *testing.T) {
 func TestInitializeExternalIdentityClaimsRejectsAmbiguousLegacyBindings(t *testing.T) {
 	truncateTables(t)
 
-	first := User{Username: "telegram-legacy-one", Password: "password", TelegramId: "duplicate-telegram-id", AffCode: "telegram-legacy-one"}
-	second := User{Username: "telegram-legacy-two", Password: "password", TelegramId: "duplicate-telegram-id", AffCode: "telegram-legacy-two"}
+	first := User{Username: "telegram-legacy-one", Password: "password", TelegramId: "duplicate-telegram-id"}
+	second := User{Username: "telegram-legacy-two", Password: "password", TelegramId: "duplicate-telegram-id"}
 	require.NoError(t, DB.Create(&first).Error)
 	require.NoError(t, DB.Create(&second).Error)
 

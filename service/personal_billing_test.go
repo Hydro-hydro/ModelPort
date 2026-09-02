@@ -8,7 +8,6 @@ import (
 
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
@@ -42,23 +41,19 @@ func personalBillingRelayInfo(userID, tokenID int, tokenKey string) *relaycommon
 		TokenId:         tokenID,
 		TokenKey:        tokenKey,
 		OriginModelName: "test-model",
-		UserSetting: dto.UserSetting{
-			BillingPreference: "subscription_first",
-		},
 	}
 }
 
-func TestPersonalBillingSessionUsesWalletWithLegacySubscriptionPreference(t *testing.T) {
+func TestPersonalBillingSessionUsesWallet(t *testing.T) {
 	truncate(t)
 	setPersonalBillingTestMode(t)
 
-	const userID, tokenID, subscriptionID = 801, 801, 801
+	const userID, tokenID = 801, 801
 	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
 	const tokenKey = "sk-personal-wallet"
 
 	seedUser(t, userID, initialQuota)
 	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
-	seedSubscription(t, subscriptionID, userID, 5_000, 0)
 
 	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
 	session, apiErr := NewBillingSession(
@@ -74,7 +69,6 @@ func TestPersonalBillingSessionUsesWalletWithLegacySubscriptionPreference(t *tes
 	assert.Equal(t, initialQuota-preConsumedQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-preConsumedQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
-	assert.Equal(t, int64(0), getSubscriptionUsed(t, subscriptionID))
 
 	require.NoError(t, session.Settle(preConsumedQuota))
 }

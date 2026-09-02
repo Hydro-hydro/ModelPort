@@ -16,42 +16,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getStatus } from '@/lib/api'
-
-export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
-
-export type HeaderNavModule = 'rankings' | 'pricing'
-
 export type HeaderNavModules = {
   home: boolean
   console: boolean
-  pricing: ModuleAccess
-  rankings: ModuleAccess
   docs: boolean
   about: boolean
-  [key: string]: boolean | ModuleAccess
+  [key: string]: boolean
 }
 
 const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   home: true,
   console: true,
-  pricing: { enabled: true, requireAuth: false },
-  rankings: { enabled: true, requireAuth: false },
   docs: true,
   about: true,
 }
 
-const DEFAULTS: Record<HeaderNavModule, ModuleAccess> = {
-  pricing: DEFAULT_HEADER_NAV_MODULES.pricing,
-  rankings: DEFAULT_HEADER_NAV_MODULES.rankings,
-}
-
 function cloneHeaderNavDefaults(): HeaderNavModules {
-  return {
-    ...DEFAULT_HEADER_NAV_MODULES,
-    pricing: { ...DEFAULT_HEADER_NAV_MODULES.pricing },
-    rankings: { ...DEFAULT_HEADER_NAV_MODULES.rankings },
-  }
+  return { ...DEFAULT_HEADER_NAV_MODULES }
 }
 
 export function parseHeaderNavBoolean(
@@ -72,27 +53,6 @@ export function parseHeaderNavBoolean(
   return fallback
 }
 
-function parseAccess(raw: unknown, fallback: ModuleAccess): ModuleAccess {
-  if (
-    typeof raw === 'boolean' ||
-    typeof raw === 'number' ||
-    typeof raw === 'string'
-  ) {
-    return {
-      enabled: parseHeaderNavBoolean(raw, fallback.enabled),
-      requireAuth: fallback.requireAuth,
-    }
-  }
-  if (raw && typeof raw === 'object') {
-    const r = raw as Record<string, unknown>
-    return {
-      enabled: parseHeaderNavBoolean(r.enabled, fallback.enabled),
-      requireAuth: parseHeaderNavBoolean(r.requireAuth, fallback.requireAuth),
-    }
-  }
-  return { ...fallback }
-}
-
 function parseHeaderNavRecord(raw: unknown): Record<string, unknown> | null {
   if (!raw || String(raw).trim() === '') return null
   if (raw && typeof raw === 'object') return raw as Record<string, unknown>
@@ -110,27 +70,18 @@ export function parseHeaderNavModules(raw: unknown): HeaderNavModules {
   if (!parsed) return result
 
   Object.entries(parsed).forEach(([key, value]) => {
-    if (key === 'pricing') {
-      result.pricing = parseAccess(value, result.pricing)
-      return
-    }
-    if (key === 'rankings') {
-      result.rankings = parseAccess(value, result.rankings)
+    if (
+      typeof value !== 'boolean' &&
+      typeof value !== 'number' &&
+      typeof value !== 'string'
+    ) {
       return
     }
 
-    const fallback = result[key]
-    if (
-      typeof fallback === 'boolean' ||
-      typeof value === 'boolean' ||
-      typeof value === 'number' ||
-      typeof value === 'string'
-    ) {
-      result[key] = parseHeaderNavBoolean(
-        value,
-        typeof fallback === 'boolean' ? fallback : true
-      )
-    }
+    result[key] = parseHeaderNavBoolean(
+      value,
+      typeof result[key] === 'boolean' ? result[key] : true
+    )
   })
 
   return result
@@ -149,39 +100,6 @@ function getCachedStatus(): Record<string, unknown> | null {
     return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
   } catch {
     return null
-  }
-}
-
-function cacheStatus(status: Record<string, unknown> | null): void {
-  try {
-    if (typeof window !== 'undefined' && status) {
-      window.localStorage.setItem('status', JSON.stringify(status))
-    }
-  } catch {
-    /* empty */
-  }
-}
-
-export function getModuleAccessFromStatus(
-  status: Record<string, unknown> | null,
-  module: HeaderNavModule
-): ModuleAccess {
-  return parseHeaderNavModulesFromStatus(status)[module] ?? DEFAULTS[module]
-}
-
-export function getModuleAccess(module: HeaderNavModule): ModuleAccess {
-  return getModuleAccessFromStatus(getCachedStatus(), module)
-}
-
-export async function getFreshModuleAccess(
-  module: HeaderNavModule
-): Promise<ModuleAccess> {
-  try {
-    const status = (await getStatus()) as Record<string, unknown> | null
-    cacheStatus(status)
-    return getModuleAccessFromStatus(status, module)
-  } catch {
-    return { enabled: false, requireAuth: true }
   }
 }
 

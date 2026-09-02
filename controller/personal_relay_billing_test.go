@@ -40,7 +40,7 @@ func setupPersonalRelayBillingTest(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Log{}, &model.UserSubscription{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Log{}))
 
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
@@ -126,7 +126,6 @@ func newPersonalRelayContext(t *testing.T, upstreamURL string, body string) (*gi
 	common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
 	common.SetContextKey(c, constant.ContextKeyUserSetting, dto.UserSetting{
 		AcceptUnsetRatioModel: true,
-		BillingPreference:     "subscription_first",
 	})
 	common.SetContextKey(c, constant.ContextKeyChannelId, personalRelayChannel)
 	common.SetContextKey(c, constant.ContextKeyChannelName, "personal-relay-channel")

@@ -20,13 +20,11 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
   ArrowRight,
-  BookOpen,
   Check,
   ChevronDown,
   ChevronUp,
   Circle,
   Copy,
-  CreditCard,
   FileText,
   KeyRound,
   ListChecks,
@@ -51,7 +49,6 @@ import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getUserModels } from '@/lib/api'
-import { useFeatureAccess } from '@/lib/feature-access'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
@@ -82,13 +79,7 @@ const SETUP_GUIDE_CODE_PATTERN = [
   '}',
 ].join('\n')
 
-type DashboardActionPath =
-  | '/keys'
-  | '/wallet'
-  | '/playground'
-  | '/channels'
-  | '/usage-logs'
-  | '/pricing'
+type DashboardActionPath = '/keys' | '/playground' | '/channels' | '/usage-logs'
 
 interface StartStep {
   title: string
@@ -459,9 +450,6 @@ function CompactQuickAction(props: { action: QuickAction }) {
 export function OverviewDashboard() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
-  const { isEnabled } = useFeatureAccess()
-  const walletEnabled = isEnabled('wallet')
-  const pricingEnabled = isEnabled('pricing_portal')
   const { items: apiInfoItems } = useApiInfo()
   const {
     apiInfo: showApiInfoPanel,
@@ -474,8 +462,6 @@ export function OverviewDashboard() {
   >(() => getSavedSetupGuideExpanded())
 
   const requestCount = Number(user?.request_count ?? 0)
-  const remainQuota = Number(user?.quota ?? 0)
-  const usedQuota = Number(user?.used_quota ?? 0)
   const isAdmin = Boolean(user?.role && user.role >= ROLE.ADMIN)
 
   const apiKeysQuery = useQuery({
@@ -510,17 +496,6 @@ export function OverviewDashboard() {
         icon: KeyRound,
         completed: Boolean(preferredKey),
       },
-      ...(walletEnabled
-        ? [
-            {
-              title: t('Add credits'),
-              description: t('Keep enough balance before production traffic'),
-              to: '/wallet' as const,
-              icon: CreditCard,
-              completed: remainQuota > 0 || usedQuota > 0,
-            },
-          ]
-        : []),
       {
         title: t('Send a request'),
         description: t('Verify routing with Playground or your client'),
@@ -529,7 +504,7 @@ export function OverviewDashboard() {
         completed: requestCount > 0,
       },
     ],
-    [preferredKey, remainQuota, requestCount, t, usedQuota, walletEnabled]
+    [preferredKey, requestCount, t]
   )
 
   const quickActions = useMemo<QuickAction[]>(
@@ -553,18 +528,8 @@ export function OverviewDashboard() {
         to: '/usage-logs',
         icon: FileText,
       },
-      ...(pricingEnabled
-        ? [
-            {
-              title: t('Pricing'),
-              description: t('Review model rates before scaling traffic'),
-              to: '/pricing' as const,
-              icon: BookOpen,
-            },
-          ]
-        : []),
     ],
-    [pricingEnabled, t]
+    [t]
   )
 
   const visibleQuickActions = useMemo(

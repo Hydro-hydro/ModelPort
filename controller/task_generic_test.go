@@ -221,7 +221,7 @@ func TestTaskArtifactAccessRejectsAmbiguousHistoricalTaskID(t *testing.T) {
 	require.NoError(t, model.DB.Save(task).Error)
 	require.NoError(t, model.DB.Create(&model.User{
 		Id: 8, Username: "other-artifact-owner", Status: common.UserStatusEnabled,
-		Role: common.RoleCommonUser, Group: "default", AffCode: "artifact-owner-8",
+		Role: common.RoleCommonUser, Group: "default",
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.Task{
 		TaskID: task.TaskID, Platform: task.Platform, UserId: 8, ChannelId: task.ChannelId,

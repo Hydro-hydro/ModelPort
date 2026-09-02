@@ -83,6 +83,8 @@ type Log struct {
 // don't use iota, avoid change log type value
 const (
 	LogTypeUnknown = 0
+	// LogTypeTopup 保留历史编号，确保旧充值日志的类型值不会被重新解释。
+	// 当前版本不再生成新的充值日志。
 	LogTypeTopup   = 1
 	LogTypeConsume = 2
 	LogTypeManage  = 3
@@ -263,34 +265,6 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 	}
 	if err := createLog(log); err != nil {
 		common.SysLog("failed to record operation audit log: " + err.Error())
-	}
-}
-
-func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
-	username, _ := GetUsernameById(userId, false)
-	adminInfo := map[string]interface{}{
-		"server_ip":               common.GetIp(),
-		"node_name":               common.NodeName,
-		"caller_ip":               callerIp,
-		"payment_method":          paymentMethod,
-		"callback_payment_method": callbackPaymentMethod,
-		"version":                 common.Version,
-	}
-	other := map[string]interface{}{
-		"admin_info": adminInfo,
-	}
-	log := &Log{
-		UserId:    userId,
-		Username:  username,
-		CreatedAt: common.GetTimestamp(),
-		Type:      LogTypeTopup,
-		Content:   content,
-		Ip:        callerIp,
-		Other:     common.MapToJsonStr(other),
-	}
-	err := createLog(log)
-	if err != nil {
-		common.SysLog("failed to record topup log: " + err.Error())
 	}
 }
 

@@ -19,7 +19,7 @@ func TestLockForUpdateEmitsRowLock(t *testing.T) {
 	dummyDB, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{DryRun: true})
 	require.NoError(t, err)
 	buildSQL := func() string {
-		var rows []Redemption
+		var rows []User
 		return lockForUpdate(dummyDB).Where("id = ?", 1).Find(&rows).Statement.SQL.String()
 	}
 

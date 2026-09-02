@@ -85,8 +85,6 @@ export {
   hasOAuthProviders,
 } from './lib/oauth'
 
-export { getAffiliateCode, saveAffiliateCode } from './lib/storage'
-
 export {
   isValidOTP,
   isValidBackupCode,
