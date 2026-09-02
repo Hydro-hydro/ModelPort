@@ -28,11 +28,9 @@ describe('legacy frontend route migration', () => {
       '/console': '/dashboard',
       '/console/models': '/models',
       '/console/deployment': '/models/deployments',
-      '/console/subscription': '/subscriptions',
       '/console/channel': '/channels',
       '/console/token': '/keys',
       '/console/playground': '/playground',
-      '/console/redemption': '/redemption-codes',
       '/console/user': '/users',
       '/console/personal': '/profile',
       '/console/log': '/usage-logs',
@@ -50,9 +48,6 @@ describe('legacy frontend route migration', () => {
     expect(resolveLegacyRoute('/login?redirect=%2Fkeys#continue')).toBe(
       '/sign-in?redirect=%2Fkeys#continue'
     )
-    expect(resolveLegacyRoute('/console/topup?source=email#orders')).toBe(
-      '/wallet?source=email#orders'
-    )
   })
 
   test('maps legacy settings tabs and retains unrelated parameters', () => {
@@ -61,7 +56,6 @@ describe('legacy frontend route migration', () => {
       dashboard: '/system-settings/content/dashboard',
       chats: '/system-settings/content/chat',
       drawing: '/system-settings/content/drawing',
-      payment: '/system-settings/billing/payment',
       ratio: '/system-settings/billing/model-pricing',
       ratelimit: '/system-settings/security/rate-limit',
       models: '/system-settings/models/global',

@@ -22,11 +22,9 @@ const legacyConsoleRoutes: Record<string, string> = {
   '/console': '/dashboard',
   '/console/models': '/models',
   '/console/deployment': '/models/deployments',
-  '/console/subscription': '/subscriptions',
   '/console/channel': '/channels',
   '/console/token': '/keys',
   '/console/playground': '/playground',
-  '/console/redemption': '/redemption-codes',
   '/console/user': '/users',
   '/console/personal': '/profile',
   '/console/log': '/usage-logs',
@@ -39,7 +37,6 @@ const legacySettingsTabs: Record<string, string> = {
   dashboard: '/system-settings/content/dashboard',
   chats: '/system-settings/content/chat',
   drawing: '/system-settings/content/drawing',
-  payment: '/system-settings/billing/payment',
   ratio: '/system-settings/billing/model-pricing',
   ratelimit: '/system-settings/security/rate-limit',
   models: '/system-settings/models/global',
@@ -77,9 +74,6 @@ export function resolveLegacyRoute(rawHref: string): string | null {
   }
   if (pathname === '/forbidden') {
     return buildTargetHref('/403', source)
-  }
-  if (pathname === '/console/topup') {
-    return buildTargetHref('/wallet', source)
   }
   if (pathname === '/console/setting') {
     const tab = source.searchParams.get('tab') ?? ''
