@@ -362,6 +362,31 @@
         ]
       }
     },
+    "/api/pricing": {
+      "get": {
+        "summary": "获取模型价格和目录信息",
+        "deprecated": false,
+        "description": "🔐 需要 root 管理员权限",
+        "tags": [
+          "模型管理"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
     "/api/user/login": {
       "post": {
         "summary": "管理员登录",
