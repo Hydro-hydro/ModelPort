@@ -1,24 +1,23 @@
 package controller
 
 import (
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 )
 
 type Setup struct {
-	Status             bool   `json:"status"`
-	RootInit           bool   `json:"root_init"`
-	DatabaseType       string `json:"database_type"`
-	SelfUseModeEnabled bool   `json:"SelfUseModeEnabled"`
-	DemoSiteEnabled    bool   `json:"DemoSiteEnabled"`
+	Status       bool   `json:"status"`
+	RootInit     bool   `json:"root_init"`
+	DatabaseType string `json:"database_type"`
 }
 
+// SetupRequest keeps the legacy username and mode fields so older clients can
+// still submit their existing payload shape. Personal edition initialization
+// deliberately ignores those fields and always creates the root owner.
 type SetupRequest struct {
 	Username           string `json:"username"`
 	Password           string `json:"password"`
@@ -28,20 +27,19 @@ type SetupRequest struct {
 }
 
 func GetSetup(c *gin.Context) {
-	setup := Setup{
-		Status:             constant.Setup,
-		SelfUseModeEnabled: operation_setting.SelfUseModeEnabled,
-		DemoSiteEnabled:    operation_setting.DemoSiteEnabled,
-	}
-	if constant.Setup {
-		c.JSON(200, gin.H{
-			"success": true,
-			"data":    setup,
+	if err := model.EnsurePersonalOwner(); err != nil {
+		c.JSON(500, gin.H{
+			"success": false,
+			"message": "无法确定个人版管理员账户，请检查数据库中的管理员记录",
 		})
 		return
 	}
-	setup.RootInit = model.RootUserExists()
-	setup.DatabaseType = string(common.MainDatabaseType())
+
+	setup := Setup{
+		Status:       constant.Setup,
+		RootInit:     model.RootUserExists(),
+		DatabaseType: string(common.MainDatabaseType()),
+	}
 	c.JSON(200, gin.H{
 		"success": true,
 		"data":    setup,
@@ -58,12 +56,8 @@ func PostSetup(c *gin.Context) {
 		return
 	}
 
-	// Check if root user already exists
-	rootExists := model.RootUserExists()
-
 	var req SetupRequest
-	err := c.ShouldBindJSON(&req)
-	if err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(200, gin.H{
 			"success": false,
 			"message": "请求参数有误",
@@ -71,28 +65,19 @@ func PostSetup(c *gin.Context) {
 		return
 	}
 
-	// If root doesn't exist, validate and create admin account
+	// Reconcile a legacy administrator before initialization. A single legacy
+	// admin is promoted by EnsurePersonalOwner; ambiguous or disabled account
+	// layouts must be fixed manually instead of creating another owner.
+	if err := model.EnsurePersonalOwner(); err != nil {
+		c.JSON(200, gin.H{
+			"success": false,
+			"message": "无法确定个人版管理员账户，请检查数据库中的管理员记录",
+		})
+		return
+	}
+
+	rootExists := model.RootUserExists()
 	if !rootExists {
-		if req.SelfUseModeEnabled {
-			// 个人版只有一个固定的系统所有者，用户名仅作为兼容字段保存。
-			req.Username = "root"
-		}
-		// Validate username length: max 12 characters to align with model.User validation
-		if len(req.Username) > 12 {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "用户名长度不能超过12个字符",
-			})
-			return
-		}
-		if strings.TrimSpace(req.Username) == "" {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "管理员用户名不能为空",
-			})
-			return
-		}
-		// Validate password
 		if req.Password != req.ConfirmPassword {
 			c.JSON(200, gin.H{
 				"success": false,
@@ -109,7 +94,6 @@ func PostSetup(c *gin.Context) {
 			return
 		}
 
-		// Create root user
 		hashedPassword, err := common.Password2Hash(req.Password)
 		if err != nil {
 			c.JSON(200, gin.H{
@@ -119,7 +103,7 @@ func PostSetup(c *gin.Context) {
 			return
 		}
 		rootUser := model.User{
-			Username:    req.Username,
+			Username:    "root",
 			Password:    hashedPassword,
 			Role:        common.RoleRootUser,
 			Status:      common.UserStatusEnabled,
@@ -127,37 +111,13 @@ func PostSetup(c *gin.Context) {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		err = model.DB.Create(&rootUser).Error
-		if err != nil {
+		if err = model.DB.Create(&rootUser).Error; err != nil {
 			c.JSON(200, gin.H{
 				"success": false,
 				"message": "创建管理员账号失败: " + err.Error(),
 			})
 			return
 		}
-	}
-
-	// Set operation modes
-	operation_setting.SelfUseModeEnabled = req.SelfUseModeEnabled
-	operation_setting.DemoSiteEnabled = req.DemoSiteEnabled
-
-	// Save operation modes to database for persistence
-	err = model.UpdateOption("SelfUseModeEnabled", boolToString(req.SelfUseModeEnabled))
-	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "保存自用模式设置失败: " + err.Error(),
-		})
-		return
-	}
-
-	err = model.UpdateOption("DemoSiteEnabled", boolToString(req.DemoSiteEnabled))
-	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "保存演示站点模式设置失败: " + err.Error(),
-		})
-		return
 	}
 
 	// Update setup status
@@ -167,8 +127,7 @@ func PostSetup(c *gin.Context) {
 		Version:       common.Version,
 		InitializedAt: time.Now().Unix(),
 	}
-	err = model.DB.Create(&setup).Error
-	if err != nil {
+	if err := model.DB.Create(&setup).Error; err != nil {
 		c.JSON(200, gin.H{
 			"success": false,
 			"message": "系统初始化失败: " + err.Error(),
@@ -180,11 +139,4 @@ func PostSetup(c *gin.Context) {
 		"success": true,
 		"message": "系统初始化成功",
 	})
-}
-
-func boolToString(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }

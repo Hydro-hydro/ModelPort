@@ -45,7 +45,6 @@ export interface SystemConfig {
   footerHtml?: string
   usageMode?: string
   features?: Partial<Record<FeatureName, boolean>>
-  demoSiteEnabled?: boolean
   displayTokenStatEnabled?: boolean
   currency: CurrencyConfig
 }

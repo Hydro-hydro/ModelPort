@@ -151,16 +151,10 @@ function ProjectAttribution(props: { currentYear: number; inline?: boolean }) {
 
 export function Footer(props: FooterProps) {
   const { t } = useTranslation()
-  const {
-    systemName,
-    logo: systemLogo,
-    footerHtml,
-    demoSiteEnabled,
-  } = useSystemConfig()
+  const { systemName, logo: systemLogo, footerHtml } = useSystemConfig()
 
   const displayLogo = systemLogo || props.logo || '/logo.png'
   const displayName = systemName || props.name || 'New API'
-  const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
 
   const fallbackColumns = useMemo<FooterColumnProps[]>(
@@ -270,24 +264,22 @@ export function Footer(props: FooterProps) {
           </div>
 
           {/* Links columns */}
-          {isDemoSiteMode && (
-            <div className='grid grid-cols-3 gap-8 md:gap-16'>
-              {displayColumns.map((column, index) => (
-                <div key={index}>
-                  <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
-                    {t(column.title)}
-                  </p>
-                  <ul className='space-y-2.5'>
-                    {column.links.map((link, linkIndex) => (
-                      <li key={linkIndex}>
-                        <FooterLinkItem link={link} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className='grid grid-cols-3 gap-8 md:gap-16'>
+            {displayColumns.map((column, index) => (
+              <div key={index}>
+                <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
+                  {t(column.title)}
+                </p>
+                <ul className='space-y-2.5'>
+                  {column.links.map((link, linkIndex) => (
+                    <li key={linkIndex}>
+                      <FooterLinkItem link={link} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Copyright + optional legal links inline on the left, project

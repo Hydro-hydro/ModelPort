@@ -29,7 +29,6 @@ import (
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -331,9 +330,9 @@ func InitResources() error {
 		}
 	}
 	model.InitOptionMap()
-	if constant.Setup && operation_setting.SelfUseModeEnabled {
+	if constant.Setup {
 		if err := model.EnsurePersonalOwner(); err != nil {
-			return fmt.Errorf("个人模式管理员账户校验失败: %w", err)
+			return fmt.Errorf("个人版管理员账户校验失败: %w", err)
 		}
 	}
 

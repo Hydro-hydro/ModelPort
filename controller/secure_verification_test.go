@@ -15,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -34,21 +33,15 @@ func setupSecureVerificationTest(t *testing.T) (service.AuthIdentity, string) {
 	previousLogDB := model.LOG_DB
 	previousSessionSecret := common.SessionSecret
 	previousRedis := common.RedisEnabled
-	previousSelfUse := operation_setting.SelfUseModeEnabled
-	previousDemo := operation_setting.DemoSiteEnabled
 	model.DB = db
 	model.LOG_DB = db
 	common.SessionSecret = "secure-verification-test-session-secret"
 	common.RedisEnabled = false
-	operation_setting.SelfUseModeEnabled = true
-	operation_setting.DemoSiteEnabled = false
 	t.Cleanup(func() {
 		model.DB = previousDB
 		model.LOG_DB = previousLogDB
 		common.SessionSecret = previousSessionSecret
 		common.RedisEnabled = previousRedis
-		operation_setting.SelfUseModeEnabled = previousSelfUse
-		operation_setting.DemoSiteEnabled = previousDemo
 	})
 
 	privateKeyPEM, err := common.GeneratePasswordEncryptionPrivateKey()

@@ -16,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
-	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -58,7 +57,8 @@ func Login(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	username := strings.TrimSpace(loginRequest.Username)
+	// username remains accepted in the request for old clients, but the
+	// personal edition always authenticates the single root owner.
 	password := loginRequest.Password
 	if common.PasswordLoginEncryptionEnabled {
 		if loginRequest.PasswordEncrypted == "" || loginRequest.EncryptionKeyID == "" {
@@ -76,42 +76,17 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	var user model.User
-	if usage_mode.IsPersonalUse() {
-		owner, ownerErr := model.GetPersonalOwner()
-		if ownerErr != nil {
-			common.SysLog(fmt.Sprintf("Personal owner login lookup failed: %v", ownerErr))
-			common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
-			return
-		}
-		if !common.ValidatePasswordAndHash(password, owner.Password) {
-			common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
-			return
-		}
-		user = *owner
-	} else {
-		if username == "" {
-			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-			return
-		}
-		user = model.User{
-			Username: username,
-			Password: password,
-		}
-		err = user.ValidateAndFill()
-		if err != nil {
-			switch {
-			case errors.Is(err, model.ErrDatabase):
-				common.SysLog(fmt.Sprintf("Login database error for user %s: %v", username, err))
-				common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-			case errors.Is(err, model.ErrUserEmptyCredentials):
-				common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-			default:
-				common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
-			}
-			return
-		}
+	owner, ownerErr := model.GetPersonalOwner()
+	if ownerErr != nil {
+		common.SysLog(fmt.Sprintf("Personal owner login lookup failed: %v", ownerErr))
+		common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
+		return
 	}
+	if !common.ValidatePasswordAndHash(password, owner.Password) {
+		common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
+		return
+	}
+	user := *owner
 
 	setupLogin(&user, c)
 }

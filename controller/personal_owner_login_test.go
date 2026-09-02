@@ -9,7 +9,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -30,8 +29,6 @@ func setupPersonalOwnerLoginTest(t *testing.T) *gorm.DB {
 	previousSessionSecret := common.SessionSecret
 	previousPasswordLogin := common.PasswordLoginEnabled
 	previousPasswordEncryption := common.PasswordLoginEncryptionEnabled
-	previousSelfUse := operation_setting.SelfUseModeEnabled
-	previousDemo := operation_setting.DemoSiteEnabled
 	previousSetup := constant.Setup
 	model.DB = db
 	model.LOG_DB = db
@@ -39,8 +36,6 @@ func setupPersonalOwnerLoginTest(t *testing.T) *gorm.DB {
 	common.SessionSecret = "personal-owner-login-test-secret"
 	common.PasswordLoginEnabled = true
 	common.PasswordLoginEncryptionEnabled = false
-	operation_setting.SelfUseModeEnabled = true
-	operation_setting.DemoSiteEnabled = false
 	constant.Setup = true
 	t.Cleanup(func() {
 		model.DB = previousDB
@@ -49,8 +44,6 @@ func setupPersonalOwnerLoginTest(t *testing.T) *gorm.DB {
 		common.SessionSecret = previousSessionSecret
 		common.PasswordLoginEnabled = previousPasswordLogin
 		common.PasswordLoginEncryptionEnabled = previousPasswordEncryption
-		operation_setting.SelfUseModeEnabled = previousSelfUse
-		operation_setting.DemoSiteEnabled = previousDemo
 		constant.Setup = previousSetup
 	})
 	return db

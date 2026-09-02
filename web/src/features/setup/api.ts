@@ -41,11 +41,11 @@ export function buildSetupPayload(
   values: SetupFormValues,
   rootInitialized: boolean
 ) {
-  const { usageMode, ...rest } = values
+  const { usageMode: _legacyUsageMode, ...rest } = values
 
   const basePayload = {
-    SelfUseModeEnabled: usageMode === 'self',
-    DemoSiteEnabled: usageMode === 'demo',
+    SelfUseModeEnabled: true,
+    DemoSiteEnabled: false,
   }
 
   if (rootInitialized) {
@@ -54,6 +54,7 @@ export function buildSetupPayload(
 
   return {
     ...rest,
+    username: 'root',
     ...basePayload,
   }
 }

@@ -29,7 +29,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
 
 import type { SetupFormValues } from '../types'
 
@@ -54,29 +53,7 @@ export function AdminStep({ form, rootInitialized }: AdminStepProps) {
   }
 
   return (
-    <div className='grid gap-4 sm:grid-cols-2'>
-      <FormField
-        control={form.control}
-        name='username'
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t('Administrator username')}</FormLabel>
-            <FormControl>
-              <Input
-                {...field}
-                placeholder={t('Choose a username')}
-                autoComplete='username'
-                onChange={(event) => {
-                  form.clearErrors('username')
-                  field.onChange(event)
-                }}
-              />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
+    <div className='grid gap-4'>
       <FormField
         control={form.control}
         name='password'
@@ -103,7 +80,7 @@ export function AdminStep({ form, rootInitialized }: AdminStepProps) {
         control={form.control}
         name='confirmPassword'
         render={({ field }) => (
-          <FormItem className='sm:col-span-2'>
+          <FormItem>
             <FormLabel>{t('Confirm password')}</FormLabel>
             <FormControl>
               <PasswordInput

@@ -17,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -52,8 +51,6 @@ func setupPersonalRelayBillingTest(t *testing.T) {
 	previousStreamingTimeout := constant.StreamingTimeout
 	previousPreConsumedQuota := common.PreConsumedQuota
 	previousRetryTimes := common.RetryTimes
-	previousSelfUse := operation_setting.SelfUseModeEnabled
-	previousDemo := operation_setting.DemoSiteEnabled
 
 	model.DB = db
 	model.LOG_DB = db
@@ -66,8 +63,6 @@ func setupPersonalRelayBillingTest(t *testing.T) {
 	constant.StreamingTimeout = 30
 	common.PreConsumedQuota = 100
 	common.RetryTimes = 0
-	operation_setting.SelfUseModeEnabled = true
-	operation_setting.DemoSiteEnabled = false
 
 	t.Cleanup(func() {
 		model.DB = previousDB
@@ -80,8 +75,6 @@ func setupPersonalRelayBillingTest(t *testing.T) {
 		constant.StreamingTimeout = previousStreamingTimeout
 		common.PreConsumedQuota = previousPreConsumedQuota
 		common.RetryTimes = previousRetryTimes
-		operation_setting.SelfUseModeEnabled = previousSelfUse
-		operation_setting.DemoSiteEnabled = previousDemo
 		_ = sqlDB.Close()
 	})
 

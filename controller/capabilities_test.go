@@ -6,22 +6,12 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetCapabilitiesReturnsPersonalModeMatrix(t *testing.T) {
-	originalSelfUse := operation_setting.SelfUseModeEnabled
-	originalDemo := operation_setting.DemoSiteEnabled
-	t.Cleanup(func() {
-		operation_setting.SelfUseModeEnabled = originalSelfUse
-		operation_setting.DemoSiteEnabled = originalDemo
-	})
-	operation_setting.SelfUseModeEnabled = true
-	operation_setting.DemoSiteEnabled = false
-
 	response := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(response)
 	context.Request = httptest.NewRequest(http.MethodGet, "/api/capabilities", nil)

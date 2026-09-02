@@ -79,8 +79,6 @@ func GetStatus(c *gin.Context) {
 		"default_collapse_sidebar":      common.DefaultCollapseSidebar,
 		"mj_notify_enabled":             setting.MjNotifyEnabled,
 		"chats":                         setting.Chats,
-		"demo_site_enabled":             operation_setting.DemoSiteEnabled,
-		"self_use_mode_enabled":         operation_setting.SelfUseModeEnabled,
 		"usage_mode":                    string(usage_mode.CurrentMode()),
 		"features":                      usage_mode.Capabilities(),
 		"password_login_enabled":        common.PasswordLoginEnabled,

@@ -287,7 +287,8 @@ func TestRelayTaskSubmitAliasBillingIdentityAndExprFallback(t *testing.T) {
 				assert.NotEqual(t, "model_price_error", taskErr.Code)
 			} else {
 				assert.Nil(t, info.TieredBillingSnapshot)
-				assert.Equal(t, "model_price_error", taskErr.Code)
+				// Personal mode accepts an unset model ratio and reaches the upstream request stage.
+				assert.Equal(t, "do_request_failed", taskErr.Code)
 			}
 		})
 	}

@@ -391,6 +391,8 @@ var removedPersonalOptionKeys = []string{
 	"EmailDomainRestrictionEnabled",
 	"EmailAliasRestrictionEnabled",
 	"EmailDomainWhitelist",
+	"DemoSiteEnabled",
+	"SelfUseModeEnabled",
 }
 
 func cleanupRemovedPersonalSchema(db *gorm.DB) error {

@@ -78,6 +78,8 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 		"discord.enabled",
 		"oidc.enabled",
 		"passkey.enabled",
+		"SelfUseModeEnabled",
+		"DemoSiteEnabled",
 		"ModelRatio",
 	} {
 		require.NoError(t, db.Create(&Option{Key: key, Value: "legacy"}).Error)

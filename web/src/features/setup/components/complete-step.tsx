@@ -22,17 +22,10 @@ import { useTranslation } from 'react-i18next'
 import { StatusBadge } from '@/components/status-badge'
 import { Separator } from '@/components/ui/separator'
 
-import type { SetupFormValues, SetupStatus } from '../types'
+import type { SetupStatus } from '../types'
 
 interface CompleteStepProps {
   status?: SetupStatus
-  values: SetupFormValues
-}
-
-const USAGE_MODE_LABEL_KEYS: Record<SetupFormValues['usageMode'], string> = {
-  external: 'External operations mode',
-  self: 'Personal use mode',
-  demo: 'Demo site mode',
 }
 
 const DATABASE_VARIANT: Record<
@@ -44,9 +37,8 @@ const DATABASE_VARIANT: Record<
   postgres: 'success',
 }
 
-export function CompleteStep({ status, values }: CompleteStepProps) {
+export function CompleteStep({ status }: CompleteStepProps) {
   const { t } = useTranslation()
-  const usageLabelKey = USAGE_MODE_LABEL_KEYS[values.usageMode]
   const dbType = status?.database_type ?? 'Unknown'
   const databaseVariant = DATABASE_VARIANT[dbType.toLowerCase()] ?? 'neutral'
 
@@ -89,9 +81,7 @@ export function CompleteStep({ status, values }: CompleteStepProps) {
               {t('Administrator account')}
             </dt>
             <dd className='text-sm font-semibold'>
-              {status?.root_init
-                ? t('Existing account will be reused')
-                : values.username || t('Not set yet')}
+              {status?.root_init ? t('Existing account will be reused') : 'root'}
             </dd>
           </div>
 
@@ -101,7 +91,7 @@ export function CompleteStep({ status, values }: CompleteStepProps) {
             <dt className='text-muted-foreground text-xs font-medium tracking-wide uppercase'>
               {t('Usage mode')}
             </dt>
-            <dd className='text-sm font-semibold'>{t(usageLabelKey)}</dd>
+            <dd className='text-sm font-semibold'>{t('Personal use mode')}</dd>
           </div>
         </dl>
       </div>

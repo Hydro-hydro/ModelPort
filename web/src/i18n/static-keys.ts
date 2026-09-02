@@ -158,7 +158,6 @@ export const STATIC_I18N_KEYS = [
   'Database check',
   'Verify your database connection',
   'Create credentials for the root user',
-  'Choose how the platform will operate',
   'Review & initialize',
   'Confirm settings and finish setup',
 
@@ -169,20 +168,9 @@ export const STATIC_I18N_KEYS = [
   'Custom database driver detected.',
   'The setup wizard will use this database during initialization.',
 
-  // Setup wizard — usage mode step
-  'External operations',
-  'Serve multiple users or teams with billing and quota control.',
-  'Personal use',
-  'Best for single-tenant deployments. Pricing and billing options stay hidden.',
-  'Demo site',
-  'Showcase core capabilities with demo credentials and limited access.',
-
   // Setup wizard — complete step
-  'External operations mode',
   'Personal use mode',
-  'Demo site mode',
   'Existing account will be reused',
-  'Not set yet',
 
   // Models section-registry nav (dynamic titleKey)
   'Grok',

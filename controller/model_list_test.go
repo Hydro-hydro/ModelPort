@@ -14,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -119,26 +118,6 @@ func withTieredBillingConfig(t *testing.T, modes map[string]string, exprs map[st
 		"billing_setting.billing_expr": string(exprBytes),
 	}))
 	model.InvalidatePricingCache()
-}
-
-func withSelfUseModeDisabled(t *testing.T) {
-	t.Helper()
-
-	original := operation_setting.SelfUseModeEnabled
-	operation_setting.SelfUseModeEnabled = false
-	t.Cleanup(func() {
-		operation_setting.SelfUseModeEnabled = original
-	})
-}
-
-func withSelfUseModeEnabled(t *testing.T) {
-	t.Helper()
-
-	original := operation_setting.SelfUseModeEnabled
-	operation_setting.SelfUseModeEnabled = true
-	t.Cleanup(func() {
-		operation_setting.SelfUseModeEnabled = original
-	})
 }
 
 func decodeListModelsPayload(t *testing.T, recorder *httptest.ResponseRecorder) listModelsResponse {
@@ -266,7 +245,6 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 }
 
 func TestListModelsIncludesTieredBillingModel(t *testing.T) {
-	withSelfUseModeDisabled(t)
 	withTieredBillingConfig(t, map[string]string{
 		"zz-tiered-visible-model":      "tiered_expr",
 		"zz-tiered-empty-expr-model":   "tiered_expr",
@@ -299,10 +277,13 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	ListModels(ctx, constant.ChannelTypeOpenAI)
 
 	ids := decodeListModelsResponse(t, recorder)
+	// Personal mode accepts models whose price or tiered expression has not
+	// been configured yet; the billing path still reports the missing pricing
+	// metadata separately.
 	require.Contains(t, ids, "zz-tiered-visible-model")
-	require.NotContains(t, ids, "zz-tiered-empty-expr-model")
-	require.NotContains(t, ids, "zz-tiered-missing-expr-model")
-	require.NotContains(t, ids, "zz-unpriced-model")
+	require.Contains(t, ids, "zz-tiered-empty-expr-model")
+	require.Contains(t, ids, "zz-tiered-missing-expr-model")
+	require.Contains(t, ids, "zz-unpriced-model")
 
 	pricingByName := pricingByModelName(model.GetPricing())
 	visiblePricing, ok := pricingByName["zz-tiered-visible-model"]
@@ -322,7 +303,6 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 }
 
 func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T) {
-	withSelfUseModeEnabled(t)
 	db := setupModelListControllerTestDB(t)
 
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
@@ -393,7 +373,6 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 }
 
 func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
-	withSelfUseModeDisabled(t)
 	withTieredBillingConfig(t, map[string]string{
 		"zz-token-tiered-visible-model":      "tiered_expr",
 		"zz-token-tiered-empty-expr-model":   "tiered_expr",
@@ -425,14 +404,15 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	ListModels(ctx, constant.ChannelTypeOpenAI)
 
 	ids := decodeListModelsResponse(t, recorder)
+	// Token model limits do not change the personal mode rule: all allowed
+	// models remain visible even when their pricing metadata is incomplete.
 	require.Contains(t, ids, "zz-token-tiered-visible-model")
-	require.NotContains(t, ids, "zz-token-tiered-empty-expr-model")
-	require.NotContains(t, ids, "zz-token-tiered-missing-expr-model")
-	require.NotContains(t, ids, "zz-token-unpriced-model")
+	require.Contains(t, ids, "zz-token-tiered-empty-expr-model")
+	require.Contains(t, ids, "zz-token-tiered-missing-expr-model")
+	require.Contains(t, ids, "zz-token-unpriced-model")
 }
 
 func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
-	withSelfUseModeEnabled(t)
 	originalMax := setting.GetMaxTokenAutoGroups()
 	originalUsableGroups := setting.UserUsableGroups2JSONString()
 	originalRatios := ratio_setting.GroupRatio2JSONString()
@@ -542,7 +522,7 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	user := &model.User{
 		Username: "twofa-user",
 		Password: hashedPassword,
-		Role:     common.RoleCommonUser,
+		Role:     common.RoleRootUser,
 		Status:   common.UserStatusEnabled,
 		Group:    "default",
 	}

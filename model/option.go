@@ -113,8 +113,6 @@ func InitOptionMap() {
 	common.OptionMap["MjForwardUrlEnabled"] = strconv.FormatBool(setting.MjForwardUrlEnabled)
 	common.OptionMap["MjActionCheckSuccessEnabled"] = strconv.FormatBool(setting.MjActionCheckSuccessEnabled)
 	common.OptionMap["CheckSensitiveEnabled"] = strconv.FormatBool(setting.CheckSensitiveEnabled)
-	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(operation_setting.DemoSiteEnabled)
-	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(operation_setting.SelfUseModeEnabled)
 	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(setting.ModelRequestRateLimitEnabled)
 	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnPromptEnabled)
 	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(setting.StopOnSensitiveEnabled)
@@ -167,6 +165,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if isFixedPersonalModeOption(key) {
+		return nil
+	}
 	if err := validateOptionValue(key, value); err != nil {
 		return err
 	}
@@ -194,13 +195,23 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	filteredValues := make(map[string]string, len(values))
 	for key, value := range values {
+		if isFixedPersonalModeOption(key) {
+			continue
+		}
+		filteredValues[key] = value
+	}
+	if len(filteredValues) == 0 {
+		return nil
+	}
+	for key, value := range filteredValues {
 		if err := validateOptionValue(key, value); err != nil {
 			return err
 		}
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		for k, v := range values {
+		for k, v := range filteredValues {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
@@ -215,7 +226,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if err != nil {
 		return err
 	}
-	for k, v := range values {
+	for k, v := range filteredValues {
 		if err := updateOptionMap(k, v); err != nil {
 			return err
 		}
@@ -223,7 +234,17 @@ func UpdateOptionsBulk(values map[string]string) error {
 	return nil
 }
 
+func isFixedPersonalModeOption(key string) bool {
+	return key == "DemoSiteEnabled" || key == "SelfUseModeEnabled"
+}
+
 func updateOptionMap(key string, value string) (err error) {
+	if isFixedPersonalModeOption(key) {
+		common.OptionMapRWMutex.Lock()
+		delete(common.OptionMap, key)
+		common.OptionMapRWMutex.Unlock()
+		return nil
+	}
 	if key == retiredThemeOptionKey {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
@@ -304,10 +325,6 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.MjActionCheckSuccessEnabled = boolValue
 		case "CheckSensitiveEnabled":
 			setting.CheckSensitiveEnabled = boolValue
-		case "DemoSiteEnabled":
-			operation_setting.DemoSiteEnabled = boolValue
-		case "SelfUseModeEnabled":
-			operation_setting.SelfUseModeEnabled = boolValue
 		case "CheckSensitiveOnPromptEnabled":
 			setting.CheckSensitiveOnPromptEnabled = boolValue
 		case "ModelRequestRateLimitEnabled":

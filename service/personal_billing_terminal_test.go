@@ -12,7 +12,6 @@ import (
 
 func TestPersonalBillingTerminalRefundsPreConsumedQuotaExactlyOnce(t *testing.T) {
 	truncate(t)
-	setPersonalBillingTestMode(t)
 
 	const userID, tokenID = 901, 901
 	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
@@ -68,7 +67,6 @@ func TestPersonalBillingTerminalSettlementIsIdempotentAndKeepsQuotasInSync(t *te
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			truncate(t)
-			setPersonalBillingTestMode(t)
 
 			const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
 			tokenKey := "sk-personal-terminal-settle-" + test.name
@@ -99,7 +97,6 @@ func TestPersonalBillingTerminalSettlementIsIdempotentAndKeepsQuotasInSync(t *te
 
 func TestPersonalBillingTerminalZeroUsageSettlesOnlyOnce(t *testing.T) {
 	truncate(t)
-	setPersonalBillingTestMode(t)
 
 	const userID, tokenID = 905, 905
 	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
@@ -129,7 +126,6 @@ func TestPersonalBillingTerminalZeroUsageSettlesOnlyOnce(t *testing.T) {
 
 func TestPersonalBillingTerminalCommittedFundingIsNotRefunded(t *testing.T) {
 	truncate(t)
-	setPersonalBillingTestMode(t)
 
 	const userID, tokenID = 906, 906
 	const initialQuota, initialTokenQuota, preConsumedQuota, actualQuota = 1_000, 1_000, 200, 300

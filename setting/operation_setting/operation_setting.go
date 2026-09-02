@@ -2,8 +2,11 @@ package operation_setting
 
 import "strings"
 
-var DemoSiteEnabled = false
-var SelfUseModeEnabled = false
+// SelfUseModeEnabled is retained as a read-only compatibility value for
+// pricing code that still distinguishes the personal edition. The project is
+// permanently operated in personal mode and no configuration path can change
+// this value.
+const SelfUseModeEnabled = true
 
 var AutomaticDisableKeywords = []string{
 	"Your credit balance is too low",

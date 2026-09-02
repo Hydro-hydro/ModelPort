@@ -292,6 +292,12 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	if relayInfo == nil {
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
+	if relayInfo.UserId <= 0 {
+		return nil, types.NewErrorWithStatusCode(
+			fmt.Errorf("invalid user id: %d", relayInfo.UserId),
+			types.ErrorCodeModelPriceError, http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
 
 	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 	if err != nil {

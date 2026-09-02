@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/usage_mode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -41,10 +40,6 @@ func UniversalVerify(c *gin.Context) {
 	}
 	if request.Method != secureVerificationMethodPassword {
 		common.ApiError(c, errors.New("安全验证必须使用管理员密码"))
-		return
-	}
-	if !usage_mode.IsPersonalUse() {
-		common.ApiError(c, errors.New("当前仅个人模式支持管理员密码安全验证"))
 		return
 	}
 	if request.Scope != securityProofScopeChannelKeyRead {

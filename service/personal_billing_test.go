@@ -9,7 +9,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,18 +22,6 @@ func newPersonalBillingTestContext() *gin.Context {
 	return context
 }
 
-func setPersonalBillingTestMode(t *testing.T) {
-	t.Helper()
-	originalSelfUse := operation_setting.SelfUseModeEnabled
-	originalDemo := operation_setting.DemoSiteEnabled
-	t.Cleanup(func() {
-		operation_setting.SelfUseModeEnabled = originalSelfUse
-		operation_setting.DemoSiteEnabled = originalDemo
-	})
-	operation_setting.SelfUseModeEnabled = true
-	operation_setting.DemoSiteEnabled = false
-}
-
 func personalBillingRelayInfo(userID, tokenID int, tokenKey string) *relaycommon.RelayInfo {
 	return &relaycommon.RelayInfo{
 		UserId:          userID,
@@ -46,7 +33,6 @@ func personalBillingRelayInfo(userID, tokenID int, tokenKey string) *relaycommon
 
 func TestPersonalBillingSessionUsesWallet(t *testing.T) {
 	truncate(t)
-	setPersonalBillingTestMode(t)
 
 	const userID, tokenID = 801, 801
 	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
@@ -75,7 +61,6 @@ func TestPersonalBillingSessionUsesWallet(t *testing.T) {
 
 func TestPersonalBillingSessionSettlesWalletAndTokenDelta(t *testing.T) {
 	truncate(t)
-	setPersonalBillingTestMode(t)
 
 	const userID, tokenID = 802, 802
 	const initialQuota, initialTokenQuota, preConsumedQuota, actualQuota = 1_000, 1_000, 200, 300
@@ -102,7 +87,6 @@ func TestPersonalBillingSessionSettlesWalletAndTokenDelta(t *testing.T) {
 
 func TestPersonalBillingSessionReturnsWalletAndTokenDelta(t *testing.T) {
 	truncate(t)
-	setPersonalBillingTestMode(t)
 
 	const userID, tokenID = 805, 805
 	const initialQuota, initialTokenQuota, preConsumedQuota, actualQuota = 1_000, 1_000, 200, 100
@@ -129,7 +113,6 @@ func TestPersonalBillingSessionReturnsWalletAndTokenDelta(t *testing.T) {
 
 func TestPersonalBillingSessionRefundsWalletAndTokenOnce(t *testing.T) {
 	truncate(t)
-	setPersonalBillingTestMode(t)
 
 	const userID, tokenID = 803, 803
 	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
@@ -171,7 +154,6 @@ func TestPersonalBillingSessionRefundsWalletAndTokenOnce(t *testing.T) {
 
 func TestPersonalBillingSessionRejectsTokenQuotaBeforeWalletDeduction(t *testing.T) {
 	truncate(t)
-	setPersonalBillingTestMode(t)
 
 	const userID, tokenID = 804, 804
 	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 100, 200

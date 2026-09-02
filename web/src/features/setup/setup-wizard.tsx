@@ -44,7 +44,6 @@ import { AdminStep } from './components/admin-step'
 import { CompleteStep } from './components/complete-step'
 import { DatabaseStep } from './components/database-step'
 import { StepNavigation } from './components/step-navigation'
-import { UsageModeStep } from './components/usage-mode-step'
 import type { SetupFormValues, SetupStatus } from './types'
 
 const STEPS = [
@@ -57,20 +56,18 @@ const STEPS = [
     descriptionKey: 'Create credentials for the root user',
   },
   {
-    titleKey: 'Usage mode',
-    descriptionKey: 'Choose how the platform will operate',
-  },
-  {
     titleKey: 'Review & initialize',
     descriptionKey: 'Confirm settings and finish setup',
   },
 ]
 
 const DEFAULT_FORM_VALUES: SetupFormValues = {
-  username: '',
+  // Keep legacy fields for the setup API contract; the personal edition always
+  // submits the fixed root owner and personal mode values.
+  username: 'root',
   password: '',
   confirmPassword: '',
-  usageMode: 'external',
+  usageMode: 'self',
 }
 
 export function SetupWizard() {
@@ -86,8 +83,6 @@ export function SetupWizard() {
     defaultValues: DEFAULT_FORM_VALUES,
     mode: 'onBlur',
   })
-
-  const watchedValues = form.watch()
 
   const {
     data: statusResponse,
@@ -140,26 +135,6 @@ export function SetupWizard() {
     setSetupStatus(status)
     setCurrentStep(0)
 
-    // Pre-fill usage mode if backend echoes it
-    if (status.SelfUseModeEnabled) {
-      form.setValue('usageMode', 'self', {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      })
-    } else if (status.DemoSiteEnabled) {
-      form.setValue('usageMode', 'demo', {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      })
-    } else {
-      form.setValue('usageMode', 'external', {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      })
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusResponse, navigate, form])
 
@@ -168,11 +143,6 @@ export function SetupWizard() {
 
     // Reset admin fields when backend reports they are already initialized
     if (setupStatus.root_init) {
-      form.setValue('username', '', {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      })
       form.setValue('password', '', {
         shouldDirty: false,
         shouldTouch: false,
@@ -198,27 +168,14 @@ export function SetupWizard() {
         />
       )
     }
-    if (currentStep === 2) {
-      return <UsageModeStep form={form} />
-    }
-    return <CompleteStep status={setupStatus} values={watchedValues} />
-  }, [currentStep, setupStatus, form, watchedValues])
+    return <CompleteStep status={setupStatus} />
+  }, [currentStep, setupStatus, form])
 
   const validateAdminStep = () => {
     if (setupStatus?.root_init) return true
 
-    const username = form.getValues('username')?.trim()
     const password = form.getValues('password')?.trim()
     const confirmPassword = form.getValues('confirmPassword')?.trim()
-
-    if (!username) {
-      form.setError('username', {
-        type: 'manual',
-        message: t('Please enter an administrator username'),
-      })
-      toast.error(t('Please enter an administrator username'))
-      return false
-    }
 
     if (!password || password.length < 8) {
       form.setError('password', {
@@ -241,23 +198,8 @@ export function SetupWizard() {
     return true
   }
 
-  const validateUsageModeStep = () => {
-    const usageMode = form.getValues('usageMode')
-    if (!usageMode) {
-      form.setError('usageMode', {
-        type: 'manual',
-        message: t('Select a usage mode to continue'),
-      })
-      toast.error(t('Select a usage mode to continue'))
-      return false
-    }
-    return true
-  }
-
   const handleNextStep = () => {
     if (currentStep === 1 && !validateAdminStep()) return
-    if (currentStep === 2 && !validateUsageModeStep()) return
-
     setCurrentStep((step) => Math.min(step + 1, STEPS.length - 1))
   }
 
@@ -266,9 +208,7 @@ export function SetupWizard() {
   }
 
   const handleSubmit = async () => {
-    const adminValid = validateAdminStep()
-    const usageValid = validateUsageModeStep()
-    if (!adminValid || !usageValid) return
+    if (!validateAdminStep()) return
 
     const payload = buildSetupPayload(
       form.getValues(),
@@ -278,6 +218,50 @@ export function SetupWizard() {
     mutation.mutate(payload)
   }
 
+  const setupContent = (() => {
+    if (isLoading) {
+      return <LoadingState message={t('Loading setup status…')} />
+    }
+
+    if (isError) {
+      return (
+        <ErrorState
+          title={t('We could not load the setup status.')}
+          onRetry={() => refetch()}
+        />
+      )
+    }
+
+    return (
+      <Form {...form}>
+        <form
+          className='space-y-6'
+          onSubmit={(event) => event.preventDefault()}
+        >
+          {currentStepComponent}
+        </form>
+      </Form>
+    )
+  })()
+
+  const logoContent = systemConfigLoading ? (
+    <Skeleton className='absolute inset-0 rounded-full' />
+  ) : (
+    <img
+      src={logo}
+      alt={t('System logo')}
+      className='h-12 w-12 rounded-full object-cover shadow-sm'
+    />
+  )
+
+  const titleContent = systemConfigLoading ? (
+    <Skeleton className='h-7 w-40' />
+  ) : (
+    <h1 className='text-2xl font-semibold tracking-tight'>
+      {t('Initialize')} {systemName}
+    </h1>
+  )
+
   return (
     <div className='bg-muted/40 relative min-h-svh py-10'>
       <div className='absolute top-4 right-4 sm:top-6 sm:right-6'>
@@ -285,24 +269,8 @@ export function SetupWizard() {
       </div>
       <div className='container mx-auto flex max-w-5xl flex-col gap-8 px-4 sm:px-6'>
         <div className='flex flex-col items-center gap-3'>
-          <div className='relative h-12 w-12'>
-            {systemConfigLoading ? (
-              <Skeleton className='absolute inset-0 rounded-full' />
-            ) : (
-              <img
-                src={logo}
-                alt={t('System logo')}
-                className='h-12 w-12 rounded-full object-cover shadow-sm'
-              />
-            )}
-          </div>
-          {systemConfigLoading ? (
-            <Skeleton className='h-7 w-40' />
-          ) : (
-            <h1 className='text-2xl font-semibold tracking-tight'>
-              {t('Initialize')} {systemName}
-            </h1>
-          )}
+          <div className='relative h-12 w-12'>{logoContent}</div>
+          {titleContent}
           <p className='text-muted-foreground text-center text-sm sm:text-base'>
             {t(
               'Follow the guided steps to prepare your workspace before the first login.'
@@ -321,7 +289,7 @@ export function SetupWizard() {
           </CardHeader>
 
           <CardContent className='space-y-6'>
-            <ol className='grid gap-3 sm:grid-cols-4'>
+            <ol className='grid gap-3 sm:grid-cols-3'>
               {STEPS.map((step, index) => {
                 const isActive = currentStep === index
                 const isCompleted = currentStep > index
@@ -330,22 +298,22 @@ export function SetupWizard() {
                     key={step.titleKey}
                     className={cn(
                       'rounded-xl border p-3',
-                      isActive
-                        ? 'border-primary ring-primary/20 ring-2'
-                        : isCompleted
-                          ? 'border-primary/40 bg-primary/5'
-                          : 'border-muted bg-card'
+                      isActive && 'border-primary ring-primary/20 ring-2',
+                      !isActive &&
+                        isCompleted && 'border-primary/40 bg-primary/5',
+                      !isActive &&
+                        !isCompleted && 'border-muted bg-card'
                     )}
                   >
                     <div className='flex items-start gap-3'>
                       <span
                         className={cn(
                           'flex size-6 items-center justify-center rounded-md border text-xs font-semibold',
-                          isActive
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : isCompleted
-                              ? 'border-primary bg-primary text-primary-foreground'
-                              : 'border-muted-foreground/40 text-muted-foreground'
+                          (isActive || isCompleted) &&
+                            'border-primary bg-primary text-primary-foreground',
+                          !isActive &&
+                            !isCompleted &&
+                            'border-muted-foreground/40 text-muted-foreground'
                         )}
                       >
                         {index + 1}
@@ -364,23 +332,7 @@ export function SetupWizard() {
               })}
             </ol>
 
-            {isLoading ? (
-              <LoadingState message={t('Loading setup status…')} />
-            ) : isError ? (
-              <ErrorState
-                title={t('We could not load the setup status.')}
-                onRetry={() => refetch()}
-              />
-            ) : (
-              <Form {...form}>
-                <form
-                  className='space-y-6'
-                  onSubmit={(event) => event.preventDefault()}
-                >
-                  {currentStepComponent}
-                </form>
-              </Form>
-            )}
+            {setupContent}
           </CardContent>
 
           {!isLoading && !isError && (

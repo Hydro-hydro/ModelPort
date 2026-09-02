@@ -1,19 +1,14 @@
 package usage_mode
 
-import "github.com/QuantumNous/new-api/setting/operation_setting"
-
 // Mode describes how the instance is intended to be operated.
 type Mode string
 
-const (
-	ModeExternal Mode = "external"
-	ModePersonal Mode = "personal"
-	ModeDemo     Mode = "demo"
-)
+const ModePersonal Mode = "personal"
 
 // Feature identifies a capability that can be enabled or disabled by the
-// runtime usage policy. Core relay capabilities intentionally remain enabled
-// in personal mode; the list below only gates platform/operations features.
+// personal edition policy. Core relay capabilities intentionally remain
+// enabled; the list below only gates platform/operations features that are not
+// part of the personal edition.
 type Feature string
 
 const (
@@ -74,30 +69,19 @@ var personalDisabledFeatures = map[Feature]struct{}{
 	FeatureUserManagement:    {},
 }
 
-// CurrentMode resolves the persisted operation flags into one mode. Demo mode
-// wins when both flags are accidentally enabled, matching the setup wizard's
-// explicit mode precedence.
+// CurrentMode is kept as a compatibility API for clients that still report
+// the operating mode. The personal edition has no runtime mode switch.
 func CurrentMode() Mode {
-	if operation_setting.DemoSiteEnabled {
-		return ModeDemo
-	}
-	if operation_setting.SelfUseModeEnabled {
-		return ModePersonal
-	}
-	return ModeExternal
+	return ModePersonal
 }
 
 func IsPersonalUse() bool {
-	return CurrentMode() == ModePersonal
+	return true
 }
 
-// IsFeatureEnabled returns whether a feature is allowed by the current usage
-// policy. External and demo modes preserve the existing feature behavior;
-// individual feature settings still decide whether a feature is configured.
+// IsFeatureEnabled returns whether a feature is available in the personal
+// edition. Unknown features remain enabled for forward compatibility.
 func IsFeatureEnabled(feature Feature) bool {
-	if !IsPersonalUse() {
-		return true
-	}
 	if _, known := featureSet[feature]; !known {
 		return true
 	}
