@@ -25,7 +25,6 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalRetryTimes := common.RetryTimes
 	originalAutoGroups := setting.AutoGroups2JsonString()
-	originalUsableGroups := setting.UserUsableGroups2JSONString()
 	originalGroupRatios := ratio_setting.GroupRatio2JSONString()
 	originalMaxTokenAutoGroups := setting.GetMaxTokenAutoGroups()
 
@@ -38,7 +37,6 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	common.RetryTimes = 0
 
 	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`[]`))
-	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":2}`))
 	require.NoError(t, setting.UpdateMaxTokenAutoGroups("2"))
 
@@ -47,7 +45,6 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		common.RetryTimes = originalRetryTimes
 		require.NoError(t, setting.UpdateAutoGroupsByJsonString(originalAutoGroups))
-		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatios))
 		require.NoError(t, setting.UpdateMaxTokenAutoGroups(fmt.Sprintf("%d", originalMaxTokenAutoGroups)))
 

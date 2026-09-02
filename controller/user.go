@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -253,16 +252,7 @@ func calculateUserPermissions() map[string]interface{} {
 }
 
 func GetUserModels(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		id = c.GetInt("id")
-	}
-	user, err := model.GetUserCache(id)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	groups := service.GetUserUsableGroups(user.Group)
+	groups := service.GetPersonalUsableGroups()
 	group := c.Query("group")
 	var groupsToQuery []string
 	switch {
@@ -271,9 +261,7 @@ func GetUserModels(c *gin.Context) {
 			groupsToQuery = append(groupsToQuery, g)
 		}
 	case group == "auto":
-		if _, ok := groups[group]; ok {
-			groupsToQuery = service.GetUserAutoGroup(user.Group)
-		}
+		groupsToQuery = service.GetPersonalAutoGroups()
 	default:
 		if _, ok := groups[group]; ok {
 			groupsToQuery = []string{group}

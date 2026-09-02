@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -77,16 +76,6 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
 	return maskedTokens
 }
 
-func getTokenRequestUserGroup(c *gin.Context) (string, error) {
-	if userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup); userGroup != "" {
-		return userGroup, nil
-	}
-	if userGroup := c.GetString("group"); userGroup != "" {
-		return userGroup, nil
-	}
-	return model.GetUserGroup(c.GetInt("id"), false)
-}
-
 func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) bool {
 	if len(groups) == 0 {
 		if err := token.SetAutoGroups(nil); err != nil {
@@ -102,11 +91,6 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 		return false
 	}
 
-	userGroup, err := getTokenRequestUserGroup(c)
-	if err != nil {
-		common.ApiError(c, err)
-		return false
-	}
 	seen := make(map[string]struct{}, len(groups))
 	for _, group := range groups {
 		if _, ok := seen[group]; ok {
@@ -114,7 +98,7 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 			return false
 		}
 		seen[group] = struct{}{}
-		if !service.IsUserSelectableGroup(userGroup, group) {
+		if !service.IsSelectableRouteGroup(group) {
 			common.ApiErrorI18n(c, i18n.MsgTokenAutoGroupsInvalid, map[string]any{"Group": group})
 			return false
 		}
@@ -174,13 +158,8 @@ func GetToken(c *gin.Context) {
 }
 
 func GetTokenAutoGroups(c *gin.Context) {
-	userGroup, err := getTokenRequestUserGroup(c)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
 	common.ApiSuccess(c, gin.H{
-		"groups":    service.GetUserAutoGroup(userGroup),
+		"groups":    service.GetPersonalAutoGroups(),
 		"max_count": setting.GetMaxTokenAutoGroups(),
 	})
 }

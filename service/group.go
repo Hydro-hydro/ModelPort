@@ -1,8 +1,6 @@
 package service
 
 import (
-	"strings"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
@@ -11,53 +9,30 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func GetUserUsableGroups(userGroup string) map[string]string {
-	groupsCopy := setting.GetUserUsableGroupsCopy()
-	if userGroup != "" {
-		specialSettings, b := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
-		if b {
-			// 处理特殊可用分组
-			for specialGroup, desc := range specialSettings {
-				if strings.HasPrefix(specialGroup, "-:") {
-					// 移除分组
-					groupToRemove := strings.TrimPrefix(specialGroup, "-:")
-					delete(groupsCopy, groupToRemove)
-				} else if strings.HasPrefix(specialGroup, "+:") {
-					// 添加分组
-					groupToAdd := strings.TrimPrefix(specialGroup, "+:")
-					groupsCopy[groupToAdd] = desc
-				} else {
-					// 直接添加分组
-					groupsCopy[specialGroup] = desc
-				}
-			}
-		}
-		// 如果userGroup不在UserUsableGroups中，返回UserUsableGroups + userGroup
-		if _, ok := groupsCopy[userGroup]; !ok {
-			groupsCopy[userGroup] = "用户分组"
-		}
+// GetPersonalUsableGroups returns every configured route group. Personal mode
+// has one owner, so route-group availability is no longer derived from an
+// account's user-group permissions.
+func GetPersonalUsableGroups() map[string]string {
+	groups := make(map[string]string)
+	for groupName := range ratio_setting.GetGroupRatioCopy() {
+		groups[groupName] = groupName
 	}
-	return groupsCopy
+	return groups
 }
 
-func GroupInUserUsableGroups(userGroup, groupName string) bool {
-	_, ok := GetUserUsableGroups(userGroup)[groupName]
-	return ok
+// IsSelectableRouteGroup reports whether a concrete configured route group can
+// be assigned to a token or selected by the playground.
+func IsSelectableRouteGroup(groupName string) bool {
+	return groupName != "" && groupName != "auto" && ratio_setting.ContainsGroupRatio(groupName)
 }
 
-func IsUserSelectableGroup(userGroup, groupName string) bool {
-	if groupName == "" || groupName == "auto" {
-		return false
-	}
-	return GroupInUserUsableGroups(userGroup, groupName) && ratio_setting.ContainsGroupRatio(groupName)
-}
-
-// GetUserAutoGroup 根据用户分组获取自动分组设置
-func GetUserAutoGroup(userGroup string) []string {
+// GetPersonalAutoGroups returns the configured automatic routing order after
+// removing groups that no longer exist in the pricing configuration.
+func GetPersonalAutoGroups() []string {
 	autoGroups := make([]string, 0)
 	seen := make(map[string]struct{})
 	for _, group := range setting.GetAutoGroups() {
-		if !IsUserSelectableGroup(userGroup, group) {
+		if !IsSelectableRouteGroup(group) {
 			continue
 		}
 		if _, ok := seen[group]; ok {
@@ -69,14 +44,15 @@ func GetUserAutoGroup(userGroup string) []string {
 	return autoGroups
 }
 
-// FilterUserTokenAutoGroups applies current permissions before the current
-// per-token limit. It intentionally does not fall back to the global Auto list.
-func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
+// FilterTokenAutoGroups applies route-group existence checks before the
+// per-token limit. It intentionally does not fall back to the global Auto
+// list when a token has an explicit snapshot.
+func FilterTokenAutoGroups(groups []string) []string {
 	maxCount := setting.GetMaxTokenAutoGroups()
 	filtered := make([]string, 0, min(len(groups), maxCount))
 	seen := make(map[string]struct{})
 	for _, group := range groups {
-		if !IsUserSelectableGroup(userGroup, group) {
+		if !IsSelectableRouteGroup(group) {
 			continue
 		}
 		if _, ok := seen[group]; ok {
@@ -94,16 +70,16 @@ func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
 // GetRequestAutoGroups resolves the ordered Auto groups for the current token.
 // The absence of the context value means that the token inherits the complete
 // global Auto list; a present (even empty) value is an explicit token snapshot.
-func GetRequestAutoGroups(c *gin.Context, userGroup string) []string {
+func GetRequestAutoGroups(c *gin.Context) []string {
 	value, ok := common.GetContextKey(c, constant.ContextKeyTokenAutoGroups)
 	if !ok {
-		return GetUserAutoGroup(userGroup)
+		return GetPersonalAutoGroups()
 	}
 	groups, ok := value.([]string)
 	if !ok {
 		return []string{}
 	}
-	return FilterUserTokenAutoGroups(userGroup, groups)
+	return FilterTokenAutoGroups(groups)
 }
 
 // GetGroupsEnabledModels 按 groups 顺序获取各分组启用的模型并去重
@@ -121,11 +97,10 @@ func GetGroupsEnabledModels(groups []string) []string {
 	return models
 }
 
-// GetUserGroupRatio 获取用户使用某个分组的倍率
-// userGroup 用户分组
-// group 需要获取倍率的分组
-func GetUserGroupRatio(userGroup, group string) float64 {
-	ratio, ok := ratio_setting.GetGroupGroupRatio(userGroup, group)
+// GetRouteGroupRatio returns the effective ratio for a route group while
+// preserving the existing cross-group pricing override behavior.
+func GetRouteGroupRatio(baseGroup, group string) float64 {
+	ratio, ok := ratio_setting.GetGroupGroupRatio(baseGroup, group)
 	if ok {
 		return ratio
 	}

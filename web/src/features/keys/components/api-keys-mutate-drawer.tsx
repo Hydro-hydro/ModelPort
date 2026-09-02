@@ -63,7 +63,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useStatus } from '@/hooks/use-status'
-import { getUserModels, getUserGroups } from '@/lib/api'
+import { getAvailableModels, getRouteGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
@@ -115,7 +115,7 @@ export function ApiKeysMutateDrawer({
   // Fetch models
   const { data: modelsData } = useQuery({
     queryKey: ['user-models'],
-    queryFn: getUserModels,
+    queryFn: getAvailableModels,
     enabled: open,
     staleTime: 0,
   })
@@ -127,7 +127,7 @@ export function ApiKeysMutateDrawer({
     isFetching: groupsFetching,
   } = useQuery({
     queryKey: ['user-groups'],
-    queryFn: getUserGroups,
+    queryFn: getRouteGroups,
     enabled: open,
     staleTime: 0,
   })

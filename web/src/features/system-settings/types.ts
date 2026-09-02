@@ -170,12 +170,10 @@ export type ModelSettings = {
   'billing_setting.billing_expr': string
   'tool_price_setting.prices': string
   GroupRatio: string
-  UserUsableGroups: string
   GroupGroupRatio: string
   AutoGroups: string
   MaxTokenAutoGroups: number
   DefaultUseAutoGroup: boolean
-  'group_ratio_setting.group_special_usable_group': string
   RetryTimes: number
   ChannelDisableThreshold: string
   AutomaticDisableChannelEnabled: boolean
@@ -223,12 +221,10 @@ export type BillingSettings = {
   'billing_setting.billing_expr': string
   'tool_price_setting.prices': string
   GroupRatio: string
-  UserUsableGroups: string
   GroupGroupRatio: string
   AutoGroups: string
   MaxTokenAutoGroups: number
   DefaultUseAutoGroup: boolean
-  'group_ratio_setting.group_special_usable_group': string
 }
 
 export type OperationsSettings = {

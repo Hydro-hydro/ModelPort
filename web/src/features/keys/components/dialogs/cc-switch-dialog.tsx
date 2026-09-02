@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { getUserModels } from '@/lib/api'
+import { getAvailableModels } from '@/lib/api'
 
 const APP_CONFIGS = {
   claude: {
@@ -102,7 +102,7 @@ export function CCSwitchDialog(props: Props) {
 
   const { data: modelsData } = useQuery({
     queryKey: ['user-models-ccswitch'],
-    queryFn: getUserModels,
+    queryFn: getAvailableModels,
     enabled: props.open,
     staleTime: 5 * 60 * 1000,
   })

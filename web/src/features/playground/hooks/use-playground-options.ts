@@ -39,7 +39,7 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { getUserGroups, getUserModels } from '../api'
+import { getAvailableModels, getRouteGroups } from '../api'
 import {
   getGroupFallback,
   getModelFallback,
@@ -75,7 +75,7 @@ export function usePlaygroundOptions({
     isLoading: isLoadingModels,
   } = useQuery({
     queryKey: ['playground-models', currentGroup],
-    queryFn: () => getUserModels(currentGroup),
+    queryFn: () => getAvailableModels(currentGroup),
     enabled: currentGroup !== '',
   })
 
@@ -85,7 +85,7 @@ export function usePlaygroundOptions({
     isError: isGroupsError,
   } = useQuery({
     queryKey: ['playground-groups'],
-    queryFn: getUserGroups,
+    queryFn: getRouteGroups,
   })
 
   useEffect(() => {

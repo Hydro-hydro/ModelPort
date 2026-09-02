@@ -391,9 +391,7 @@ export function PrefillGroupManagementDialog({
             {t('Prefill Group Management')}
           </>
         }
-        description={t(
-          'Create reusable bundles of models, tags, endpoints, and user groups to speed up configuration elsewhere in the console.'
-        )}
+        description={t('Group')}
         contentClassName={cn(
           'w-[calc(100vw-2rem)] sm:max-w-[52rem]',
           isMobile && 'max-w-none rounded-none'

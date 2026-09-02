@@ -142,7 +142,7 @@ const FLOW_STAGE_META: Record<
   },
   group: {
     labelKey: 'Group',
-    descKey: 'The user group applied to the requests',
+    descKey: 'Route group',
   },
   model: {
     labelKey: 'Model',

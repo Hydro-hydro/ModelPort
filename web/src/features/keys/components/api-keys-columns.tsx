@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useMediaQuery } from '@/hooks'
 import { toIntlLocale } from '@/i18n/languages'
-import { getUserGroups } from '@/lib/api'
+import { getRouteGroups } from '@/lib/api'
 import dayjs from '@/lib/dayjs'
 import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -56,7 +56,7 @@ function getQuotaProgressColor(percentage: number): string {
 function useGroupRatios(): Record<string, number | string> {
   const { data } = useQuery({
     queryKey: ['user-groups'],
-    queryFn: getUserGroups,
+    queryFn: getRouteGroups,
     staleTime: 0,
     select: (res) => {
       if (!res.success || !res.data) return {}

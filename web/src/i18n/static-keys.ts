@@ -382,7 +382,6 @@ export const STATIC_I18N_KEYS = [
   'The user who made the requests',
   'The deployment node that handled the requests',
   'The API key used for the requests',
-  'The user group applied to the requests',
   'The model that was requested',
   'The upstream channel that served the requests',
 

@@ -395,6 +395,8 @@ var removedPersonalOptionKeys = []string{
 	"SelfUseModeEnabled",
 	"QuotaForNewUser",
 	"DefaultCollapseSidebar",
+	"UserUsableGroups",
+	"group_ratio_setting.group_special_usable_group",
 }
 
 func cleanupRemovedPersonalSchema(db *gorm.DB) error {
@@ -441,7 +443,8 @@ func cleanupRemovedPersonalSchema(db *gorm.DB) error {
 		Or(optionKeyColumn+" LIKE ?", "checkin_setting.%").
 		Or(optionKeyColumn+" LIKE ?", "discord.%").
 		Or(optionKeyColumn+" LIKE ?", "oidc.%").
-		Or(optionKeyColumn+" LIKE ?", "passkey.%")
+		Or(optionKeyColumn+" LIKE ?", "passkey.%").
+		Or(optionKeyColumn+" = ?", "group_ratio_setting.group_special_usable_group")
 	if err := query.Delete(&Option{}).Error; err != nil {
 		return fmt.Errorf("delete removed personal options: %w", err)
 	}

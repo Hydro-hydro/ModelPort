@@ -48,7 +48,7 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { getUserModels } from '@/lib/api'
+import { getAvailableModels } from '@/lib/api'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
@@ -476,7 +476,7 @@ export function OverviewDashboard() {
   const modelsQuery = useQuery({
     queryKey: ['dashboard', 'overview', 'user-models'],
     queryFn: async () => {
-      const result = await getUserModels()
+      const result = await getAvailableModels()
       return result.success ? (result.data ?? []) : []
     },
     staleTime: 5 * 60 * 1000,

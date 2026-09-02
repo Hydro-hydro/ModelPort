@@ -47,12 +47,10 @@ const defaultBillingSettings: BillingSettings = {
   'billing_setting.billing_expr': '{}',
   'tool_price_setting.prices': '{}',
   GroupRatio: '',
-  UserUsableGroups: '',
   GroupGroupRatio: '',
   AutoGroups: '',
   MaxTokenAutoGroups: 5,
   DefaultUseAutoGroup: false,
-  'group_ratio_setting.group_special_usable_group': '{}',
 }
 
 export function BillingSettings() {

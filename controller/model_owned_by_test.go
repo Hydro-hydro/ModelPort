@@ -89,14 +89,11 @@ func TestGetModelListGroupsUsesExplicitTokenGroup(t *testing.T) {
 
 func TestGetModelListGroupsUsesFilteredTokenAutoGroupsSnapshot(t *testing.T) {
 	originalMax := setting.GetMaxTokenAutoGroups()
-	originalUsableGroups := setting.UserUsableGroups2JSONString()
 	originalRatios := ratio_setting.GroupRatio2JSONString()
 	require.NoError(t, setting.UpdateMaxTokenAutoGroups("1"))
-	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))
 	t.Cleanup(func() {
 		require.NoError(t, setting.UpdateMaxTokenAutoGroups(fmt.Sprintf("%d", originalMax)))
-		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalRatios))
 	})
 
@@ -111,7 +108,7 @@ func TestGetModelListGroupsUsesFilteredTokenAutoGroupsSnapshot(t *testing.T) {
 	require.Equal(t, []string{"vip"}, groups.ownerGroups)
 
 	common.SetContextKey(ctx, constant.ContextKeyTokenAutoGroups, []string{"vip"})
-	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
 	groups, err = getModelListGroups(ctx)
 	require.NoError(t, err)
 	require.Empty(t, groups.ownerGroups)

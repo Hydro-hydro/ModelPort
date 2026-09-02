@@ -122,7 +122,6 @@ const createModelSchema = (t: Translate) =>
 const createGroupSchema = (t: Translate) =>
   z.object({
     GroupRatio: createJsonStringField(t),
-    UserUsableGroups: createJsonStringField(t),
     GroupGroupRatio: createJsonStringField(t),
     AutoGroups: createJsonStringField(t, {
       predicate: (parsed) =>
@@ -132,7 +131,6 @@ const createGroupSchema = (t: Translate) =>
     }),
     MaxTokenAutoGroups: positiveIntegerSchema(t('Enter a positive integer')),
     DefaultUseAutoGroup: z.boolean(),
-    GroupSpecialUsableGroup: createJsonStringField(t),
   })
 
 type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
@@ -201,14 +199,10 @@ export function RatioSettingsCard({
 
   const groupNormalizedDefaults = useRef({
     GroupRatio: normalizeJsonString(groupDefaults.GroupRatio),
-    UserUsableGroups: normalizeJsonString(groupDefaults.UserUsableGroups),
     GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
     AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
     MaxTokenAutoGroups: groupDefaults.MaxTokenAutoGroups,
     DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
-    GroupSpecialUsableGroup: normalizeJsonString(
-      groupDefaults.GroupSpecialUsableGroup
-    ),
   })
   const modelSchema = useMemo(() => createModelSchema(t), [t])
   const groupSchema = useMemo(() => createGroupSchema(t), [t])
@@ -239,12 +233,8 @@ export function RatioSettingsCard({
     defaultValues: {
       ...groupDefaults,
       GroupRatio: formatJsonForTextarea(groupDefaults.GroupRatio),
-      UserUsableGroups: formatJsonForTextarea(groupDefaults.UserUsableGroups),
       GroupGroupRatio: formatJsonForTextarea(groupDefaults.GroupGroupRatio),
       AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
-      GroupSpecialUsableGroup: formatJsonForTextarea(
-        groupDefaults.GroupSpecialUsableGroup
-      ),
     },
   })
 
@@ -286,25 +276,17 @@ export function RatioSettingsCard({
   useEffect(() => {
     groupNormalizedDefaults.current = {
       GroupRatio: normalizeJsonString(groupDefaults.GroupRatio),
-      UserUsableGroups: normalizeJsonString(groupDefaults.UserUsableGroups),
       GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
       AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
       MaxTokenAutoGroups: groupDefaults.MaxTokenAutoGroups,
       DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
-      GroupSpecialUsableGroup: normalizeJsonString(
-        groupDefaults.GroupSpecialUsableGroup
-      ),
     }
 
     groupForm.reset({
       ...groupDefaults,
       GroupRatio: formatJsonForTextarea(groupDefaults.GroupRatio),
-      UserUsableGroups: formatJsonForTextarea(groupDefaults.UserUsableGroups),
       GroupGroupRatio: formatJsonForTextarea(groupDefaults.GroupGroupRatio),
       AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
-      GroupSpecialUsableGroup: formatJsonForTextarea(
-        groupDefaults.GroupSpecialUsableGroup
-      ),
     })
   }, [groupDefaults, groupForm])
 
@@ -355,20 +337,10 @@ export function RatioSettingsCard({
     async (values: GroupFormValues) => {
       const normalized = {
         GroupRatio: normalizeJsonString(values.GroupRatio),
-        UserUsableGroups: normalizeJsonString(values.UserUsableGroups),
         GroupGroupRatio: normalizeJsonString(values.GroupGroupRatio),
         AutoGroups: normalizeJsonString(values.AutoGroups),
         MaxTokenAutoGroups: values.MaxTokenAutoGroups,
         DefaultUseAutoGroup: values.DefaultUseAutoGroup,
-        GroupSpecialUsableGroup: normalizeJsonString(
-          values.GroupSpecialUsableGroup
-        ),
-      }
-
-      // Map form field names to API keys (most are 1:1, except GroupSpecialUsableGroup)
-      const apiKeyMap: Record<string, string> = {
-        GroupSpecialUsableGroup:
-          'group_ratio_setting.group_special_usable_group',
       }
 
       const updates = (
@@ -378,8 +350,7 @@ export function RatioSettingsCard({
       )
 
       for (const key of updates) {
-        const apiKey = apiKeyMap[key] || key
-        await updateOption.mutateAsync({ key: apiKey, value: normalized[key] })
+        await updateOption.mutateAsync({ key, value: normalized[key] })
       }
 
       groupNormalizedDefaults.current = normalized

@@ -82,6 +82,8 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 		"DemoSiteEnabled",
 		"QuotaForNewUser",
 		"DefaultCollapseSidebar",
+		"UserUsableGroups",
+		"group_ratio_setting.group_special_usable_group",
 		"ModelRatio",
 	} {
 		require.NoError(t, db.Create(&Option{Key: key, Value: "legacy"}).Error)

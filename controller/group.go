@@ -3,9 +3,10 @@ package controller
 import (
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -23,25 +24,25 @@ func GetGroups(c *gin.Context) {
 	})
 }
 
-func GetUserGroups(c *gin.Context) {
+func GetRouteGroups(c *gin.Context) {
+	baseGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	if baseGroup == "" {
+		baseGroup = c.GetString("group")
+	}
+	if baseGroup == "" {
+		baseGroup, _ = model.GetUserGroup(c.GetInt("id"), false)
+	}
 	usableGroups := make(map[string]map[string]interface{})
-	userGroup := ""
-	userId := c.GetInt("id")
-	userGroup, _ = model.GetUserGroup(userId, false)
-	userUsableGroups := service.GetUserUsableGroups(userGroup)
-	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
-		// UserUsableGroups contains the groups that the user can use
-		if desc, ok := userUsableGroups[groupName]; ok {
-			usableGroups[groupName] = map[string]interface{}{
-				"ratio": service.GetUserGroupRatio(userGroup, groupName),
-				"desc":  desc,
-			}
+	for groupName := range service.GetPersonalUsableGroups() {
+		usableGroups[groupName] = map[string]interface{}{
+			"ratio": service.GetRouteGroupRatio(baseGroup, groupName),
+			"desc":  groupName,
 		}
 	}
-	if _, ok := userUsableGroups["auto"]; ok {
+	if autoGroups := service.GetPersonalAutoGroups(); len(autoGroups) > 0 {
 		usableGroups["auto"] = map[string]interface{}{
 			"ratio": "自动",
-			"desc":  setting.GetUsableGroupDescription("auto"),
+			"desc":  "自动分组",
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{

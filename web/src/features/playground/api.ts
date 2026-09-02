@@ -41,10 +41,10 @@ export async function sendChatCompletion(
 }
 
 /**
- * Get user available models
+ * Get models available for the current route group.
  */
-export async function getUserModels(group: string): Promise<ModelOption[]> {
-  const res = await api.get(API_ENDPOINTS.USER_MODELS, {
+export async function getAvailableModels(group: string): Promise<ModelOption[]> {
+  const res = await api.get(API_ENDPOINTS.MODELS, {
     params: { group },
   })
   const { data } = res
@@ -60,10 +60,10 @@ export async function getUserModels(group: string): Promise<ModelOption[]> {
 }
 
 /**
- * Get user groups
+ * Get configured route groups.
  */
-export async function getUserGroups(): Promise<GroupOption[]> {
-  const res = await api.get(API_ENDPOINTS.USER_GROUPS)
+export async function getRouteGroups(): Promise<GroupOption[]> {
+  const res = await api.get(API_ENDPOINTS.ROUTE_GROUPS)
   const { data } = res
 
   if (!data.success || !data.data) {

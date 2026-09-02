@@ -45,7 +45,7 @@ export async function getSelf() {
   return res.data
 }
 
-export async function getUserModels(): Promise<{
+export async function getAvailableModels(): Promise<{
   success: boolean
   message?: string
   data?: string[]
@@ -54,7 +54,7 @@ export async function getUserModels(): Promise<{
   return res.data
 }
 
-export async function getUserGroups(): Promise<{
+export async function getRouteGroups(): Promise<{
   success: boolean
   message?: string
   data?: Record<string, { desc: string; ratio: number | string }>

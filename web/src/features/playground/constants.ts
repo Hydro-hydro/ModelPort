@@ -35,12 +35,12 @@ export const MESSAGE_STATUS = {
 // API endpoints
 export const API_ENDPOINTS = {
   CHAT_COMPLETIONS: '/pg/chat/completions',
-  USER_MODELS: '/api/user/models',
-  USER_GROUPS: '/api/user/self/groups',
+  MODELS: '/api/user/models',
+  ROUTE_GROUPS: '/api/user/self/groups',
 } as const
 
-// Default group — uses 'default' as the safe fallback; auto-group is
-// only selected when the backend confirms it is available for the user.
+// Default route group — auto-group is only selected when the backend confirms
+// it is available.
 export const DEFAULT_GROUP = 'default' as const
 
 // Default configuration

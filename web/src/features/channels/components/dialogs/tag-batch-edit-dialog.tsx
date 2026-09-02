@@ -291,7 +291,7 @@ export function TagBatchEditDialog({
                 />
               )}
               <p className='text-muted-foreground text-xs'>
-                {t('User groups that can access channels with this tag')}
+                {t('Route group')}
               </p>
             </div>
           </div>
