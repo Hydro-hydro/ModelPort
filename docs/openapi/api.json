@@ -3405,32 +3405,6 @@
             "type": "boolean"
           }
         }
-      },
-      "Redemption": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer"
-          },
-          "name": {
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "status": {
-            "type": "integer"
-          },
-          "quota": {
-            "type": "integer"
-          },
-          "created_time": {
-            "type": "integer"
-          },
-          "redeemed_time": {
-            "type": "integer"
-          }
-        }
       }
     },
     "responses": {

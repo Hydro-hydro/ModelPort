@@ -282,6 +282,23 @@ func InjectGoogleAnalytics() {
 	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
 }
 
+func validatePersonalOwnerAtStartup() error {
+	// Owner validation must run even before the setup record exists. Otherwise
+	// an old database with multiple administrators but no root could enter the
+	// setup flow without a deterministic personal owner. Empty databases remain
+	// valid because EnsurePersonalOwner deliberately allows the setup wizard.
+	if err := model.EnsurePersonalOwner(); err != nil {
+		return fmt.Errorf("个人版管理员账户校验失败: %w", err)
+	}
+	if !constant.Setup {
+		return nil
+	}
+	if _, err := model.GetPersonalOwner(); err != nil {
+		return fmt.Errorf("个人版管理员账户校验失败: %w", err)
+	}
+	return nil
+}
+
 func InitResources() error {
 	// Initialize resources here if needed
 	// This is a placeholder function for future resource initialization
@@ -330,10 +347,8 @@ func InitResources() error {
 		}
 	}
 	model.InitOptionMap()
-	if constant.Setup {
-		if err := model.EnsurePersonalOwner(); err != nil {
-			return fmt.Errorf("个人版管理员账户校验失败: %w", err)
-		}
+	if err := validatePersonalOwnerAtStartup(); err != nil {
+		return err
 	}
 
 	// 清理旧的磁盘缓存文件
