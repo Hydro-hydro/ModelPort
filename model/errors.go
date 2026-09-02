@@ -8,13 +8,6 @@ var (
 	ErrWalletQuotaLimitExceeded = errors.New("wallet quota limit exceeded")
 )
 
-// User auth errors
-var (
-	ErrInvalidCredentials   = errors.New("invalid credentials")
-	ErrUserEmptyCredentials = errors.New("empty credentials")
-	ErrEmailAlreadyTaken    = errors.New("email already taken")
-)
-
 // Token auth errors
 var (
 	ErrTokenNotProvided = errors.New("token not provided")

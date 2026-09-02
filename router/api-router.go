@@ -61,22 +61,9 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)
 				selfRoute.PUT("/self", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.UpdateSelf)
-				selfRoute.DELETE("/self", controller.DeleteSelf)
 				selfRoute.GET("/token", middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("access-token"), middleware.DisableCache(), controller.GenerateAccessToken)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
-			}
-
-			adminRoute := userRoute.Group("/")
-			adminRoute.Use(middleware.AdminAuth(), middleware.RequireFeature(usage_mode.FeatureUserManagement))
-			{
-				adminRoute.GET("/", controller.GetAllUsers)
-				adminRoute.GET("/search", controller.SearchUsers)
-				adminRoute.GET("/:id", controller.GetUser)
-				adminRoute.POST("/", controller.CreateUser)
-				adminRoute.POST("/manage", controller.ManageUser)
-				adminRoute.PUT("/", controller.UpdateUser)
-				adminRoute.DELETE("/:id", controller.DeleteUser)
 			}
 		}
 
@@ -123,7 +110,6 @@ func SetApiRouter(router *gin.Engine) {
 		}
 		apiRouter.GET("/task_plugin_options", middleware.AdminAuth(), middleware.RequireFeature(usage_mode.FeatureTaskPlugins), middleware.RequirePermission(authz.TaskPluginBind), controller.GetTaskPluginOptions)
 		registerChannelRoutes(apiRouter)
-		registerAuthzRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth(), middleware.RequireFeature(usage_mode.FeatureTokenManagement))
 		{
