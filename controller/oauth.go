@@ -22,11 +22,6 @@ const oauthAuthFlowTTL = 10 * time.Minute
 type oauthStateRequest struct {
 	Provider string `json:"provider"`
 	Intent   string `json:"intent"`
-	Aff      string `json:"aff,omitempty"`
-}
-
-type oauthFlowPayload struct {
-	AffiliateCode string `json:"affiliate_code,omitempty"`
 }
 
 // providerParams returns map with Provider key for i18n templates
@@ -43,11 +38,8 @@ func GenerateOAuthCode(c *gin.Context) {
 	}
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Intent = strings.TrimSpace(request.Intent)
-	request.Aff = strings.TrimSpace(request.Aff)
 	if oauth.GetProvider(request.Provider) == nil ||
-		(request.Intent != model.AuthFlowIntentLogin && request.Intent != model.AuthFlowIntentBind) ||
-		len(request.Aff) > 32 ||
-		(request.Intent == model.AuthFlowIntentBind && request.Aff != "") {
+		(request.Intent != model.AuthFlowIntentLogin && request.Intent != model.AuthFlowIntentBind) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -62,11 +54,6 @@ func GenerateOAuthCode(c *gin.Context) {
 		userID = identity.UserID
 		sessionID = identity.SessionID
 	}
-	payload, err := common.Marshal(oauthFlowPayload{AffiliateCode: request.Aff})
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
 	expiresAt := time.Now().Add(oauthAuthFlowTTL)
 	state, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
 		Purpose:   model.AuthFlowPurposeOAuth,
@@ -74,7 +61,6 @@ func GenerateOAuthCode(c *gin.Context) {
 		Intent:    request.Intent,
 		UserId:    userID,
 		SessionId: sessionID,
-		Payload:   string(payload),
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
@@ -181,19 +167,14 @@ func HandleOAuth(c *gin.Context) {
 		handleOAuthError(c, err)
 		return
 	}
-	flow, err := model.ConsumeAuthFlow(state, consumeMatch)
+	_, err = model.ConsumeAuthFlow(state, consumeMatch)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgOAuthStateInvalid)})
 		return
 	}
 
 	// 7. Find or create user
-	var payload oauthFlowPayload
-	if err := common.UnmarshalJsonStr(flow.Payload, &payload); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	user, err := findOrCreateOAuthUser(c, provider, oauthUser, payload.AffiliateCode)
+	user, err := findOrCreateOAuthUser(c, provider, oauthUser)
 	if err != nil {
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
@@ -289,7 +270,7 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 }
 
 // findOrCreateOAuthUser finds existing user or creates new user
-func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, affiliateCode string) (*model.User, error) {
+func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser) (*model.User, error) {
 	user := &model.User{}
 
 	// Check if user already exists with new ID
@@ -361,18 +342,12 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
 
-	// Handle affiliate code
-	inviterId := 0
-	if affiliateCode != "" {
-		inviterId, _ = model.GetUserIdByAffCode(affiliateCode)
-	}
-
 	// Use transaction to ensure user creation and OAuth binding are atomic
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
 		// Custom provider: create user and binding in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
+			if err := user.InsertWithTx(tx); err != nil {
 				return err
 			}
 
@@ -392,13 +367,13 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 			return nil, err
 		}
 
-		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
-		user.FinalizeOAuthUserCreation(inviterId)
+		// Perform post-transaction tasks (logs and sidebar config)
+		user.FinalizeOAuthUserCreation()
 	} else {
 		// Built-in provider: create user and update provider ID in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
+			if err := user.InsertWithTx(tx); err != nil {
 				return err
 			}
 
@@ -422,7 +397,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		}
 
 		// Perform post-transaction tasks
-		user.FinalizeOAuthUserCreation(inviterId)
+		user.FinalizeOAuthUserCreation()
 	}
 
 	return user, nil

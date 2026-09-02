@@ -32,14 +32,6 @@ const (
 	FeaturePasswordReset       Feature = "password_reset"
 	FeatureOAuth               Feature = "oauth"
 	FeatureUserManagement      Feature = "user_management"
-	FeatureAffiliation         Feature = "affiliation"
-	FeatureWallet              Feature = "wallet"
-	FeaturePayments            Feature = "payments"
-	FeatureSubscriptions       Feature = "subscriptions"
-	FeatureRedemptions         Feature = "redemptions"
-	FeatureCheckin             Feature = "checkin"
-	FeaturePricingPortal       Feature = "pricing_portal"
-	FeatureRankings            Feature = "rankings"
 	FeatureTaskPlugins         Feature = "task_plugins"
 	FeatureDeployments         Feature = "deployments"
 	FeatureMultiNode           Feature = "multi_node"
@@ -61,14 +53,6 @@ var allFeatures = []Feature{
 	FeaturePasswordReset,
 	FeatureOAuth,
 	FeatureUserManagement,
-	FeatureAffiliation,
-	FeatureWallet,
-	FeaturePayments,
-	FeatureSubscriptions,
-	FeatureRedemptions,
-	FeatureCheckin,
-	FeaturePricingPortal,
-	FeatureRankings,
 	FeatureTaskPlugins,
 	FeatureDeployments,
 	FeatureMultiNode,
@@ -88,14 +72,6 @@ var personalDisabledFeatures = map[Feature]struct{}{
 	FeaturePasswordReset:     {},
 	FeatureOAuth:             {},
 	FeatureUserManagement:    {},
-	FeatureAffiliation:       {},
-	FeatureWallet:            {},
-	FeaturePayments:          {},
-	FeatureSubscriptions:     {},
-	FeatureRedemptions:       {},
-	FeatureCheckin:           {},
-	FeaturePricingPortal:     {},
-	FeatureRankings:          {},
 }
 
 // CurrentMode resolves the persisted operation flags into one mode. Demo mode

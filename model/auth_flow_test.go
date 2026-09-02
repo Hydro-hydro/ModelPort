@@ -19,7 +19,7 @@ func TestAuthFlowIsBoundAndConsumedOnce(t *testing.T) {
 		Intent:    AuthFlowIntentBind,
 		UserId:    42,
 		SessionId: "session-a",
-		Payload:   `{"affiliate_code":"invite"}`,
+		Payload:   `{}`,
 		ExpiresAt: time.Now().Add(time.Minute),
 	})
 	require.NoError(t, err)

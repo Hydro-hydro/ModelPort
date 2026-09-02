@@ -67,7 +67,7 @@ func setupAuthFlowControllerTest(t *testing.T) *authFlowTestOAuthProvider {
 	return provider
 }
 
-func TestGenerateOAuthCodeCarriesAffiliateInLoginFlow(t *testing.T) {
+func TestGenerateOAuthCodeDoesNotPersistLegacyAffiliateInput(t *testing.T) {
 	setupAuthFlowControllerTest(t)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -89,9 +89,7 @@ func TestGenerateOAuthCodeCarriesAffiliateInLoginFlow(t *testing.T) {
 		Purpose: model.AuthFlowPurposeOAuth, Provider: "auth-flow-test", Intent: model.AuthFlowIntentLogin,
 	})
 	require.NoError(t, err)
-	var payload oauthFlowPayload
-	require.NoError(t, common.UnmarshalJsonStr(flow.Payload, &payload))
-	assert.Equal(t, "invite-code", payload.AffiliateCode)
+	assert.Empty(t, flow.Payload)
 	assert.Zero(t, flow.UserId)
 	assert.Empty(t, flow.SessionId)
 }

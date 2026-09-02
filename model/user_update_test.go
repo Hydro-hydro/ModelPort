@@ -36,7 +36,6 @@ func createUserBindTestUser(t *testing.T) User {
 		Status:      common.UserStatusEnabled,
 		Group:       "default",
 		AuthVersion: 1,
-		AffCode:     "bind-test-aff-code",
 	}
 	require.NoError(t, DB.Create(&user).Error)
 	return user
@@ -46,17 +45,14 @@ func TestUserUpdateDoesNotOverwriteConcurrentAccountingOrTokenChanges(t *testing
 	setupUserUpdateTestState(t)
 
 	user := User{
-		Id:              1,
-		Username:        "quota-race-user",
-		Password:        "password",
-		DisplayName:     "before",
-		Status:          common.UserStatusEnabled,
-		Quota:           1000,
-		UsedQuota:       20,
-		RequestCount:    3,
-		AffCount:        2,
-		AffQuota:        800,
-		AffHistoryQuota: 1200,
+		Id:           1,
+		Username:     "quota-race-user",
+		Password:     "password",
+		DisplayName:  "before",
+		Status:       common.UserStatusEnabled,
+		Quota:        1000,
+		UsedQuota:    20,
+		RequestCount: 3,
 	}
 	user.SetAccessToken("old-token")
 	require.NoError(t, DB.Create(&user).Error)
@@ -68,9 +64,6 @@ func TestUserUpdateDoesNotOverwriteConcurrentAccountingOrTokenChanges(t *testing
 		"quota":         gorm.Expr("quota - ?", 400),
 		"used_quota":    gorm.Expr("used_quota + ?", 400),
 		"request_count": gorm.Expr("request_count + ?", 1),
-		"aff_count":     gorm.Expr("aff_count + ?", 1),
-		"aff_quota":     gorm.Expr("aff_quota - ?", 500),
-		"aff_history":   gorm.Expr("aff_history + ?", 500),
 		"access_token":  "rotated-token",
 	}).Error)
 
@@ -83,9 +76,6 @@ func TestUserUpdateDoesNotOverwriteConcurrentAccountingOrTokenChanges(t *testing
 	assert.Equal(t, 600, got.Quota)
 	assert.Equal(t, 420, got.UsedQuota)
 	assert.Equal(t, 4, got.RequestCount)
-	assert.Equal(t, 3, got.AffCount)
-	assert.Equal(t, 300, got.AffQuota)
-	assert.Equal(t, 1700, got.AffHistoryQuota)
 	assert.Equal(t, "rotated-token", got.GetAccessToken())
 }
 
@@ -148,20 +138,17 @@ func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 	setupUserUpdateTestState(t)
 
 	user := User{
-		Id:              2,
-		Username:        "token-rotation-user",
-		Password:        "password",
-		DisplayName:     "before",
-		Status:          common.UserStatusEnabled,
-		Quota:           1000,
-		AffQuota:        800,
-		AffHistoryQuota: 1200,
+		Id:          2,
+		Username:    "token-rotation-user",
+		Password:    "password",
+		DisplayName: "before",
+		Status:      common.UserStatusEnabled,
+		Quota:       1000,
 	}
 	require.NoError(t, DB.Create(&user).Error)
 
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
 		"quota":        gorm.Expr("quota + ?", 500),
-		"aff_quota":    gorm.Expr("aff_quota - ?", 500),
 		"display_name": "concurrent-update",
 	}).Error)
 
@@ -172,8 +159,6 @@ func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 	assert.Equal(t, "rotated-token", got.GetAccessToken())
 	assert.Equal(t, "concurrent-update", got.DisplayName)
 	assert.Equal(t, 1500, got.Quota)
-	assert.Equal(t, 300, got.AffQuota)
-	assert.Equal(t, 1200, got.AffHistoryQuota)
 }
 
 func TestUpdateUserAccessTokenRejectsSoftDeletedUser(t *testing.T) {
@@ -264,7 +249,7 @@ func TestInsertRejectsDuplicateEmailWithoutUniqueIndex(t *testing.T) {
 		Status:   common.UserStatusEnabled,
 	}
 
-	err := user.Insert(0)
+	err := user.Insert()
 	require.ErrorIs(t, err, ErrEmailAlreadyTaken)
 
 	var count int64
@@ -281,7 +266,7 @@ func TestInsertKeepsBlankPasswordForPasswordlessUser(t *testing.T) {
 		Status:   common.UserStatusEnabled,
 	}
 
-	require.NoError(t, user.Insert(0))
+	require.NoError(t, user.Insert())
 
 	var stored User
 	require.NoError(t, DB.Where("username = ?", user.Username).First(&stored).Error)
@@ -361,14 +346,12 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 		Username: "duplicate-1",
 		Password: "old-1",
 		Email:    "legacy@example.com",
-		AffCode:  "dupe1",
 		Status:   common.UserStatusEnabled,
 	}).Error)
 	require.NoError(t, DB.Create(&User{
 		Username: "duplicate-2",
 		Password: "old-2",
 		Email:    "LEGACY@example.com",
-		AffCode:  "dupe2",
 		Status:   common.UserStatusEnabled,
 	}).Error)
 
@@ -385,7 +368,6 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 		Username: "unique",
 		Password: "old",
 		Email:    "unique@example.com",
-		AffCode:  "unique",
 		Status:   common.UserStatusEnabled,
 	}).Error)
 

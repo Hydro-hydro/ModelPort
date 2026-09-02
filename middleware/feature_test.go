@@ -24,17 +24,17 @@ func TestRequireFeatureBlocksDisabledPersonalFeature(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/payments", RequireFeature(usage_mode.FeaturePayments), func(c *gin.Context) {
+	router.GET("/registration", RequireFeature(usage_mode.FeatureRegistration), func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/payments", nil)
+	request := httptest.NewRequest(http.MethodGet, "/registration", nil)
 	router.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusNotFound, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), "FEATURE_DISABLED")
-	assert.Contains(t, recorder.Body.String(), "payments")
+	assert.Contains(t, recorder.Body.String(), "registration")
 }
 
 func TestRequireFeatureKeepsFeatureAvailableOutsidePersonalMode(t *testing.T) {
@@ -49,12 +49,12 @@ func TestRequireFeatureKeepsFeatureAvailableOutsidePersonalMode(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/payments", RequireFeature(usage_mode.FeaturePayments), func(c *gin.Context) {
+	router.GET("/registration", RequireFeature(usage_mode.FeatureRegistration), func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/payments", nil)
+	request := httptest.NewRequest(http.MethodGet, "/registration", nil)
 	router.ServeHTTP(recorder, request)
 
 	assert.Equal(t, http.StatusNoContent, recorder.Code)

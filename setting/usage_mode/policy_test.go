@@ -41,13 +41,14 @@ func TestPersonalCapabilitiesDisablePlatformFeaturesOnly(t *testing.T) {
 
 	require.True(t, IsPersonalUse())
 	assert.False(t, IsFeatureEnabled(FeatureRegistration))
-	assert.False(t, IsFeatureEnabled(FeaturePayments))
 	assert.False(t, IsFeatureEnabled(FeatureUserManagement))
 	assert.True(t, IsFeatureEnabled(FeatureCoreRelay))
 	assert.True(t, IsFeatureEnabled(FeatureChannelManagement))
 
 	capabilities := Capabilities()
-	assert.False(t, capabilities[string(FeatureSubscriptions)])
+	for _, removed := range []string{"affiliation", "wallet", "payments", "subscriptions", "redemptions", "checkin", "pricing_portal", "rankings"} {
+		assert.NotContains(t, capabilities, removed)
+	}
 	assert.True(t, capabilities[string(FeatureTaskPlugins)])
 	assert.True(t, capabilities[string(FeatureDeployments)])
 	assert.True(t, capabilities[string(FeatureMultiNode)])
@@ -65,7 +66,7 @@ func TestExternalAndDemoModesKeepFeaturesAvailable(t *testing.T) {
 	for _, mode := range []Mode{ModeExternal, ModeDemo} {
 		operation_setting.SelfUseModeEnabled = mode == ModePersonal
 		operation_setting.DemoSiteEnabled = mode == ModeDemo
-		assert.True(t, IsFeatureEnabled(FeaturePayments), "mode=%s", mode)
+		assert.True(t, IsFeatureEnabled(FeatureRegistration), "mode=%s", mode)
 		assert.True(t, IsFeatureEnabled(FeatureRegistration), "mode=%s", mode)
 	}
 }
