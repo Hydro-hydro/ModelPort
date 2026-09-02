@@ -43,7 +43,7 @@ export interface UserProfile {
   role: number
   /** Email address */
   email?: string
-  /** User group */
+  /** Default route group */
   group: string
   /** Current quota balance */
   quota: number
