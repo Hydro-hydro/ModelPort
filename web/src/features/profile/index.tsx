@@ -25,18 +25,15 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { LanguagePreferencesCard } from './components/language-preferences-card'
 import { LoginSessionsCard } from './components/login-sessions-card'
-import { PasskeyCard } from './components/passkey-card'
 import { ProfileHeader } from './components/profile-header'
 import { ProfileSecurityCard } from './components/profile-security-card'
 import { ProfileSettingsCard } from './components/profile-settings-card'
 import { SidebarModulesCard } from './components/sidebar-modules-card'
-import { TwoFACard } from './components/two-fa-card'
 import { useProfile } from './hooks'
 
 export function Profile() {
   const { profile, loading, refreshProfile } = useProfile()
   const permissions = useAuthStore((s) => s.auth.user?.permissions)
-
   const canConfigureSidebar = permissions?.sidebar_settings !== false
 
   return (
@@ -63,11 +60,11 @@ export function Profile() {
                 <LoginSessionsCard />
               </div>
 
-              <div className='space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
-                {canConfigureSidebar && <SidebarModulesCard />}
-                <PasskeyCard loading={loading} />
-                <TwoFACard loading={loading} />
-              </div>
+              {canConfigureSidebar && (
+                <div className='space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
+                  <SidebarModulesCard />
+                </div>
+              )}
             </div>
           </CardStaggerItem>
         </CardStaggerContainer>

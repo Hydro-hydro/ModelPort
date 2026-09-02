@@ -23,51 +23,30 @@ import { cn } from '@/lib/utils'
 import type { SystemStatus } from '../types'
 
 interface TermsFooterProps {
-  variant?: 'sign-in' | 'sign-up'
   className?: string
   status?: SystemStatus | null
 }
 
-export function TermsFooter({
-  variant = 'sign-in',
-  className,
-  status,
-}: TermsFooterProps) {
+export function TermsFooter({ className, status }: TermsFooterProps) {
   const { t } = useTranslation()
-  const text =
-    variant === 'sign-in'
-      ? 'By clicking sign in, you agree to our'
-      : 'By creating an account, you agree to our'
-
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
 
-  if (!hasUserAgreement && !hasPrivacyPolicy) {
-    return null
-  }
+  if (!hasUserAgreement && !hasPrivacyPolicy) return null
 
-  const agreementLink = {
-    label: 'User Agreement',
-    href: '/user-agreement',
-  }
-  const privacyLink = {
-    label: 'Privacy Policy',
-    href: '/privacy-policy',
-  }
-
-  const activeLinks =
-    hasUserAgreement || hasPrivacyPolicy
-      ? ([
-          hasUserAgreement ? agreementLink : null,
-          hasPrivacyPolicy ? privacyLink : null,
-        ].filter(Boolean) as Array<{ label: string; href: string }>)
-      : [agreementLink, privacyLink]
-
+  const activeLinks = [
+    hasUserAgreement
+      ? { label: t('User Agreement'), href: '/user-agreement' }
+      : null,
+    hasPrivacyPolicy
+      ? { label: t('Privacy Policy'), href: '/privacy-policy' }
+      : null,
+  ].filter(Boolean) as Array<{ label: string; href: string }>
   const [firstLink, secondLink] = activeLinks
 
   return (
     <p className={cn('text-muted-foreground text-center text-xs', className)}>
-      {text}{' '}
+      {t('By clicking sign in, you agree to our')}{' '}
       {firstLink && (
         <a
           href={firstLink.href}

@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
-import type { CustomOAuthBinding } from '@/lib/oauth'
 import type { LoginSession } from '@/stores/auth-store'
 
 import type {
@@ -91,64 +90,6 @@ export async function generateAccessToken(): Promise<ApiResponse<string>> {
 }
 
 // ============================================================================
-// Account Binding APIs
-// ============================================================================
-
-/**
- * Send email verification code
- */
-export async function sendEmailVerification(
-  email: string,
-  turnstileToken?: string
-): Promise<ApiResponse> {
-  const params = new URLSearchParams({ email })
-  if (turnstileToken) {
-    params.append('turnstile', turnstileToken)
-  }
-  const res = await api.get(`/api/verification?${params}`)
-  return res.data
-}
-
-/**
- * Bind email account
- */
-export async function bindEmail(
-  email: string,
-  code: string
-): Promise<ApiResponse> {
-  const res = await api.post('/api/oauth/email/bind', {
-    email,
-    code,
-  })
-  return res.data
-}
-
-/**
- * Bind WeChat account
- */
-export async function bindWeChat(code: string): Promise<ApiResponse> {
-  const res = await api.post(
-    '/api/oauth/wechat/bind',
-    { code },
-    { skipBusinessError: true, skipErrorHandler: true }
-  )
-  return res.data
-}
-
-export interface TelegramBindFlow {
-  flow_token: string
-  callback_url: string
-  expires_at: number
-}
-
-export async function startTelegramBind(): Promise<
-  ApiResponse<TelegramBindFlow>
-> {
-  const res = await api.post('/api/oauth/telegram/bind/start')
-  return res.data
-}
-
-// ============================================================================
 // Login Session APIs
 // ============================================================================
 
@@ -164,29 +105,5 @@ export async function revokeLoginSession(sid: string): Promise<ApiResponse> {
 
 export async function revokeOtherLoginSessions(): Promise<ApiResponse> {
   const res = await api.post('/api/user/sessions/revoke-others')
-  return res.data
-}
-
-// ============================================================================
-// Custom OAuth Binding APIs
-// ============================================================================
-
-/**
- * Get current user's custom OAuth bindings
- */
-export async function getSelfOAuthBindings(): Promise<
-  ApiResponse<CustomOAuthBinding[]>
-> {
-  const res = await api.get('/api/user/oauth/bindings')
-  return res.data
-}
-
-/**
- * Unbind a custom OAuth provider for current user
- */
-export async function unbindCustomOAuth(
-  providerId: number
-): Promise<ApiResponse> {
-  const res = await api.delete(`/api/user/oauth/bindings/${providerId}`)
   return res.data
 }

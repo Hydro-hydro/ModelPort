@@ -59,18 +59,6 @@ export interface UserProfile {
   created_time: number
   /** User settings (JSON string) */
   setting?: string
-  /** WeChat ID (OAuth) */
-  wechat_id?: string
-  /** GitHub ID (OAuth) */
-  github_id?: string
-  /** Discord ID (OAuth) */
-  discord_id?: string
-  /** OIDC ID (OAuth) */
-  oidc_id?: string
-  /** Telegram ID (OAuth) */
-  telegram_id?: string
-  /** LinuxDO ID (OAuth) */
-  linux_do_id?: string
 }
 
 /**
@@ -142,35 +130,4 @@ export interface UpdateUserSettingsRequest {
  */
 export interface DeleteAccountRequest {
   password?: string
-}
-
-/**
- * Account binding item
- */
-export interface BindingItem {
-  id: string
-  label: string
-  icon: React.ElementType
-  value?: string
-  isBound: boolean
-  isEnabled: boolean
-  onBind: () => void
-}
-
-/**
- * Two-Factor Authentication Status
- */
-export interface TwoFAStatus {
-  enabled: boolean
-  locked: boolean
-  backup_codes_remaining: number
-}
-
-/**
- * Two-Factor Authentication Setup Data
- */
-export interface TwoFASetupData {
-  secret: string
-  qr_code_data: string
-  backup_codes: string[]
 }

@@ -112,48 +112,9 @@ export type SiteSettings = {
 
 export type AuthSettings = {
   PasswordLoginEnabled: boolean
-  PasswordRegisterEnabled: boolean
-  EmailVerificationEnabled: boolean
-  RegisterEnabled: boolean
-  EmailDomainRestrictionEnabled: boolean
-  EmailAliasRestrictionEnabled: boolean
-  EmailDomainWhitelist: string
-  ServerAddress: string
-  GitHubOAuthEnabled: boolean
-  GitHubClientId: string
-  GitHubClientSecret: string
-  'discord.enabled': boolean
-  'discord.client_id': string
-  'discord.client_secret': string
-  'oidc.enabled': boolean
-  'oidc.display_name': string
-  'oidc.client_id': string
-  'oidc.client_secret': string
-  'oidc.well_known': string
-  'oidc.authorization_endpoint': string
-  'oidc.token_endpoint': string
-  'oidc.user_info_endpoint': string
-  TelegramOAuthEnabled: boolean
-  TelegramBotToken: string
-  TelegramBotName: string
-  LinuxDOOAuthEnabled: boolean
-  LinuxDOClientId: string
-  LinuxDOClientSecret: string
-  LinuxDOMinimumTrustLevel: string
-  WeChatAuthEnabled: boolean
-  WeChatServerAddress: string
-  WeChatServerToken: string
-  WeChatAccountQRCodeImageURL: string
   TurnstileCheckEnabled: boolean
   TurnstileSiteKey: string
   TurnstileSecretKey: string
-  'passkey.enabled': boolean
-  'passkey.rp_display_name': string
-  'passkey.rp_id': string
-  'passkey.origins': string
-  'passkey.allow_insecure_origin': boolean
-  'passkey.user_verification': 'required' | 'preferred' | 'discouraged'
-  'passkey.attachment_preference': '' | 'platform' | 'cross-platform'
 }
 
 export type ContentSettings = {

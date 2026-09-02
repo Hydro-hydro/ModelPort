@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { PermissionCatalog } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
-import type { CustomOAuthBinding } from '@/lib/oauth'
 
 import type {
   User,
@@ -140,22 +139,6 @@ export async function adjustUserQuota(
 }
 
 /**
- * Reset user's Passkey registration
- */
-export async function resetUserPasskey(id: number): Promise<ApiResponse> {
-  const res = await api.delete(`/api/user/${id}/reset_passkey`)
-  return res.data
-}
-
-/**
- * Reset user's Two-Factor Authentication setup
- */
-export async function resetUserTwoFA(id: number): Promise<ApiResponse> {
-  const res = await api.delete(`/api/user/${id}/2fa`)
-  return res.data
-}
-
-/**
  * Get all available groups
  */
 export async function getGroups(): Promise<ApiResponse<string[]>> {
@@ -173,42 +156,4 @@ export async function getPermissionCatalog(): Promise<PermissionCatalog> {
     resources: res.data?.data?.resources ?? [],
     roles: res.data?.data?.roles ?? [],
   }
-}
-
-// ============================================================================
-// Admin Binding Management APIs
-// ============================================================================
-
-/**
- * Get user's custom OAuth bindings (admin)
- */
-export async function getUserOAuthBindings(
-  userId: number
-): Promise<ApiResponse<CustomOAuthBinding[]>> {
-  const res = await api.get(`/api/user/${userId}/oauth/bindings`)
-  return res.data
-}
-
-/**
- * Clear a user's built-in binding (admin)
- */
-export async function adminClearUserBinding(
-  userId: number,
-  bindingType: string
-): Promise<ApiResponse> {
-  const res = await api.delete(`/api/user/${userId}/bindings/${bindingType}`)
-  return res.data
-}
-
-/**
- * Unbind custom OAuth for a user (admin)
- */
-export async function adminUnbindCustomOAuth(
-  userId: number,
-  providerId: number
-): Promise<ApiResponse> {
-  const res = await api.delete(
-    `/api/user/${userId}/oauth/bindings/${providerId}`
-  )
-  return res.data
 }

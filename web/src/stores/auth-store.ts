@@ -37,12 +37,6 @@ export interface AuthUser {
   quota?: number
   used_quota?: number
   request_count?: number
-  github_id?: string
-  discord_id?: string
-  oidc_id?: string
-  wechat_id?: string
-  telegram_id?: string
-  linux_do_id?: string
   language?: string
   setting?: Record<string, unknown> | string
   sidebar_modules?: string
@@ -76,11 +70,9 @@ interface AuthState {
     accessToken: string | null
     accessExpiresAt: number | null
     session: LoginSession | null
-    pending2FAFlowToken: string | null
     bootstrapState: AuthBootstrapState
     setBundle: (bundle: AuthBundle) => void
     setUser: (user: AuthUser | null) => void
-    setPending2FAFlowToken: (flowToken: string | null) => void
     setBootstrapState: (bootstrapState: AuthBootstrapState) => void
     reset: (bootstrapState?: AuthBootstrapState) => void
   }
@@ -92,7 +84,6 @@ export const useAuthStore = create<AuthState>()((set) => ({
     accessToken: null,
     accessExpiresAt: null,
     session: null,
-    pending2FAFlowToken: null,
     bootstrapState: 'idle',
     setBundle: (bundle) =>
       set((state) => ({
@@ -103,7 +94,6 @@ export const useAuthStore = create<AuthState>()((set) => ({
           accessToken: bundle.access_token,
           accessExpiresAt: bundle.access_expires_at,
           session: bundle.session,
-          pending2FAFlowToken: null,
           bootstrapState: 'complete',
         },
       })),
@@ -111,11 +101,6 @@ export const useAuthStore = create<AuthState>()((set) => ({
       set((state) => ({
         ...state,
         auth: { ...state.auth, user },
-      })),
-    setPending2FAFlowToken: (pending2FAFlowToken) =>
-      set((state) => ({
-        ...state,
-        auth: { ...state.auth, pending2FAFlowToken },
       })),
     setBootstrapState: (bootstrapState) =>
       set((state) => ({
@@ -131,7 +116,6 @@ export const useAuthStore = create<AuthState>()((set) => ({
           accessToken: null,
           accessExpiresAt: null,
           session: null,
-          pending2FAFlowToken: null,
           bootstrapState,
         },
       })),

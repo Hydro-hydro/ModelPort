@@ -25,25 +25,8 @@ import {
   clearPasswordEncryptionCache,
   encryptPassword,
 } from './lib/password-encryption'
-import type { TelegramAuthorization } from './lib/telegram-login'
-import type {
-  LoginPayload,
-  LoginResponse,
-  Login2FAResponse,
-  TwoFAPayload,
-  RegisterPayload,
-  ApiResponse,
-} from './types'
+import type { ApiResponse, LoginPayload, LoginResponse } from './types'
 
-// ============================================================================
-// Authentication APIs
-// ============================================================================
-
-// ----------------------------------------------------------------------------
-// Login & Logout
-// ----------------------------------------------------------------------------
-
-// User login with username and password
 export async function login(payload: LoginPayload): Promise<LoginResponse> {
   const turnstile = payload.turnstile ?? ''
   try {
@@ -59,12 +42,10 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
     } else {
       passwordFields = { password: payload.password }
     }
+
     const res = await api.post<LoginResponse>(
       `/api/user/login?turnstile=${turnstile}`,
-      {
-        username: payload.username,
-        ...passwordFields,
-      },
+      { username: payload.username ?? '', ...passwordFields },
       { skipAuthRefresh: true }
     )
     if (payload.passwordEncryptionEnabled && !res.data?.success) {
@@ -77,14 +58,6 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
     }
     throw error
   }
-}
-
-// Two-factor authentication login
-export async function login2fa(payload: TwoFAPayload) {
-  const res = await api.post<Login2FAResponse>('/api/user/login/2fa', payload, {
-    skipAuthRefresh: true,
-  })
-  return res.data
 }
 
 interface LogoutRuntime {
@@ -121,7 +94,6 @@ export async function executeLogout(
   }
 }
 
-// User logout
 export async function logout(): Promise<ApiResponse> {
   return executeLogout({
     getExpectedSID: () => useAuthStore.getState().auth.session?.sid,
@@ -135,102 +107,4 @@ export async function logout(): Promise<ApiResponse> {
     },
     refresh: refreshAuthentication,
   })
-}
-
-// ----------------------------------------------------------------------------
-// Password Management
-// ----------------------------------------------------------------------------
-
-// Send password reset email
-export async function sendPasswordResetEmail(
-  email: string,
-  turnstile?: string
-): Promise<ApiResponse> {
-  const res = await api.get('/api/reset_password', {
-    params: { email, turnstile },
-  })
-  return res.data
-}
-
-// ----------------------------------------------------------------------------
-// OAuth
-// ----------------------------------------------------------------------------
-
-// Start GitHub OAuth flow
-export async function githubOAuthStart(clientId: string, state: string) {
-  const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&state=${state}&scope=user:email`
-  window.open(url)
-}
-
-// Get OAuth state for CSRF protection
-export async function createOAuthFlow(
-  provider: string,
-  intent: 'login' | 'bind'
-): Promise<string> {
-  const res = await api.post(
-    '/api/oauth/state',
-    { provider, intent },
-    { skipAuthRefresh: intent === 'login' }
-  )
-  if (res.data?.success) {
-    if (typeof res.data.data === 'string') return res.data.data
-    if (typeof res.data.data?.flow_token === 'string') {
-      return res.data.data.flow_token
-    }
-  }
-  throw new Error(res.data?.message || 'Failed to initialize OAuth')
-}
-
-// WeChat login by authorization code
-export async function wechatLoginByCode(code: string): Promise<ApiResponse> {
-  const res = await api.get('/api/oauth/wechat', { params: { code } })
-  return res.data
-}
-
-export async function telegramLogin(
-  authorization: TelegramAuthorization
-): Promise<ApiResponse> {
-  const res = await api.get('/api/oauth/telegram/login', {
-    params: authorization,
-    disableDuplicate: true,
-    skipAuthRefresh: true,
-    skipBusinessError: true,
-    skipErrorHandler: true,
-  })
-  return res.data
-}
-
-// ----------------------------------------------------------------------------
-// Registration
-// ----------------------------------------------------------------------------
-
-// User registration
-export async function register(payload: RegisterPayload): Promise<ApiResponse> {
-  const res = await api.post(`/api/user/register`, payload, {
-    params: { turnstile: payload.turnstile ?? '' },
-  })
-  return res.data
-}
-
-// Send email verification code
-export async function sendEmailVerification(
-  email: string,
-  turnstile?: string
-): Promise<ApiResponse> {
-  const res = await api.get('/api/verification', {
-    params: { email, turnstile },
-  })
-  return res.data
-}
-
-// Bind email to OAuth account
-export async function bindEmail(
-  email: string,
-  code: string
-): Promise<ApiResponse> {
-  const res = await api.post('/api/oauth/email/bind', {
-    email,
-    code,
-  })
-  return res.data
 }

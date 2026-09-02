@@ -1,4 +1,3 @@
-import type { TFunction } from 'i18next'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -19,20 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, test } from 'vitest'
 
-import { loginMethodLabel, sessionDevice } from '../login-session-utils'
-
-const translate = ((key: string) => key) as TFunction
+import { sessionDevice } from '../login-session-utils'
 
 describe('login session presentation', () => {
-  test('labels built-in and provider OAuth login methods', () => {
-    expect(loginMethodLabel('password', translate)).toBe('Password')
-    expect(loginMethodLabel('2fa', translate)).toBe('Two-factor Authentication')
-    expect(loginMethodLabel('oauth:github', translate)).toBe('OAuth · GitHub')
-    expect(loginMethodLabel('oauth:custom-provider', translate)).toBe(
-      'OAuth · custom-provider'
-    )
-  })
-
   test('labels iPad Safari as iOS when its user agent also mentions Mac OS X', () => {
     const userAgent =
       'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'

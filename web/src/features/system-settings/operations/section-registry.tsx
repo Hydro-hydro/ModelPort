@@ -62,7 +62,6 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'email',
-    feature: 'email_verification',
     titleKey: 'SMTP Email',
     build: (settings: OperationsSettings) => (
       <EmailSettingsSection
