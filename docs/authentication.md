@@ -7,10 +7,10 @@
 - Access Token 是有效期 15 分钟的 JWT，只保存在浏览器内存中，通过 `Authorization: Bearer <token>` 发送。
 - Refresh Token 是随机不透明值，有效期最长 30 天。浏览器只通过 `HttpOnly`、`SameSite=Strict` Cookie 持有它；服务端仅保存 HMAC 摘要，并在每次刷新时轮换。
 - `user_sessions` 是登录会话控制面，记录设备、IP、登录方式、最后活跃时间、到期时间和撤销状态。数据库中的 Session 状态是最终权威；撤销传播速度取决于下文所述的 Redis 拓扑。
-- 用户的密码、状态、角色或安全因子发生安全相关变化时，`auth_version` 会递增并使旧登录会话失效。订阅带来的分组升降级只刷新授权缓存，不会退出任何登录设备。
+- 管理员密码、状态、角色或鉴权配置发生安全相关变化时，`auth_version` 会递增并使旧登录会话失效。
 - Redis 缓存保存用户鉴权快照和登录会话快照。版本栅栏和撤销 tombstone 防止旧缓存重新授权；Session 快照使用跟随 `SYNC_FREQUENCY` 的短 TTL，缓存未命中或未启用 Redis 时回退到数据库校验。
 
-`SESSION_SECRET` 用于派生 Access Token、Security Proof、Refresh Token 摘要和 AuthFlow 摘要的不同用途密钥。生产环境及多节点部署必须在所有节点配置相同的高强度随机值；更换该值会使现有登录、临时鉴权流程和 Security Proof 全部失效。
+`SESSION_SECRET` 用于派生 Access Token、Security Proof 和 Refresh Token 摘要的不同用途密钥。生产环境及多节点部署必须在所有节点配置相同的高强度随机值；更换该值会使现有登录和 Security Proof 全部失效。
 
 ## 多节点 Redis 拓扑
 
@@ -28,7 +28,7 @@
 
 ## 浏览器接口
 
-登录成功后，密码登录、2FA、Passkey、OAuth、WeChat 和 Telegram 登录均返回统一数据：
+个人模式登录只支持管理员密码。登录请求中的 `username` 仅为旧客户端兼容字段，服务端固定校验个人版所有者账户。登录成功后返回统一的会话数据：
 
 ```json
 {
@@ -136,7 +136,7 @@ Redis 限流使用原子 Lua 固定窗口，替代旧的近似滑动窗口 List 
 
 用户级模型成功请求限流仍使用原有 Redis List 近似滑动窗口，但列表时间戳统一写为 UTC。滚动升级期间，旧节点写入的本地时间字符串和新节点写入的 UTC 字符串无法从格式上区分，可能在一个模型限流窗口内临时误放行或误拒绝。所有节点升级完成并经过一个完整窗口后会自然收敛；本次升级不会切换 Key 或主动删除现有列表。
 
-开放注册仍会受 Critical IP 限流保护，但分布式 IP 多账号攻击不能仅靠 IP 限流阻止。公网开放注册的部署应同时启用 Turnstile 和邮箱验证；更强的设备或多维风控需作为独立安全项目设计。
+个人模式不提供普通用户注册、用户 OAuth、Passkey、2FA、邮箱验证或密码找回入口。登录接口仍受 Critical IP 限流和可选的 Turnstile 校验保护。
 
 ## PAT 调用契约
 
@@ -144,30 +144,21 @@ Redis 限流使用原子 Lua 固定窗口，替代旧的近似滑动窗口 List 
 
 PAT 不是浏览器登录会话，不能调用登录会话管理接口，也不能签发绑定具体登录会话的 Security Proof。
 
-## 临时鉴权流程与二次验证
+## 管理员密码安全证明
 
-OAuth state、2FA pending、Passkey ceremony、Telegram bind 等临时状态存放在 `auth_flows`。客户端只持有随机 `flow_token`，数据库仅保存 HMAC 摘要；流程具有用途、provider、intent、用户和登录会话绑定，并且只能原子消费一次。OAuth 注册的 affiliate code 也随登录 AuthFlow 保存。
+渠道密钥查看使用有效期 5 分钟的 `X-Security-Proof`。客户端通过 `/api/verify` 提交使用 `LoginEncryptionKey` 加密的管理员密码，服务端校验当前管理员 Session 和密码哈希后，仅签发 `channel.key.read` 作用域的安全证明。
 
-标准 OAuth 绑定回调由 popup 通过同源 `postMessage` 交给 opener；只有 opener 使用自身内存中的 Bearer 调用后端绑定接口。Telegram 绑定先由已登录前端创建绑定 AuthFlow，再让 widget 回调携带路径中的 `flow_token`，回调时会重新确认原登录会话仍有效。Telegram 的已签名 widget assertion 也会登记为一次性凭据，重复回放会被拒绝。
-
-敏感操作使用有效期 5 分钟的 `X-Security-Proof`：
-
-- `channel.key.read`：查看渠道密钥；
-- `passkey.register`：注册 Passkey；
-- `passkey.delete`：删除 Passkey。
-
-Proof 同时绑定用户、登录会话、用户鉴权版本、会话版本和 scope，不能跨用户、跨会话或跨用途复用。
-
-启用了 2FA 的用户注册 Passkey 时，register begin 与 finish 都必须携带有效的 `passkey.register` Proof；finish 会在消费一次性 AuthFlow 之前重新验证 Proof。未启用 2FA 的首次 Passkey 注册不要求该请求头。
+Proof 同时绑定管理员账户、登录会话、鉴权版本、会话版本和作用域，不能跨账户、跨会话或跨用途复用。密码不会保存到 Session 或数据库；证明过期、Session 不匹配、作用域不匹配或管理员权限不足时均拒绝查看渠道密钥。
 
 ## 升级注意事项
 
+
 - 旧 `session` Cookie 不再使用；升级后现有面板登录会失效，用户需要重新登录。
-- 数据库迁移会新增 `user_sessions`、`auth_flows`、`external_identity_claims` 和 `users.auth_version`，并为已有用户初始化鉴权版本、回填 Telegram 账号唯一归属；若历史数据中同一 Telegram ID 已绑定多个用户，迁移会拒绝继续启动，需先消除歧义。
+- 数据库迁移会保留 `user_sessions`、`tokens` 和 `users.auth_version`，并清理认证扩展表及用户第三方身份字段；不会删除用户、Token、日志、任务和统计数据。
 - 数据库迁移会为 Session 签发计数和分批清理新增索引；已有 `user_sessions` 很大时应为首次启动预留维护窗口。
 - `user_sessions.previous_refresh_hash` 会从定长 `char(64)` 迁移为 `varchar(64)`。应用会兼容读取历史定长字段留下的空格填充；迁移后的目标结构必须保持幂等，连续启动不应反复执行列类型变更。
-- 仅 master 节点定时清理过期登录会话、超过配置保留期的 revoked 会话和已过保留期的 AuthFlow。
+- 仅 master 节点定时清理过期登录会话和超过配置保留期的 revoked 会话。
 - 未配置 `TRUSTED_PROXIES` 时会兼容信任回环和常见私网代理；使用公网负载均衡器、`100.64.0.0/10`、链路本地地址或自定义 CNI 网段的部署仍需显式配置。需要严格忽略所有转发头时设置为 `none`。
 - Redis 限流从近似滑动窗口改为原子固定窗口，存在明确的边界双倍突发语义。
 - 用户级模型成功请求限流的 UTC 时间戳在滚动升级期间存在一个窗口的混合格式过渡，期间可能临时误放行或误拒绝。
-- 自建客户端应按新的 AuthBundle、`flow_token` 和 Security Proof 契约升级；PAT 客户端可直接移除 `New-Api-User`。
+- 自建客户端应按新的 AuthBundle 和 Security Proof 契约升级；PAT 客户端可直接移除 `New-Api-User`。

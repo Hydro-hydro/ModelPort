@@ -1,6 +1,7 @@
 package model
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/url"
@@ -435,10 +436,11 @@ func cleanupRemovedPersonalSchema(db *gorm.DB) error {
 			if !db.Migrator().HasColumn("users", column) {
 				continue
 			}
-			if err := dropRemovedPersonalColumn(db, "users", column); err != nil {
+			fallback, err := dropRemovedPersonalColumn(db, "users", column)
+			if err != nil {
 				return fmt.Errorf("drop removed personal column users.%s: %w", column, err)
 			}
-			usedFallback = usedFallback || common.UsingMainDatabase(common.DatabaseTypeSQLite)
+			usedFallback = usedFallback || fallback
 		}
 		if usedFallback {
 			// Older SQLite versions may use GORM's table-rebuild fallback. Re-run
@@ -449,27 +451,109 @@ func cleanupRemovedPersonalSchema(db *gorm.DB) error {
 		}
 	}
 
-	query := db.Where(commonKeyCol+" IN ?", removedPersonalOptionKeys).
-		Or(commonKeyCol+" LIKE ?", "payment_setting.%").
-		Or(commonKeyCol+" LIKE ?", "checkin_setting.%").
-		Or(commonKeyCol+" LIKE ?", "discord.%").
-		Or(commonKeyCol+" LIKE ?", "oidc.%").
-		Or(commonKeyCol+" LIKE ?", "passkey.%")
+	optionKeyColumn := "`key`"
+	if strings.EqualFold(db.Dialector.Name(), string(common.DatabaseTypePostgreSQL)) {
+		optionKeyColumn = `"key"`
+	}
+	query := db.Where(optionKeyColumn+" IN ?", removedPersonalOptionKeys).
+		Or(optionKeyColumn+" LIKE ?", "payment_setting.%").
+		Or(optionKeyColumn+" LIKE ?", "checkin_setting.%").
+		Or(optionKeyColumn+" LIKE ?", "discord.%").
+		Or(optionKeyColumn+" LIKE ?", "oidc.%").
+		Or(optionKeyColumn+" LIKE ?", "passkey.%")
 	if err := query.Delete(&Option{}).Error; err != nil {
 		return fmt.Errorf("delete removed personal options: %w", err)
 	}
 	return nil
 }
 
-func dropRemovedPersonalColumn(db *gorm.DB, table, column string) error {
+func dropRemovedPersonalColumn(db *gorm.DB, table, column string) (bool, error) {
+	if strings.EqualFold(db.Dialector.Name(), string(common.DatabaseTypeSQLite)) {
+		if err := dropSQLiteIndexesForColumn(db, table, column); err != nil {
+			return false, err
+		}
+	}
+
 	err := db.Exec("ALTER TABLE ? DROP COLUMN ?", clause.Table{Name: table}, clause.Column{Name: column}).Error
-	if err == nil || common.MainDatabaseType() != common.DatabaseTypeSQLite {
-		return err
+	if err == nil {
+		return false, nil
+	}
+	if !strings.EqualFold(db.Dialector.Name(), string(common.DatabaseTypeSQLite)) {
+		return false, err
 	}
 	// SQLite before 3.35 has no native DROP COLUMN. The driver fallback
-	// rebuilds the table; migrateDB restores the current model indexes after
+	// rebuilds the table; migrateDB restores the current User indexes after
 	// all legacy columns have been removed.
-	return db.Migrator().DropColumn(table, column)
+	if fallbackErr := db.Migrator().DropColumn(table, column); fallbackErr != nil {
+		return true, fmt.Errorf("native drop failed: %v; rebuild failed: %w", err, fallbackErr)
+	}
+	return true, nil
+}
+
+func dropSQLiteIndexesForColumn(db *gorm.DB, table, column string) error {
+	rows, err := db.Raw("PRAGMA index_list(" + quoteSQLiteIdentifier(table) + ")").Rows()
+	if err != nil {
+		return err
+	}
+
+	var indexNames []string
+	for rows.Next() {
+		var seq, unique, partial int
+		var name, origin string
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		indexNames = append(indexNames, name)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	var indexesToDrop []string
+	for _, name := range indexNames {
+		indexRows, err := db.Raw("PRAGMA index_info(" + quoteSQLiteIdentifier(name) + ")").Rows()
+		if err != nil {
+			return err
+		}
+		containsColumn := false
+		for indexRows.Next() {
+			var indexSeq, columnID int
+			var indexedColumn sql.NullString
+			if err := indexRows.Scan(&indexSeq, &columnID, &indexedColumn); err != nil {
+				_ = indexRows.Close()
+				return err
+			}
+			if indexedColumn.Valid && strings.EqualFold(indexedColumn.String, column) {
+				containsColumn = true
+			}
+		}
+		if err := indexRows.Err(); err != nil {
+			_ = indexRows.Close()
+			return err
+		}
+		if err := indexRows.Close(); err != nil {
+			return err
+		}
+		if containsColumn {
+			indexesToDrop = append(indexesToDrop, name)
+		}
+	}
+
+	for _, name := range indexesToDrop {
+		if err := db.Migrator().DropIndex(table, name); err != nil {
+			return fmt.Errorf("drop SQLite index %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func quoteSQLiteIdentifier(identifier string) string {
+	return "`" + strings.ReplaceAll(identifier, "`", "``") + "`"
 }
 
 func migrateDB() error {

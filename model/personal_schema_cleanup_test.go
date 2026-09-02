@@ -10,7 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
+func openPersonalSchemaCleanupTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -19,6 +20,20 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 			_ = sqlDB.Close()
 		}
 	})
+	return db
+}
+
+func TestPersonalModelsDoNotRecreateRemovedAuthenticationTables(t *testing.T) {
+	db := openPersonalSchemaCleanupTestDB(t)
+	require.NoError(t, db.AutoMigrate(&User{}, &Option{}))
+
+	for _, table := range removedPersonalTables {
+		assert.False(t, db.Migrator().HasTable(table), table)
+	}
+}
+
+func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
+	db := openPersonalSchemaCleanupTestDB(t)
 
 	previousMain := common.MainDatabaseType()
 	previousLog := common.LogDatabaseType()
@@ -29,16 +44,42 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 		initCol()
 	})
 
-	require.NoError(t, db.AutoMigrate(&User{}, &Option{}))
+	require.NoError(t, db.AutoMigrate(
+		&User{},
+		&Option{},
+		&Token{},
+		&Channel{},
+		&Log{},
+		&Task{},
+		&QuotaData{},
+		&PerfMetric{},
+		&SystemInstance{},
+	))
 	require.NoError(t, db.Create(&User{Id: 1001, Username: "legacy-admin", Password: "password", Quota: 1000}).Error)
+	require.NoError(t, db.Create(&Token{Id: 2001, UserId: 1001, Key: "sk-preserved-token"}).Error)
+	require.NoError(t, db.Create(&Channel{Id: 3001, Name: "preserved-channel", Key: "channel-key"}).Error)
+	require.NoError(t, db.Create(&Log{Id: 4001, UserId: 1001, Content: "preserved-log"}).Error)
+	require.NoError(t, db.Create(&Task{ID: 5001, TaskID: "preserved-task", UserId: 1001}).Error)
+	require.NoError(t, db.Create(&QuotaData{Id: 6001, UserID: 1001, ModelName: "preserved-model"}).Error)
+	require.NoError(t, db.Create(&PerfMetric{Id: 7001, ModelName: "preserved-model", Group: "default", BucketTs: 1, RequestCount: 1}).Error)
+	require.NoError(t, db.Create(&SystemInstance{NodeName: "preserved-node"}).Error)
 
 	for _, column := range removedPersonalUserColumns {
 		require.NoError(t, db.Exec("ALTER TABLE `users` ADD COLUMN `"+column+"` TEXT").Error)
+		require.NoError(t, db.Exec("CREATE INDEX `idx_legacy_users_"+column+"` ON `users` (`"+column+"`)").Error)
 	}
 	for _, table := range removedPersonalTables {
 		require.NoError(t, db.Exec("CREATE TABLE `"+table+"` (`id` INTEGER)").Error)
 	}
-	for _, key := range []string{"PayAddress", "payment_setting.amount_options", "checkin_setting.enabled", "ModelRatio"} {
+	for _, key := range []string{
+		"PayAddress",
+		"payment_setting.amount_options",
+		"checkin_setting.enabled",
+		"discord.enabled",
+		"oidc.enabled",
+		"passkey.enabled",
+		"ModelRatio",
+	} {
 		require.NoError(t, db.Create(&Option{Key: key, Value: "legacy"}).Error)
 	}
 
@@ -50,6 +91,7 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 	}
 	for _, column := range removedPersonalUserColumns {
 		assert.False(t, db.Migrator().HasColumn("users", column), column)
+		assert.False(t, db.Migrator().HasIndex("users", "idx_legacy_users_"+column), column)
 	}
 	assert.True(t, db.Migrator().HasIndex("users", "idx_users_username"))
 	assert.False(t, db.Migrator().HasTable("users__temp"))
@@ -58,6 +100,34 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 	require.NoError(t, db.First(&user, 1001).Error)
 	assert.Equal(t, "legacy-admin", user.Username)
 	assert.Equal(t, 1000, user.Quota)
+
+	var token Token
+	require.NoError(t, db.First(&token, 2001).Error)
+	assert.Equal(t, "sk-preserved-token", token.Key)
+
+	var channel Channel
+	require.NoError(t, db.First(&channel, 3001).Error)
+	assert.Equal(t, "preserved-channel", channel.Name)
+
+	var logEntry Log
+	require.NoError(t, db.First(&logEntry, 4001).Error)
+	assert.Equal(t, "preserved-log", logEntry.Content)
+
+	var task Task
+	require.NoError(t, db.First(&task, 5001).Error)
+	assert.Equal(t, "preserved-task", task.TaskID)
+
+	var quotaData QuotaData
+	require.NoError(t, db.First(&quotaData, 6001).Error)
+	assert.Equal(t, "preserved-model", quotaData.ModelName)
+
+	var metric PerfMetric
+	require.NoError(t, db.First(&metric, 7001).Error)
+	assert.Equal(t, int64(1), metric.RequestCount)
+
+	var instance SystemInstance
+	require.NoError(t, db.Where("node_name = ?", "preserved-node").First(&instance).Error)
+	assert.Equal(t, "preserved-node", instance.NodeName)
 
 	var options []Option
 	require.NoError(t, db.Find(&options).Error)
