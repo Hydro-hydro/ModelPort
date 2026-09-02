@@ -25,7 +25,6 @@ const legacyConsoleRoutes: Record<string, string> = {
   '/console/channel': '/channels',
   '/console/token': '/keys',
   '/console/playground': '/playground',
-  '/console/user': '/users',
   '/console/personal': '/profile',
   '/console/log': '/usage-logs',
   '/console/midjourney': '/usage-logs/drawing',

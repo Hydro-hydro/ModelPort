@@ -124,10 +124,3 @@ export interface UpdateUserSettingsRequest {
   record_ip_log?: boolean
   upstream_model_update_notify_enabled?: boolean
 }
-
-/**
- * Account deletion request
- */
-export interface DeleteAccountRequest {
-  password?: string
-}

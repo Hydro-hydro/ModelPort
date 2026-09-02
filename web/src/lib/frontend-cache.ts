@@ -20,10 +20,6 @@ const FRONTEND_CACHE_VERSION = 'default-v1'
 const FRONTEND_CACHE_VERSION_KEY = 'newapi:default:cache-version'
 const PRESERVED_LOCAL_STORAGE_KEYS = new Set([
   FRONTEND_CACHE_VERSION_KEY,
-  'user',
-  'uid',
-  'aff',
-  'oauth:binding:result',
 ])
 
 export function initializeFrontendCache(): void {

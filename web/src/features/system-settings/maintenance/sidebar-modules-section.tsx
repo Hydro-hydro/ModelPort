@@ -134,10 +134,6 @@ export function SidebarModulesSection({
         title: t('Models'),
         description: t('Manage catalog visibility and pricing.'),
       },
-      user: {
-        title: t('Users'),
-        description: t('Administer user accounts and roles.'),
-      },
       setting: {
         title: t('System settings'),
         description: t('Advanced platform configuration.'),

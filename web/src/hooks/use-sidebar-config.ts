@@ -58,7 +58,6 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     enabled: true,
     channel: true,
     models: true,
-    user: true,
     setting: true,
   },
 }
@@ -107,7 +106,6 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/models': { section: 'admin', module: 'models' },
   '/models/metadata': { section: 'admin', module: 'models' },
   '/models/deployments': { section: 'admin', module: 'models' },
-  '/users': { section: 'admin', module: 'user' },
   '/system-settings': { section: 'admin', module: 'setting' },
   '/system-settings/site': { section: 'admin', module: 'setting' },
 }
@@ -125,6 +123,11 @@ function parseSidebarConfig(
 
   try {
     const parsed = JSON.parse(value) as SidebarModulesAdminConfig
+    if (parsed.admin) {
+      const adminModules = { ...parsed.admin }
+      delete adminModules.user
+      parsed.admin = adminModules
+    }
     return mergeWithDefaultSidebarModules(parsed)
   } catch {
     // eslint-disable-next-line no-console

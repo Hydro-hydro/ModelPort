@@ -30,7 +30,6 @@ import {
   ServerCog,
   Settings,
   User,
-  Users,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -132,15 +131,6 @@ export function useSidebarData(): SidebarData {
             url: '/models/metadata',
             icon: Box,
           },
-          ...(isEnabled('user_management')
-            ? [
-                {
-                  title: t('Users'),
-                  url: '/users' as const,
-                  icon: Users,
-                },
-              ]
-            : []),
           ...(isEnabled('multi_node')
             ? [
                 {

@@ -60,7 +60,6 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     enabled: true,
     channel: true,
     models: true,
-    user: true,
     setting: true,
   },
 }
@@ -69,6 +68,7 @@ const RETIRED_SIDEBAR_MODULES = new Set([
   'personal.topup',
   'admin.redemption',
   'admin.subscription',
+  'admin.user',
 ])
 
 const toBoolean = (value: unknown, fallback: boolean): boolean => {

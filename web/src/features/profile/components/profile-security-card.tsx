@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Shield, Key, Trash2 } from 'lucide-react'
+import { Key, Shield } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -28,7 +28,6 @@ import { useDialogs } from '@/hooks/use-dialog'
 import type { UserProfile } from '../types'
 import { AccessTokenDialog } from './dialogs/access-token-dialog'
 import { ChangePasswordDialog } from './dialogs/change-password-dialog'
-import { DeleteAccountDialog } from './dialogs/delete-account-dialog'
 
 // ============================================================================
 // Profile Security Card Component
@@ -39,7 +38,7 @@ interface ProfileSecurityCardProps {
   loading: boolean
 }
 
-type DialogKey = 'password' | 'token' | 'delete'
+type DialogKey = 'password' | 'token'
 
 export function ProfileSecurityCard({
   profile,
@@ -56,7 +55,7 @@ export function ProfileSecurityCard({
           <Skeleton className='mt-2 h-4 w-48' />
         </CardHeader>
         <CardContent className='space-y-3 p-3 sm:p-5'>
-          {['password', 'token', 'delete'].map((key) => (
+          {['password', 'token'].map((key) => (
             <Skeleton key={key} className='h-16 w-full' />
           ))}
         </CardContent>
@@ -72,21 +71,12 @@ export function ProfileSecurityCard({
       title: t('Change Password'),
       description: t('Update your password to keep your account secure'),
       action: () => dialogs.open('password'),
-      variant: 'default' as const,
     },
     {
       icon: Key,
       title: t('Access Token'),
       description: t('Generate and manage your API access token'),
       action: () => dialogs.open('token'),
-      variant: 'default' as const,
-    },
-    {
-      icon: Trash2,
-      title: t('Delete Account'),
-      description: t('Permanently delete your account and all data'),
-      action: () => dialogs.open('delete'),
-      variant: 'destructive' as const,
     },
   ]
 
@@ -105,9 +95,7 @@ export function ProfileSecurityCard({
               key={item.title}
               type='button'
               onClick={item.action}
-              className={`flex items-center gap-3 rounded-lg border p-3 text-left md:flex-col md:gap-2 md:p-4 md:text-center ${
-                item.variant === 'destructive' ? 'border-destructive/30' : ''
-              }`}
+              className='flex items-center gap-3 rounded-lg border p-3 text-left md:flex-col md:gap-2 md:p-4 md:text-center'
             >
               <IconBadge tone='neutral' size='sm'>
                 <item.icon />
@@ -139,13 +127,6 @@ export function ProfileSecurityCard({
         }
       />
 
-      <DeleteAccountDialog
-        open={dialogs.isOpen('delete')}
-        onOpenChange={(open) =>
-          open ? dialogs.open('delete') : dialogs.close('delete')
-        }
-        username={profile.username}
-      />
     </>
   )
 }
