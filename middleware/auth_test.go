@@ -152,7 +152,7 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	}
 	accessToken, _, err := service.IssueAccessToken(identity)
 	require.NoError(t, err)
-	securityProof, _, err := service.IssueSecurityProof(identity, "2fa", []string{"channel.key.read"})
+	securityProof, _, err := service.IssueSecurityProof(identity, "password", []string{"channel.key.read"})
 	require.NoError(t, err)
 	externalToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"iss": "external-issuer",

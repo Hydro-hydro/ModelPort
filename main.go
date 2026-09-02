@@ -315,11 +315,11 @@ func InitResources() error {
 		common.FatalLog("failed to initialize authorization: " + err.Error())
 		return err
 	}
-	if common.PasswordLoginEncryptionEnabled {
-		if err = model.InitPasswordEncryption(); err != nil {
-			common.FatalLog("failed to initialize password encryption: " + err.Error())
-			return err
-		}
+	// LoginEncryptionKey is also used for administrator password security proofs,
+	// so it must be initialized even when encrypted dashboard login is disabled.
+	if err = model.InitPasswordEncryption(); err != nil {
+		common.FatalLog("failed to initialize password encryption: " + err.Error())
+		return err
 	}
 
 	model.CheckSetup()

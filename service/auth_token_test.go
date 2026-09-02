@@ -30,7 +30,7 @@ func TestAccessTokenRoundTripAndPurposeIsolation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, identity, parsed)
 
-	proof, _, err := IssueSecurityProof(identity, "2fa", []string{"channel.key.read"})
+	proof, _, err := IssueSecurityProof(identity, "password", []string{"channel.key.read"})
 	require.NoError(t, err)
 	_, err = ParseAccessToken(proof)
 	assert.ErrorIs(t, err, ErrAuthTokenInvalid)
@@ -89,7 +89,7 @@ func TestDashboardAccessTokenClassification(t *testing.T) {
 
 	proof, _, err := IssueSecurityProof(AuthIdentity{
 		UserID: 42, SessionID: "session-1", UserAuthVersion: 1, SessionVersion: 1,
-	}, "2fa", []string{"channel.key.read"})
+	}, "password", []string{"channel.key.read"})
 	require.NoError(t, err)
 	_, internal, err = ParseDashboardAccessToken(proof)
 	assert.True(t, internal)
@@ -120,14 +120,14 @@ func TestDashboardAccessTokenClassification(t *testing.T) {
 func TestSecurityProofBindsIdentityMethodAndScope(t *testing.T) {
 	useTestSessionSecret(t)
 	identity := AuthIdentity{UserID: 42, SessionID: "session-1", UserAuthVersion: 3, SessionVersion: 2}
-	proof, _, err := IssueSecurityProof(identity, "2fa", []string{"channel.key.read"})
+	proof, _, err := IssueSecurityProof(identity, "password", []string{"channel.key.read"})
 	require.NoError(t, err)
 
-	method, err := VerifySecurityProof(proof, identity, "channel.key.read", []string{"2fa", "passkey"})
+	method, err := VerifySecurityProof(proof, identity, "channel.key.read", []string{"password"})
 	require.NoError(t, err)
-	assert.Equal(t, "2fa", method)
+	assert.Equal(t, "password", method)
 
-	_, err = VerifySecurityProof(proof, identity, "passkey.delete", []string{"2fa"})
+	_, err = VerifySecurityProof(proof, identity, "passkey.delete", []string{"password"})
 	assert.ErrorIs(t, err, ErrProofScope)
 
 	_, err = VerifySecurityProof(proof, identity, "channel.key.read", []string{"passkey"})
@@ -135,6 +135,6 @@ func TestSecurityProofBindsIdentityMethodAndScope(t *testing.T) {
 
 	otherSession := identity
 	otherSession.SessionID = "session-2"
-	_, err = VerifySecurityProof(proof, otherSession, "channel.key.read", []string{"2fa"})
+	_, err = VerifySecurityProof(proof, otherSession, "channel.key.read", []string{"password"})
 	assert.True(t, errors.Is(err, ErrAuthTokenInvalid))
 }

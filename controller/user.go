@@ -35,17 +35,13 @@ var (
 )
 
 func GetPasswordEncryptionKey(c *gin.Context) {
-	if !common.PasswordLoginEncryptionEnabled {
-		common.ApiSuccess(c, gin.H{"enabled": false})
-		return
-	}
 	keyID, publicKey := common.PasswordEncryptionPublicKey()
 	if keyID == "" || publicKey == "" {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 		return
 	}
 	common.ApiSuccess(c, gin.H{
-		"enabled":    true,
+		"enabled":    common.PasswordLoginEncryptionEnabled,
 		"kid":        keyID,
 		"public_key": publicKey,
 	})

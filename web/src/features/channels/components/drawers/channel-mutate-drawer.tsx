@@ -697,13 +697,11 @@ export function ChannelMutateDrawer({
 
   const {
     open: verificationOpen,
-    methods: verificationMethods,
     state: verificationState,
     executeVerification,
     withVerification,
     cancel: cancelVerification,
     setCode: setVerificationCode,
-    switchMethod: switchVerificationMethod,
   } = useSecureVerification()
 
   useEffect(() => {
@@ -1402,10 +1400,10 @@ export function ChannelMutateDrawer({
     try {
       await withVerification(fetchChannelKey, {
         scope: 'channel.key.read',
-        preferredMethod: 'passkey',
+        preferredMethod: 'password',
         title: t('Verify to view channel key'),
         description: t(
-          'Use Passkey or 2FA to confirm your identity before revealing this channel key.'
+          'Confirm your identity before accessing this sensitive action.'
         ),
       })
     } catch (error) {
@@ -4938,14 +4936,12 @@ export function ChannelMutateDrawer({
             cancelVerification()
           }
         }}
-        methods={verificationMethods}
         state={verificationState}
         onVerify={async (method, code) => {
           await executeVerification(method, code)
         }}
         onCancel={cancelVerification}
         onCodeChange={setVerificationCode}
-        onMethodChange={switchVerificationMethod}
       />
 
       {/* Missing Models Confirmation Dialog */}
