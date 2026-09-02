@@ -61,7 +61,7 @@ func performHeaderNavRequest(t *testing.T, handler gin.HandlerFunc, authenticate
 		user := model.User{
 			Username:    "tester",
 			Password:    "unused-password-hash",
-			Role:        common.RoleCommonUser,
+			Role:        common.RoleRootUser,
 			Status:      common.UserStatusEnabled,
 			Group:       "default",
 			AuthVersion: 1,

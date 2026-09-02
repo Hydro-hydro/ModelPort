@@ -20,6 +20,7 @@ func TestListModelsSupportsOpenAIAndGeminiAuthentication(t *testing.T) {
 
 	user := model.User{
 		Username: "models-user",
+		Role:     common.RoleRootUser,
 		Status:   common.UserStatusEnabled,
 		Group:    "default",
 		Quota:    100,

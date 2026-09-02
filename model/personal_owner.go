@@ -12,6 +12,7 @@ var (
 	ErrPersonalOwnerNotFound  = errors.New("personal owner not found")
 	ErrPersonalOwnerAmbiguous = errors.New("personal owner is ambiguous")
 	ErrPersonalOwnerDisabled  = errors.New("personal owner is disabled")
+	ErrPersonalOwnerMismatch  = errors.New("request is not from the personal owner")
 )
 
 // EnsurePersonalOwner validates the single administrator account used by
@@ -89,4 +90,19 @@ func GetPersonalOwner() (*User, error) {
 		return nil, ErrPersonalOwnerDisabled
 	}
 	return &administrators[0], nil
+}
+
+// ValidatePersonalOwner verifies that userID is the single account selected as
+// the personal edition owner. It is intentionally separate from role checks:
+// historical administrator and token records must not regain access merely by
+// carrying an administrator role.
+func ValidatePersonalOwner(userID int) error {
+	owner, err := GetPersonalOwner()
+	if err != nil {
+		return err
+	}
+	if owner.Id != userID {
+		return ErrPersonalOwnerMismatch
+	}
+	return nil
 }

@@ -43,7 +43,7 @@ func TestGetOpenAIVideoRouteRendersJimengTask(t *testing.T) {
 	require.NoError(t, database.Create(&model.User{
 		Id:          91,
 		Username:    "jimeng-fetch-user",
-		Role:        common.RoleCommonUser,
+		Role:        common.RoleRootUser,
 		Status:      common.UserStatusEnabled,
 		Quota:       100,
 		Group:       "default",

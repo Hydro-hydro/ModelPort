@@ -33,7 +33,7 @@ func TestAuthLogoutRejectsRefreshCookieSessionMismatch(t *testing.T) {
 	})
 
 	user := &model.User{
-		Username: "logout-mismatch-user", Password: "unused", Role: common.RoleCommonUser,
+		Username: "logout-mismatch-user", Password: "unused", Role: common.RoleRootUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
 	}
 	require.NoError(t, db.Create(user).Error)
@@ -131,7 +131,7 @@ func TestSessionLimitDoesNotRecordRejectedLoginAsSuccessful(t *testing.T) {
 
 	const previousLastLoginAt = int64(123)
 	user := &model.User{
-		Username: "rejected-login-audit-user", Password: "unused", Role: common.RoleCommonUser,
+		Username: "rejected-login-audit-user", Password: "unused", Role: common.RoleRootUser,
 		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, LastLoginAt: previousLastLoginAt,
 	}
 	require.NoError(t, db.Create(user).Error)
@@ -152,4 +152,61 @@ func TestSessionLimitDoesNotRecordRejectedLoginAsSuccessful(t *testing.T) {
 	var stored model.User
 	require.NoError(t, db.First(&stored, user.Id).Error)
 	assert.Equal(t, previousLastLoginAt, stored.LastLoginAt)
+}
+
+func TestAuthLogoutRejectsHistoricalUserRefreshCookie(t *testing.T) {
+	previousDB := model.DB
+	previousRedis := common.RedisEnabled
+	previousSecret := common.SessionSecret
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
+	model.DB = db
+	common.RedisEnabled = false
+	common.SessionSecret = "auth-logout-owner-test-secret"
+	t.Cleanup(func() {
+		model.DB = previousDB
+		common.RedisEnabled = previousRedis
+		common.SessionSecret = previousSecret
+	})
+
+	owner := &model.User{
+		Username: "root", Password: "unused", Role: common.RoleRootUser,
+		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
+	}
+	historicalUser := &model.User{
+		Username: "historical-user", Password: "unused", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
+	}
+	require.NoError(t, db.Create(owner).Error)
+	require.NoError(t, db.Create(historicalUser).Error)
+
+	rootBundle, err := service.CreateLoginSession(owner.Id, "password", "127.0.0.1", "owner-agent")
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.UserSession{}).
+		Where("sid = ?", rootBundle.Session.SID).
+		Update("user_id", historicalUser.Id).Error)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/user/auth/logout", nil)
+	c.Request.AddCookie(&http.Cookie{
+		Name:  service.RefreshCookieName,
+		Value: rootBundle.RefreshToken,
+	})
+
+	AuthLogout(c)
+
+	assert.Equal(t, http.StatusForbidden, recorder.Code)
+	var response struct {
+		Success bool   `json:"success"`
+		Code    string `json:"code"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Equal(t, "AUTH_OWNER_REQUIRED", response.Code)
+	stored, err := model.GetUserSessionBySID(rootBundle.Session.SID)
+	require.NoError(t, err)
+	assert.Equal(t, model.UserSessionStatusActive, stored.Status)
 }

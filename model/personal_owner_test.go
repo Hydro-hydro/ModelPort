@@ -108,3 +108,16 @@ func TestEnsurePersonalOwnerRejectsDisabledAdministrator(t *testing.T) {
 		return err
 	}(), ErrPersonalOwnerDisabled)
 }
+
+func TestValidatePersonalOwnerRejectsHistoricalUser(t *testing.T) {
+	db := setupPersonalOwnerTestDB(t)
+	require.NoError(t, db.Create(&User{
+		Id: 10, Username: "root", Password: "password", Role: common.RoleRootUser, Status: common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&User{
+		Id: 11, Username: "historical-user", Password: "password", Role: common.RoleCommonUser, Status: common.UserStatusEnabled,
+	}).Error)
+
+	require.NoError(t, ValidatePersonalOwner(10))
+	assert.ErrorIs(t, ValidatePersonalOwner(11), ErrPersonalOwnerMismatch)
+}

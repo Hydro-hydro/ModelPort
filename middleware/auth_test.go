@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,21 +25,40 @@ import (
 func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	t.Helper()
 	previousDB := model.DB
-	previousType := common.MainDatabaseType()
+	previousLogDB := model.LOG_DB
+	previousMainType := common.MainDatabaseType()
+	previousLogType := common.LogDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousSecret := common.SessionSecret
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
-	model.DB = db
-	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	previousSQLitePath := common.SQLitePath
+	previousMasterNode := common.IsMasterNode
+	previousDSN, hadDSN := os.LookupEnv("SQL_DSN")
+
+	common.SQLitePath = fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	common.IsMasterNode = false
+	require.NoError(t, os.Setenv("SQL_DSN", "local"))
+	require.NoError(t, model.InitDB())
+	db := model.DB
+	model.LOG_DB = db
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.Token{}))
 	common.RedisEnabled = false
 	common.SessionSecret = "middleware-auth-test-secret"
 	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
 		model.DB = previousDB
-		common.SetMainDatabaseType(previousType)
+		model.LOG_DB = previousLogDB
+		common.SetDatabaseTypes(previousMainType, previousLogType)
 		common.RedisEnabled = previousRedis
 		common.SessionSecret = previousSecret
+		common.SQLitePath = previousSQLitePath
+		common.IsMasterNode = previousMasterNode
+		if hadDSN {
+			_ = os.Setenv("SQL_DSN", previousDSN)
+		} else {
+			_ = os.Unsetenv("SQL_DSN")
+		}
 	})
 }
 
@@ -73,19 +93,27 @@ func tamperDashboardToken(token string) string {
 	return token[:tamperAt] + replacement + token[tamperAt+1:]
 }
 
-func createMiddlewarePATUser(t *testing.T, username, token string) *model.User {
+func createMiddlewareUser(t *testing.T, username string, role int, accessToken string) *model.User {
 	t.Helper()
 	user := &model.User{
-		Username: username, Password: "password-placeholder", Role: common.RoleCommonUser,
-		Status: common.UserStatusEnabled, Group: "default", AccessToken: &token, AuthVersion: 1,
+		Username: username, Password: "password-placeholder", Role: role,
+		Status: common.UserStatusEnabled, Group: "default", AccessToken: &accessToken, AuthVersion: 1,
 	}
 	require.NoError(t, model.DB.Create(user).Error)
 	return user
 }
 
+func createMiddlewarePATUser(t *testing.T, username, token string) *model.User {
+	return createMiddlewareUser(t, username, common.RoleCommonUser, token)
+}
+
+func createMiddlewareRootPATUser(t *testing.T, username, token string) *model.User {
+	return createMiddlewareUser(t, username, common.RoleRootUser, token)
+}
+
 func TestUserAuthAllowsOpaqueDottedPAT(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
-	user := createMiddlewarePATUser(t, "dotted-pat-user", "opaque.key.with-dots")
+	user := createMiddlewareRootPATUser(t, "dotted-pat-user", "opaque.key.with-dots")
 	router := gin.New()
 	router.GET("/protected", UserAuth(), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"id": c.GetInt("id")})
@@ -125,11 +153,111 @@ func TestUserAuthNeverFallsBackForRecognizedInvalidInternalJWT(t *testing.T) {
 	assert.Contains(t, response.Body.String(), "AUTH_UNAUTHORIZED")
 }
 
+func TestTokenAuthRejectsNonOwnerToken(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	owner := createMiddlewareRootPATUser(t, "root-owner", "rootrelaytoken")
+	commonUser := createMiddlewarePATUser(t, "historical-user", "commonrelaytoken")
+	for _, token := range []struct {
+		userID int
+		key    string
+	}{
+		{userID: owner.Id, key: "rootrelaytoken"},
+		{userID: commonUser.Id, key: "commonrelaytoken"},
+	} {
+		require.NoError(t, model.DB.Create(&model.Token{
+			UserId: token.userID, Key: token.key, Status: common.TokenStatusEnabled,
+			RemainQuota: 10_000, UnlimitedQuota: true,
+		}).Error)
+	}
+
+	router := gin.New()
+	router.GET("/relay", TokenAuth(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+
+	for _, test := range []struct {
+		name       string
+		token      string
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "root token", token: "rootrelaytoken", wantStatus: http.StatusNoContent},
+		{name: "historical common user token", token: "commonrelaytoken", wantStatus: http.StatusForbidden, wantCode: "access_denied"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/relay", nil)
+			request.Header.Set("Authorization", "Bearer "+test.token)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			assert.Equal(t, test.wantStatus, response.Code)
+			if test.wantCode != "" {
+				assert.Contains(t, response.Body.String(), test.wantCode)
+			}
+		})
+	}
+}
+
+func TestDashboardAuthRejectsNonOwnerAccessToken(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	createMiddlewareRootPATUser(t, "root-owner", "unused-root-pat")
+	historicalUser := createMiddlewarePATUser(t, "historical-user", "historical-access-token")
+
+	router := gin.New()
+	router.GET("/dashboard", UserAuth(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	request := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	request.Header.Set("Authorization", "Bearer historical-access-token")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Contains(t, response.Body.String(), "AUTH_OWNER_REQUIRED")
+	assert.Equal(t, common.RoleCommonUser, historicalUser.Role)
+}
+
+func TestTokenAuthReadOnlyRejectsNonOwnerToken(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	owner := createMiddlewareRootPATUser(t, "root-owner", "readonlyroot")
+	historicalUser := createMiddlewarePATUser(t, "historical-user", "readonlycommon")
+	for _, token := range []struct {
+		userID int
+		key    string
+	}{
+		{userID: owner.Id, key: "readonlyroot"},
+		{userID: historicalUser.Id, key: "readonlycommon"},
+	} {
+		require.NoError(t, model.DB.Create(&model.Token{
+			UserId: token.userID, Key: token.key, Status: common.TokenStatusEnabled,
+			RemainQuota: 10_000, UnlimitedQuota: true,
+		}).Error)
+	}
+
+	router := gin.New()
+	router.GET("/usage", TokenAuthReadOnly(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	for _, test := range []struct {
+		name       string
+		token      string
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "root token", token: "readonlyroot", wantStatus: http.StatusNoContent},
+		{name: "historical common user token", token: "readonlycommon", wantStatus: http.StatusForbidden, wantCode: "access_denied"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/usage", nil)
+			request.Header.Set("Authorization", "Bearer "+test.token)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			assert.Equal(t, test.wantStatus, response.Code)
+			if test.wantCode != "" {
+				assert.Contains(t, response.Body.String(), test.wantCode)
+			}
+		})
+	}
+}
+
 func TestTryUserAuthCredentialClassification(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
 	gin.SetMode(gin.TestMode)
 
-	patUser := createMiddlewarePATUser(t, "optional-pat-user", "optional.pat.with-dots")
+	patUser := createMiddlewareRootPATUser(t, "optional-pat-user", "optional.pat.with-dots")
 	internalUser := createMiddlewarePATUser(t, "optional-session-user", "unrelated-pat")
 	now := time.Now().Unix()
 	session := &model.UserSession{
@@ -182,7 +310,7 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 		{name: "dotted unmatched credential", token: "ordinary.key.with-dots", wantStatus: http.StatusOK},
 		{name: "third party jwt", token: externalToken, wantStatus: http.StatusOK},
 		{name: "valid pat", token: "optional.pat.with-dots", wantStatus: http.StatusOK, wantUserID: patUser.Id, wantPAT: true},
-		{name: "valid internal access jwt", token: accessToken, wantStatus: http.StatusOK, wantUserID: internalUser.Id},
+		{name: "non-owner internal access jwt", token: accessToken, wantStatus: http.StatusForbidden, wantErrorCode: "AUTH_OWNER_REQUIRED"},
 		{name: "expired internal access jwt", token: issueExpiredDashboardAccessToken(t, identity), wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_TOKEN_EXPIRED"},
 		{name: "tampered internal access jwt", token: tamperDashboardToken(accessToken), wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_UNAUTHORIZED"},
 		{name: "security proof used as access", token: securityProof, wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_UNAUTHORIZED"},

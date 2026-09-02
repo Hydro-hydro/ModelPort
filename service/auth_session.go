@@ -54,6 +54,9 @@ func CreateLoginSessionAtAuthVersion(userID int, expectedAuthVersion int64, logi
 }
 
 func createLoginSession(userID int, expectedAuthVersion int64, loginMethod, ip, userAgent string) (*AuthBundle, error) {
+	if err := model.ValidatePersonalOwner(userID); err != nil {
+		return nil, err
+	}
 	user, err := model.GetUserCache(userID)
 	if err != nil {
 		return nil, err
@@ -129,6 +132,9 @@ func ValidateLoginSession(identity AuthIdentity) (*model.UserSession, *model.Use
 	}
 	if user.Status != common.UserStatusEnabled || user.AuthVersion != identity.UserAuthVersion {
 		return nil, nil, ErrLoginSessionRevoked
+	}
+	if err := model.ValidatePersonalOwner(identity.UserID); err != nil {
+		return nil, nil, err
 	}
 	return session, user, nil
 }
@@ -228,6 +234,9 @@ func RefreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent string) (*A
 		currentUser.Status != common.UserStatusEnabled || currentUser.AuthVersion != session.UserAuthVersion {
 		_, _ = model.RevokeUserSession(session.UserID, session.SID, "user_security_changed")
 		return nil, nil, ErrLoginSessionRevoked
+	}
+	if err := model.ValidatePersonalOwner(session.UserID); err != nil {
+		return nil, nil, err
 	}
 	nextSecret := deriveNextRefreshSecret(sid, secret)
 	rotated, err := model.RotateUserSessionRefresh(session.UserID, sid, hashRefreshSecret(secret), hashRefreshSecret(nextSecret), time.Now().Unix(), RefreshReplayWindow)
@@ -395,6 +404,8 @@ func authSessionErrorCode(err error) (int, string) {
 		return http.StatusConflict, "AUTH_SESSION_MISMATCH"
 	case errors.Is(err, ErrRefreshRace):
 		return http.StatusConflict, "AUTH_REFRESH_RACE"
+	case errors.Is(err, model.ErrPersonalOwnerMismatch):
+		return http.StatusForbidden, "AUTH_OWNER_REQUIRED"
 	case errors.Is(err, ErrAuthTokenExpired):
 		return http.StatusUnauthorized, "AUTH_TOKEN_EXPIRED"
 	case errors.Is(err, ErrLoginSessionRevoked):

@@ -53,7 +53,7 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 	user := &model.User{
 		Username:    "session-user",
 		Password:    "unused-password-hash",
-		Role:        common.RoleCommonUser,
+		Role:        common.RoleRootUser,
 		Status:      common.UserStatusEnabled,
 		Group:       "default",
 		AuthVersion: 1,
@@ -383,4 +383,22 @@ func TestUserAuthVersionInvalidatesExistingSession(t *testing.T) {
 	assert.ErrorIs(t, err, ErrLoginSessionRevoked)
 	_, err = CreateLoginSessionAtAuthVersion(user.Id, identity.UserAuthVersion, "2fa", "127.0.0.1", "test-agent")
 	assert.ErrorIs(t, err, ErrLoginSessionRevoked, "旧鉴权版本的登录会话不能在鉴权版本变更后继续使用")
+}
+
+func TestCreateLoginSessionRejectsHistoricalUser(t *testing.T) {
+	useTestSessionSecret(t)
+	owner := setupAuthSessionTestDB(t)
+	historicalUser := &model.User{
+		Username:    "historical-user",
+		Password:    "unused-password-hash",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		AuthVersion: 1,
+	}
+	require.NoError(t, model.DB.Create(historicalUser).Error)
+
+	_, err := CreateLoginSession(historicalUser.Id, "password", "127.0.0.1", "test-agent")
+	assert.ErrorIs(t, err, model.ErrPersonalOwnerMismatch)
+	assert.Equal(t, common.RoleRootUser, owner.Role)
 }

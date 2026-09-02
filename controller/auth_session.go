@@ -56,6 +56,10 @@ func AuthLogout(c *gin.Context) {
 
 	if rawAccessToken, ok := dashboardBearer(c.GetHeader("Authorization")); ok {
 		if identity, err := service.ParseAccessToken(rawAccessToken); err == nil {
+			if err := model.ValidatePersonalOwner(identity.UserID); err != nil {
+				writeAuthSessionError(c, err)
+				return
+			}
 			if expectedSID != "" && expectedSID != identity.SessionID {
 				writeAuthSessionError(c, service.ErrLoginSessionMismatch)
 				return
@@ -85,6 +89,18 @@ func AuthLogout(c *gin.Context) {
 		service.ClearRefreshCookie(c)
 		c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
 		return
+	}
+	if hasCookieSID {
+		var session model.UserSession
+		if err := model.DB.Where("sid = ?", cookieSID).First(&session).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				writeAuthSessionError(c, err)
+				return
+			}
+		} else if err := model.ValidatePersonalOwner(session.UserID); err != nil {
+			writeAuthSessionError(c, err)
+			return
+		}
 	}
 	if err := service.RevokeByRefreshToken(rawRefreshToken, expectedSID, "logout"); err != nil {
 		writeAuthSessionError(c, err)
@@ -165,6 +181,9 @@ func writeAuthSessionError(c *gin.Context, err error) {
 	status, code := service.AuthSessionErrorCode(err)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		status, code = http.StatusUnauthorized, "AUTH_UNAUTHORIZED"
+	}
+	if errors.Is(err, model.ErrPersonalOwnerMismatch) {
+		status, code = http.StatusForbidden, "AUTH_OWNER_REQUIRED"
 	}
 	if status == http.StatusInternalServerError {
 		// The response body only carries the generic AUTH_INTERNAL_ERROR

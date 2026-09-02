@@ -54,6 +54,10 @@ func authHelper(c *gin.Context, minRole int) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "code": "AUTH_USER_DISABLED", "message": common.TranslateMessage(c, i18n.MsgAuthUserBanned)})
 		return
 	}
+	if err := model.ValidatePersonalOwner(user.Id); err != nil {
+		writeDashboardAuthError(c, err)
+		return
+	}
 	if user.Role < minRole {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "code": "AUTH_INSUFFICIENT_PRIVILEGE", "message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege)})
 		return
@@ -85,6 +89,10 @@ func TryUserAuth() func(c *gin.Context) {
 			return
 		}
 		if credentialKind != dashboardCredentialUnmatched {
+			if err := model.ValidatePersonalOwner(user.Id); err != nil {
+				writeDashboardAuthError(c, err)
+				return
+			}
 			setDashboardAuthContext(c, user, identity, credentialKind == dashboardCredentialPAT)
 		}
 		c.Next()
@@ -217,6 +225,10 @@ func writeDashboardAuthError(c *gin.Context, err error) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "code": "AUTH_SESSION_REVOKED", "message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn)})
 		return
 	}
+	if errors.Is(err, model.ErrPersonalOwnerMismatch) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "code": "AUTH_OWNER_REQUIRED", "message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege)})
+		return
+	}
 	if errors.Is(err, service.ErrAuthTokenInvalid) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "code": "AUTH_UNAUTHORIZED", "message": common.TranslateMessage(c, i18n.MsgAuthAccessTokenInvalid)})
 		return
@@ -265,6 +277,10 @@ func TokenOrUserAuth() func(c *gin.Context) {
 				writeDashboardAuthError(c, err)
 				return
 			}
+			if err := model.ValidatePersonalOwner(user.Id); err != nil {
+				writeDashboardAuthError(c, err)
+				return
+			}
 			setDashboardAuthContext(c, user, identity, false)
 			c.Next()
 			return
@@ -272,6 +288,18 @@ func TokenOrUserAuth() func(c *gin.Context) {
 		// Opaque credentials are relay API keys here, never dashboard PATs.
 		TokenAuth()(c)
 	}
+}
+
+func requireRelayPersonalOwner(c *gin.Context, userID int) bool {
+	if err := model.ValidatePersonalOwner(userID); err == nil {
+		return true
+	} else if errors.Is(err, model.ErrPersonalOwnerMismatch) {
+		abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege), types.ErrorCodeAccessDenied)
+	} else {
+		common.SysLog(fmt.Sprintf("personal owner validation failed for user %d: %v", userID, err))
+		abortWithOpenAiMessage(c, http.StatusInternalServerError, common.TranslateMessage(c, i18n.MsgDatabaseError))
+	}
+	return false
 }
 
 // TokenAuthReadOnly 宽松版本的令牌认证中间件，用于只读查询接口。
@@ -341,6 +369,9 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 				"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
 			})
 			c.Abort()
+			return
+		}
+		if !requireRelayPersonalOwner(c, token.UserId) {
 			return
 		}
 
@@ -424,6 +455,9 @@ func TokenAuth() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusUnauthorized,
 					common.TranslateMessage(c, i18n.MsgTokenInvalid))
 			}
+			return
+		}
+		if !requireRelayPersonalOwner(c, token.UserId) {
 			return
 		}
 
