@@ -382,5 +382,5 @@ func TestUserAuthVersionInvalidatesExistingSession(t *testing.T) {
 	_, _, err = ValidateLoginSession(identity)
 	assert.ErrorIs(t, err, ErrLoginSessionRevoked)
 	_, err = CreateLoginSessionAtAuthVersion(user.Id, identity.UserAuthVersion, "2fa", "127.0.0.1", "test-agent")
-	assert.ErrorIs(t, err, ErrLoginSessionRevoked, "a pending 2FA flow must not survive an auth-version change")
+	assert.ErrorIs(t, err, ErrLoginSessionRevoked, "旧鉴权版本的登录会话不能在鉴权版本变更后继续使用")
 }
