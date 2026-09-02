@@ -626,29 +626,3 @@ func TestUserUpdateBumpsAuthVersionOnlyForAuthorizationChanges(t *testing.T) {
 	require.NoError(t, user.Update(false))
 	assert.Equal(t, int64(3), user.AuthVersion)
 }
-
-func TestPasswordResetBumpsAuthVersionAndRevokesSessions(t *testing.T) {
-	setupUserSessionTest(t)
-	now := time.Now().Unix()
-	user := &User{
-		Username: "password-reset-user",
-		Password: "old-hash",
-		Email:    "password-reset@example.com",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-		Group:    "default",
-	}
-	require.NoError(t, DB.Create(user).Error)
-	t.Cleanup(func() { _ = DB.Unscoped().Delete(&User{}, user.Id).Error })
-	session := newTestUserSession("password-reset-session", user.Id, now)
-	require.NoError(t, CreateUserSession(session))
-
-	require.NoError(t, ResetUserPasswordByEmail(user.Email, "new-password"))
-	var stored User
-	require.NoError(t, DB.First(&stored, user.Id).Error)
-	assert.Equal(t, int64(2), stored.AuthVersion)
-	storedSession, err := GetUserSessionBySID(session.SID)
-	require.NoError(t, err)
-	assert.Equal(t, UserSessionStatusRevoked, storedSession.Status)
-	assert.Equal(t, "password_reset", storedSession.RevokedReason)
-}

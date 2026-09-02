@@ -32,7 +32,7 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.AuthFlow{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
 	model.DB = db
 	common.RedisEnabled = false
 	common.UserSessionActiveLimit = common.DefaultUserSessionActiveLimit
@@ -168,22 +168,6 @@ func TestCreateLoginSessionEnforcesIssuanceLimitAcrossAllStatuses(t *testing.T) 
 	assert.Equal(t, int64(4), count)
 }
 
-func TestPasswordResetDoesNotClearSessionIssuanceHistory(t *testing.T) {
-	useTestSessionSecret(t)
-	user := setupAuthSessionTestDB(t)
-	common.UserSessionActiveLimit = 50
-	common.UserSessionIssuanceLimit = 1
-	email := "session-reset@example.com"
-	require.NoError(t, model.DB.Model(user).Update("email", email).Error)
-
-	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
-	require.NoError(t, err)
-	require.NoError(t, model.ResetUserPasswordByEmail(email, "new-password"))
-
-	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "test-agent")
-	assert.ErrorIs(t, err, model.ErrUserSessionIssuanceLimit)
-}
-
 func TestCreateLoginSessionFailsClosedWhenLimitCountFails(t *testing.T) {
 	useTestSessionSecret(t)
 	user := setupAuthSessionTestDB(t)
@@ -256,35 +240,6 @@ func TestCleanupAuthArtifactsAlertsBeforeDeletingHourlyIssuance(t *testing.T) {
 	assert.Contains(t, logBuffer.String(), "hourly user session issuance exceeded alert threshold")
 	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
 	assert.Zero(t, count, "alerting must happen before expired rows are deleted")
-}
-
-func TestCleanupAuthArtifactsRemovesOnlyExpiredRecords(t *testing.T) {
-	setupAuthSessionTestDB(t)
-	now := time.Now()
-	oldExpiry := now.Add(-25 * time.Hour)
-	require.NoError(t, model.DB.Create(&model.UserSession{
-		SID: "expired-session", UserID: 1, Version: 1, UserAuthVersion: 1,
-		Status: model.UserSessionStatusActive, RefreshHash: "hash", LoginMethod: "password",
-		CreatedAt: oldExpiry.Unix(), LastActiveAt: oldExpiry.Unix(), ExpiresAt: oldExpiry.Unix(),
-	}).Error)
-	require.NoError(t, model.DB.Create(&model.AuthFlow{
-		TokenHash: "expired-flow", Purpose: model.AuthFlowPurposeTwoFALogin,
-		ExpiresAt: oldExpiry,
-	}).Error)
-	require.NoError(t, model.DB.Create(&model.AuthFlow{
-		TokenHash: "recent-flow", Purpose: model.AuthFlowPurposeTwoFALogin,
-		ExpiresAt: now.Add(time.Minute),
-	}).Error)
-
-	cleanupAuthArtifacts()
-
-	var sessionCount int64
-	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&sessionCount).Error)
-	assert.Zero(t, sessionCount)
-	var flows []model.AuthFlow
-	require.NoError(t, model.DB.Find(&flows).Error)
-	require.Len(t, flows, 1)
-	assert.Equal(t, "recent-flow", flows[0].TokenHash)
 }
 
 func TestCleanupAuthArtifactsContinuesWithRevokedCleanupAfterExpiredBatchFailure(t *testing.T) {

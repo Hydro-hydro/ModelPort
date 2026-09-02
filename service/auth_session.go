@@ -157,7 +157,7 @@ func ValidateSessionReference(userID int, sid string) (AuthIdentity, error) {
 
 // AdvanceCurrentSessionSecurity increments the user's global auth version,
 // preserves only the current browser session at a new session version and
-// returns a replacement access token. Call after a successful 2FA/passkey
+// returns a replacement access token. Call after a successful
 // security-setting mutation that did not already advance AuthVersion.
 func AdvanceCurrentSessionSecurity(identity AuthIdentity, reason string) (*AuthBundle, error) {
 	nextUserAuthVersion, err := model.BumpUserAuthVersion(identity.UserID)

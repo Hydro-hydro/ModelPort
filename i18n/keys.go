@@ -62,44 +62,29 @@ const (
 
 // User related messages
 const (
-	MsgUserPasswordLoginDisabled     = "user.password_login_disabled"
-	MsgUserRegisterDisabled          = "user.register_disabled"
-	MsgUserPasswordRegisterDisabled  = "user.password_register_disabled"
-	MsgUserUsernameOrPasswordEmpty   = "user.username_or_password_empty"
-	MsgUserUsernameOrPasswordError   = "user.username_or_password_error"
-	MsgUserEmailOrPasswordEmpty      = "user.email_or_password_empty"
-	MsgUserExists                    = "user.exists"
-	MsgUserNotExists                 = "user.not_exists"
-	MsgUserDisabled                  = "user.disabled"
-	MsgUserSessionSaveFailed         = "user.session_save_failed"
-	MsgUserRequire2FA                = "user.require_2fa"
-	MsgUserEmailVerificationRequired = "user.email_verification_required"
-	MsgUserVerificationCodeError     = "user.verification_code_error"
-	MsgUserEmailAlreadyTaken         = "user.email_already_taken"
-	MsgUserPasswordUnset             = "user.password_unset"
-	MsgUserPasswordResetLinkInvalid  = "user.password_reset_link_invalid"
-	MsgUserInputInvalid              = "user.input_invalid"
-	MsgUserNoPermissionSameLevel     = "user.no_permission_same_level"
-	MsgUserNoPermissionHigherLevel   = "user.no_permission_higher_level"
-	MsgUserCannotCreateHigherLevel   = "user.cannot_create_higher_level"
-	MsgUserCannotDeleteRootUser      = "user.cannot_delete_root_user"
-	MsgUserCannotDisableRootUser     = "user.cannot_disable_root_user"
-	MsgUserCannotDemoteRootUser      = "user.cannot_demote_root_user"
-	MsgUserAlreadyAdmin              = "user.already_admin"
-	MsgUserAlreadyCommon             = "user.already_common"
-	MsgUserAdminCannotPromote        = "user.admin_cannot_promote"
-	MsgUserOriginalPasswordError     = "user.original_password_error"
-	MsgUserRegisterFailed            = "user.register_failed"
-	MsgUserDefaultTokenFailed        = "user.default_token_failed"
-	MsgUserEmailEmpty                = "user.email_empty"
-	MsgUserGitHubIdEmpty             = "user.github_id_empty"
-	MsgUserDiscordIdEmpty            = "user.discord_id_empty"
-	MsgUserOidcIdEmpty               = "user.oidc_id_empty"
-	MsgUserWeChatIdEmpty             = "user.wechat_id_empty"
-	MsgUserTelegramIdEmpty           = "user.telegram_id_empty"
-	MsgUserTelegramNotBound          = "user.telegram_not_bound"
-	MsgUserLinuxDOIdEmpty            = "user.linux_do_id_empty"
-	MsgUserQuotaChangeZero           = "user.quota_change_zero"
+	MsgUserPasswordLoginDisabled   = "user.password_login_disabled"
+	MsgUserUsernameOrPasswordEmpty = "user.username_or_password_empty"
+	MsgUserUsernameOrPasswordError = "user.username_or_password_error"
+	MsgUserEmailOrPasswordEmpty    = "user.email_or_password_empty"
+	MsgUserExists                  = "user.exists"
+	MsgUserNotExists               = "user.not_exists"
+	MsgUserDisabled                = "user.disabled"
+	MsgUserSessionSaveFailed       = "user.session_save_failed"
+	MsgUserPasswordUnset           = "user.password_unset"
+	MsgUserInputInvalid            = "user.input_invalid"
+	MsgUserNoPermissionSameLevel   = "user.no_permission_same_level"
+	MsgUserNoPermissionHigherLevel = "user.no_permission_higher_level"
+	MsgUserCannotCreateHigherLevel = "user.cannot_create_higher_level"
+	MsgUserCannotDeleteRootUser    = "user.cannot_delete_root_user"
+	MsgUserCannotDisableRootUser   = "user.cannot_disable_root_user"
+	MsgUserCannotDemoteRootUser    = "user.cannot_demote_root_user"
+	MsgUserAlreadyAdmin            = "user.already_admin"
+	MsgUserAlreadyCommon           = "user.already_common"
+	MsgUserAdminCannotPromote      = "user.admin_cannot_promote"
+	MsgUserOriginalPasswordError   = "user.original_password_error"
+	MsgUserDefaultTokenFailed      = "user.default_token_failed"
+	MsgUserEmailEmpty              = "user.email_empty"
+	MsgUserQuotaChangeZero         = "user.quota_change_zero"
 )
 
 // Quota related messages
@@ -150,24 +135,6 @@ const (
 	MsgGroupIdMissing     = "group.id_missing"
 )
 
-// Passkey related messages
-const (
-	MsgPasskeyCreateFailed  = "passkey.create_failed"
-	MsgPasskeyLoginAbnormal = "passkey.login_abnormal"
-	MsgPasskeyUpdateFailed  = "passkey.update_failed"
-	MsgPasskeyInvalidUserId = "passkey.invalid_user_id"
-	MsgPasskeyVerifyFailed  = "passkey.verify_failed"
-)
-
-// 2FA related messages
-const (
-	MsgTwoFANotEnabled    = "twofa.not_enabled"
-	MsgTwoFAUserIdEmpty   = "twofa.user_id_empty"
-	MsgTwoFAAlreadyExists = "twofa.already_exists"
-	MsgTwoFARecordIdEmpty = "twofa.record_id_empty"
-	MsgTwoFACodeInvalid   = "twofa.code_invalid"
-)
-
 // Rate limit related messages
 const (
 	MsgRateLimitReached      = "rate_limit.reached"
@@ -216,24 +183,6 @@ const (
 	MsgAbilityRepairRunning = "ability.repair_running"
 )
 
-// OAuth related messages
-const (
-	MsgOAuthInvalidCode     = "oauth.invalid_code"
-	MsgOAuthGetUserErr      = "oauth.get_user_error"
-	MsgOAuthAccountUsed     = "oauth.account_used"
-	MsgOAuthUnknownProvider = "oauth.unknown_provider"
-	MsgOAuthStateInvalid    = "oauth.state_invalid"
-	MsgOAuthNotEnabled      = "oauth.not_enabled"
-	MsgOAuthUserDeleted     = "oauth.user_deleted"
-	MsgOAuthUserBanned      = "oauth.user_banned"
-	MsgOAuthBindSuccess     = "oauth.bind_success"
-	MsgOAuthAlreadyBound    = "oauth.already_bound"
-	MsgOAuthConnectFailed   = "oauth.connect_failed"
-	MsgOAuthTokenFailed     = "oauth.token_failed"
-	MsgOAuthUserInfoEmpty   = "oauth.user_info_empty"
-	MsgOAuthTrustLevelLow   = "oauth.trust_level_low"
-)
-
 // Model layer error messages (for translation in controller)
 const (
 	MsgCreateDefaultTokenErr = "user.create_default_token_error"
@@ -256,15 +205,4 @@ const (
 	MsgDistributorNoAvailableChannel      = "distributor.no_available_channel"
 	MsgDistributorInvalidMidjourney       = "distributor.invalid_midjourney_request"
 	MsgDistributorInvalidParseModel       = "distributor.invalid_request_parse_model"
-)
-
-// Custom OAuth provider related messages
-const (
-	MsgCustomOAuthNotFound          = "custom_oauth.not_found"
-	MsgCustomOAuthSlugEmpty         = "custom_oauth.slug_empty"
-	MsgCustomOAuthSlugExists        = "custom_oauth.slug_exists"
-	MsgCustomOAuthNameEmpty         = "custom_oauth.name_empty"
-	MsgCustomOAuthHasBindings       = "custom_oauth.has_bindings"
-	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
-	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
 )

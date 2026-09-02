@@ -323,6 +323,14 @@ var removedPersonalTables = []string{
 	"top_ups",
 	"redemptions",
 	"checkins",
+	// 用户身份扩展表。删除顺序必须先清理绑定和配置，再清理基础认证状态。
+	"user_oauth_bindings",
+	"custom_oauth_providers",
+	"two_fa_backup_codes",
+	"two_fas",
+	"passkey_credentials",
+	"external_identity_claims",
+	"auth_flows",
 }
 
 var removedPersonalUserColumns = []string{
@@ -332,6 +340,12 @@ var removedPersonalUserColumns = []string{
 	"aff_history",
 	"inviter_id",
 	"stripe_customer",
+	"github_id",
+	"discord_id",
+	"oidc_id",
+	"wechat_id",
+	"telegram_id",
+	"linux_do_id",
 }
 
 var removedPersonalOptionKeys = []string{
@@ -379,6 +393,26 @@ var removedPersonalOptionKeys = []string{
 	"PayMethods",
 	"QuotaForInviter",
 	"QuotaForInvitee",
+	"PasswordRegisterEnabled",
+	"EmailVerificationEnabled",
+	"RegisterEnabled",
+	"GitHubOAuthEnabled",
+	"GitHubClientId",
+	"GitHubClientSecret",
+	"LinuxDOOAuthEnabled",
+	"LinuxDOClientId",
+	"LinuxDOClientSecret",
+	"LinuxDOMinimumTrustLevel",
+	"WeChatAuthEnabled",
+	"WeChatServerAddress",
+	"WeChatServerToken",
+	"WeChatAccountQRCodeImageURL",
+	"TelegramOAuthEnabled",
+	"TelegramBotToken",
+	"TelegramBotName",
+	"EmailDomainRestrictionEnabled",
+	"EmailAliasRestrictionEnabled",
+	"EmailDomainWhitelist",
 }
 
 func cleanupRemovedPersonalSchema(db *gorm.DB) error {
@@ -417,7 +451,10 @@ func cleanupRemovedPersonalSchema(db *gorm.DB) error {
 
 	query := db.Where(commonKeyCol+" IN ?", removedPersonalOptionKeys).
 		Or(commonKeyCol+" LIKE ?", "payment_setting.%").
-		Or(commonKeyCol+" LIKE ?", "checkin_setting.%")
+		Or(commonKeyCol+" LIKE ?", "checkin_setting.%").
+		Or(commonKeyCol+" LIKE ?", "discord.%").
+		Or(commonKeyCol+" LIKE ?", "oidc.%").
+		Or(commonKeyCol+" LIKE ?", "passkey.%")
 	if err := query.Delete(&Option{}).Error; err != nil {
 		return fmt.Errorf("delete removed personal options: %w", err)
 	}
@@ -452,9 +489,6 @@ func migrateDB() error {
 		&Token{},
 		&User{},
 		&UserSession{},
-		&AuthFlow{},
-		&ExternalIdentityClaim{},
-		&PasskeyCredential{},
 		&Option{},
 		&LoginEncryptionKey{},
 		&Ability{},
@@ -467,10 +501,6 @@ func migrateDB() error {
 		&Vendor{},
 		&PrefillGroup{},
 		&Setup{},
-		&TwoFA{},
-		&TwoFABackupCode{},
-		&CustomOAuthProvider{},
-		&UserOAuthBinding{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},
@@ -485,9 +515,6 @@ func migrateDB() error {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
-		return err
-	}
-	if err := InitializeExternalIdentityClaims(); err != nil {
 		return err
 	}
 	return nil

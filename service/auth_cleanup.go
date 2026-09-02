@@ -11,7 +11,7 @@ import (
 const authArtifactCleanupInterval = time.Hour
 
 // StartAuthArtifactCleanup removes expired dashboard Sessions and old
-// one-time authentication flows. Only the master instance performs cleanup.
+// expired dashboard sessions. Only the master instance performs cleanup.
 func StartAuthArtifactCleanup() {
 	if !common.IsMasterNode {
 		return
@@ -44,8 +44,5 @@ func cleanupAuthArtifacts() {
 	}
 	if err := model.DeleteOldRevokedUserSessions(now.Unix()); err != nil {
 		common.SysError("failed to delete old revoked user sessions: " + err.Error())
-	}
-	if err := model.DeleteExpiredAuthFlows(now); err != nil {
-		common.SysError("failed to delete expired authentication flows: " + err.Error())
 	}
 }

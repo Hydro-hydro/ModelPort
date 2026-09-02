@@ -40,17 +40,11 @@ func TestMain(m *testing.M) {
 		&Task{},
 		&User{},
 		&UserSession{},
-		&AuthFlow{},
-		&ExternalIdentityClaim{},
 		&Token{},
-		&PasskeyCredential{},
-		&TwoFA{},
-		&TwoFABackupCode{},
 		&Log{},
 		&Channel{},
 		&QuotaData{},
 		&Ability{},
-		&UserOAuthBinding{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},
@@ -66,14 +60,8 @@ func truncateTables(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
 		DB.Exec("DELETE FROM tasks")
-		DB.Exec("DELETE FROM auth_flows")
-		DB.Exec("DELETE FROM external_identity_claims")
 		DB.Exec("DELETE FROM user_sessions")
-		DB.Exec("DELETE FROM passkey_credentials")
-		DB.Exec("DELETE FROM two_fa_backup_codes")
-		DB.Exec("DELETE FROM two_fas")
 		DB.Exec("DELETE FROM tokens")
-		DB.Exec("DELETE FROM user_oauth_bindings")
 		DB.Exec("DELETE FROM users")
 		DB.Exec("DELETE FROM logs")
 		DB.Exec("DELETE FROM channels")
