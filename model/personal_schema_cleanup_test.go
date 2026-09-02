@@ -23,7 +23,11 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 	previousMain := common.MainDatabaseType()
 	previousLog := common.LogDatabaseType()
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
-	t.Cleanup(func() { common.SetDatabaseTypes(previousMain, previousLog) })
+	initCol()
+	t.Cleanup(func() {
+		common.SetDatabaseTypes(previousMain, previousLog)
+		initCol()
+	})
 
 	require.NoError(t, db.AutoMigrate(&User{}, &Option{}))
 	require.NoError(t, db.Create(&User{Id: 1001, Username: "legacy-admin", Password: "password", Quota: 1000}).Error)
