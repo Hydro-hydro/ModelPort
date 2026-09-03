@@ -22,6 +22,8 @@ import { useTranslation } from 'react-i18next'
 import { getSuccessRateDotClass } from '@/features/performance-metrics/lib/format'
 import { cn } from '@/lib/utils'
 
+const STATUS_BAR_KEYS = ['oldest', 'middle', 'latest'] as const
+
 export type ModelPerfBadgeData = {
   avg_latency_ms: number
   success_rate: number
@@ -102,22 +104,26 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
           {t('Status short')}
         </div>
         <div className='flex h-4 items-center justify-end gap-0.5'>
-          {statusBars.map((rate, index) => (
-            <span
-              key={`${index}-${rate ?? 'empty'}`}
-              className={cn(
-                'w-1 rounded-full',
-                index === 0 && 'h-2',
-                index === 1 && 'h-2.5',
-                index === 2 && 'h-3',
-                rate == null
-                  ? index === 0
-                    ? 'bg-muted-foreground/10'
-                    : 'bg-muted-foreground/15'
-                  : getSuccessRateDotClass(rate)
-              )}
-            />
-          ))}
+          {statusBars.map((rate, index) => {
+            let heightClass = 'h-3'
+            if (index === 0) heightClass = 'h-2'
+            if (index === 1) heightClass = 'h-2.5'
+
+            let colourClass = getSuccessRateDotClass(rate ?? 0)
+            if (rate == null) {
+              colourClass =
+                index === 0
+                  ? 'bg-muted-foreground/10'
+                  : 'bg-muted-foreground/15'
+            }
+
+            return (
+              <span
+                key={STATUS_BAR_KEYS[index]}
+                className={cn('w-1 rounded-full', heightClass, colourClass)}
+              />
+            )
+          })}
         </div>
       </div>
     </div>

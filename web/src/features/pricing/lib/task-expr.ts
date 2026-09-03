@@ -16,6 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  parseTaskTiersFromExpr,
+  splitBillingExprAndRequestRules,
+} from './billing-expr'
 import type {
   BillingUsageExample,
   BillingUsageFieldSchema,
@@ -23,10 +27,6 @@ import type {
 } from '../types'
 
 export const TASK_TOKEN_PRICE_SCALE = 1_000_000
-import {
-  parseTaskTiersFromExpr,
-  splitBillingExprAndRequestRules,
-} from './billing-expr'
 
 export type TaskVisualCondition = {
   field: string

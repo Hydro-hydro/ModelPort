@@ -48,6 +48,8 @@ import { aggregateUptime, type UptimeDayPoint } from '../lib/mock-stats'
 
 type SparklineSize = 'sm' | 'md'
 
+type UptimeStatus = 'operational' | 'minor' | 'degraded' | 'major'
+
 type UptimeSparklineProps = {
   series: UptimeDayPoint[]
   size?: SparklineSize
@@ -62,6 +64,39 @@ function heightFor(uptime: number): string {
   if (uptime >= 95.0) return 'h-[72%]'
   if (uptime >= 90.0) return 'h-[55%]'
   return 'h-[40%]'
+}
+
+function getStatusIcon(status: UptimeStatus) {
+  switch (status) {
+    case 'operational':
+      return CheckCircle2
+    case 'minor':
+      return Activity
+    default:
+      return AlertCircle
+  }
+}
+
+function getStatusColour(status: UptimeStatus): string {
+  if (status === 'degraded') return 'text-amber-600 dark:text-amber-400'
+  if (status === 'major') return 'text-rose-600 dark:text-rose-400'
+  return 'text-emerald-600 dark:text-emerald-400'
+}
+
+function getStatusLabel(
+  status: UptimeStatus,
+  translate: (key: string) => string
+): string {
+  switch (status) {
+    case 'operational':
+      return translate('All systems operational')
+    case 'minor':
+      return translate('Minor blips in the last 30 days')
+    case 'degraded':
+      return translate('Degraded performance recently')
+    default:
+      return translate('Significant outages detected')
+  }
 }
 
 export function UptimeSparkline(props: UptimeSparklineProps) {
@@ -149,37 +184,16 @@ export function UptimeStatusRow(props: {
 }) {
   const { t } = useTranslation()
   const summary = useMemo(() => aggregateUptime(props.series), [props.series])
-  const status = useMemo(() => {
+  const status = useMemo<UptimeStatus>(() => {
     if (summary.uptime_pct >= 99.9) return 'operational'
     if (summary.uptime_pct >= 99.0) return 'minor'
     if (summary.uptime_pct >= 95.0) return 'degraded'
     return 'major'
   }, [summary.uptime_pct])
 
-  const StatusIcon =
-    status === 'operational'
-      ? CheckCircle2
-      : status === 'minor'
-        ? Activity
-        : AlertCircle
-
-  const statusColour =
-    status === 'operational'
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : status === 'minor'
-        ? 'text-emerald-600 dark:text-emerald-400'
-        : status === 'degraded'
-          ? 'text-amber-600 dark:text-amber-400'
-          : 'text-rose-600 dark:text-rose-400'
-
-  const statusLabel =
-    status === 'operational'
-      ? t('All systems operational')
-      : status === 'minor'
-        ? t('Minor blips in the last 30 days')
-        : status === 'degraded'
-          ? t('Degraded performance recently')
-          : t('Significant outages detected')
+  const StatusIcon = getStatusIcon(status)
+  const statusColour = getStatusColour(status)
+  const statusLabel = getStatusLabel(status, t)
 
   return (
     <div
