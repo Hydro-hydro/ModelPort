@@ -154,7 +154,7 @@ export function isCurrencyDisplayType(
 
 export function parseCurrencyDisplayType(
   value: unknown,
-  fallback: CurrencyDisplayType = 'USD'
+  fallback: CurrencyDisplayType = DEFAULT_CURRENCY_CONFIG.quotaDisplayType
 ): CurrencyDisplayType {
   return isCurrencyDisplayType(value) ? value : fallback
 }

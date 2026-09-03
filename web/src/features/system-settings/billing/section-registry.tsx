@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { PricingSection } from '../general/pricing-section'
-import { QuotaSettingsSection } from '../general/quota-settings-section'
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
@@ -47,24 +46,6 @@ const getGroupDefaults = (settings: BillingSettings) => ({
 })
 
 const BILLING_SECTIONS = [
-  {
-    id: 'quota',
-    titleKey: 'Quota Settings',
-    build: (settings: BillingSettings) => (
-      <QuotaSettingsSection
-        defaultValues={{
-          PreConsumedQuota: settings.PreConsumedQuota,
-          general_setting: {
-            docs_link: settings['general_setting.docs_link'],
-          },
-          quota_setting: {
-            enable_free_model_pre_consume:
-              settings['quota_setting.enable_free_model_pre_consume'],
-          },
-        }}
-      />
-    ),
-  },
   {
     id: 'currency',
     titleKey: 'Currency & Display',
@@ -122,7 +103,7 @@ const billingRegistry = createSectionRegistry<
   BillingSettings
 >({
   sections: BILLING_SECTIONS,
-  defaultSection: 'quota',
+  defaultSection: 'currency',
   basePath: '/system-settings/billing',
   urlStyle: 'path',
 })
