@@ -85,6 +85,7 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 		"DefaultCollapseSidebar",
 		"UserUsableGroups",
 		"group_ratio_setting.group_special_usable_group",
+		"HeaderNavModules",
 		"Notice",
 		"About",
 		"HomePageContent",

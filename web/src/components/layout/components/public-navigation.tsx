@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 import { cn } from '@/lib/utils'
@@ -26,8 +27,8 @@ import type { TopNavLink } from '../types'
 
 interface PublicNavigationProps {
   /**
-   * Custom navigation links
-   * If not provided, will use dynamic links from backend or defaults
+   * Custom navigation links kept for compatibility; the personal version
+   * always uses its fixed top navigation.
    */
   links?: TopNavLink[]
   /**
@@ -44,7 +45,9 @@ export function PublicNavigation({
   links: providedLinks,
   className,
 }: PublicNavigationProps = {}) {
-  // Use the same logic as AppHeader: prioritize dynamic links from backend
+  const { t } = useTranslation()
+
+  // Use the same fixed links as AppHeader.
   const dynamicLinks = useTopNavLinks()
   const defaultLinks = providedLinks || defaultTopNavLinks
   const links = dynamicLinks.length > 0 ? dynamicLinks : defaultLinks
@@ -65,7 +68,7 @@ export function PublicNavigation({
                 link.disabled && 'pointer-events-none opacity-50'
               )}
             >
-              {link.title}
+              {t(link.title)}
             </a>
           )
         }
@@ -79,7 +82,7 @@ export function PublicNavigation({
               link.disabled && 'pointer-events-none opacity-50'
             )}
           >
-            {link.title}
+            {t(link.title)}
           </Link>
         )
       })}

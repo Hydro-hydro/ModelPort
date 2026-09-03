@@ -20,7 +20,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { Main } from '@/components/layout'
 import { Playground } from '@/features/playground'
-import { isSidebarModuleEnabled } from '@/lib/nav-modules'
+import { isSidebarModuleEnabled } from '@/lib/sidebar-modules'
 
 export const Route = createFileRoute('/_authenticated/playground/')({
   beforeLoad: () => {

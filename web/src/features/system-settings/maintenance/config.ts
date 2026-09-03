@@ -16,27 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export type HeaderNavModulesConfig = {
-  home: boolean
-  console: boolean
-  docs: boolean
-  about: boolean
-  [key: string]: boolean
-}
-
 export type SidebarSectionConfig = {
   enabled: boolean
   [key: string]: boolean
 }
 
 export type SidebarModulesAdminConfig = Record<string, SidebarSectionConfig>
-
-export const HEADER_NAV_DEFAULT: HeaderNavModulesConfig = {
-  home: true,
-  console: true,
-  docs: true,
-  about: true,
-}
 
 export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
   chat: {
@@ -82,10 +67,6 @@ const toBoolean = (value: unknown, fallback: boolean): boolean => {
   return fallback
 }
 
-const cloneHeaderNavDefault = (): HeaderNavModulesConfig => ({
-  ...HEADER_NAV_DEFAULT,
-})
-
 const cloneSidebarDefault = (): SidebarModulesAdminConfig =>
   Object.entries(SIDEBAR_MODULES_DEFAULT).reduce<SidebarModulesAdminConfig>(
     (acc, [section, config]) => {
@@ -94,38 +75,6 @@ const cloneSidebarDefault = (): SidebarModulesAdminConfig =>
     },
     {}
   )
-
-export function parseHeaderNavModules(
-  value: string | null | undefined
-): HeaderNavModulesConfig {
-  const base = cloneHeaderNavDefault()
-  if (!value) return base
-
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>
-    const result: HeaderNavModulesConfig = { ...base }
-
-    Object.entries(parsed).forEach(([key, raw]) => {
-      if (typeof raw === 'boolean') {
-        result[key] = raw
-        return
-      }
-      if (typeof raw === 'string' || typeof raw === 'number') {
-        result[key] = toBoolean(raw, Boolean(base[key]))
-      }
-    })
-
-    return result
-  } catch {
-    return base
-  }
-}
-
-export function serializeHeaderNavModules(
-  config: HeaderNavModulesConfig
-): string {
-  return JSON.stringify(config)
-}
 
 export function parseSidebarModulesAdmin(
   value: string | null | undefined

@@ -16,11 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
-
-import { useStatus } from '@/hooks/use-status'
-import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
+import { defaultTopNavLinks } from '@/components/layout/config/top-nav.config'
 
 export type TopNavLink = {
   title: string
@@ -31,53 +27,12 @@ export type TopNavLink = {
 }
 
 /**
- * Generate top navigation links based on HeaderNavModules configuration from backend /api/status
- * Backend format example (stringified JSON):
- * {
- *   home: true,
- *   console: true,
- *   docs: true,
- *   about: true
- * }
+ * Return the fixed personal-version top navigation.
+ *
+ * Backend top-navigation configuration is intentionally ignored: the
+ * personal version exposes only the console and model square.
  */
+
 export function useTopNavLinks(): TopNavLink[] {
-  const { t } = useTranslation()
-  const { status } = useStatus()
-  // Parse HeaderNavModules
-  const modules = useMemo(() => {
-    return parseHeaderNavModulesFromStatus(
-      status as Record<string, unknown> | null
-    )
-  }, [status])
-
-  // Documentation link (may be external)
-  const docsLink: string | undefined = status?.docs_link as string | undefined
-
-  const links: TopNavLink[] = []
-
-  // Home
-  if (modules?.home !== false) {
-    links.push({ title: t('Home'), href: '/' })
-  }
-
-  // Console -> /dashboard (new console path)
-  if (modules?.console !== false) {
-    links.push({ title: t('Console'), href: '/dashboard' })
-  }
-
-  // Docs (supports external links)
-  if (modules?.docs !== false) {
-    if (docsLink) {
-      links.push({ title: t('Docs'), href: docsLink, external: true })
-    } else {
-      links.push({ title: t('Docs'), href: '/docs' })
-    }
-  }
-
-  // About
-  if (modules?.about !== false) {
-    links.push({ title: t('About'), href: '/about' })
-  }
-
-  return links
+  return defaultTopNavLinks
 }

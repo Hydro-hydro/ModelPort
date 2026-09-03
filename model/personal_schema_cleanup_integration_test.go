@@ -65,6 +65,7 @@ func testPersonalSchemaCleanupOnDSN(t *testing.T, databaseType common.DatabaseTy
 		"DefaultCollapseSidebar",
 		"UserUsableGroups",
 		"group_ratio_setting.group_special_usable_group",
+		"HeaderNavModules",
 		"Notice",
 		"About",
 		"HomePageContent",

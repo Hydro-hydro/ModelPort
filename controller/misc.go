@@ -87,8 +87,7 @@ func GetStatus(c *gin.Context) {
 		"uptime_kuma_enabled": cs.UptimeKumaEnabled,
 		"faq_enabled":         cs.FAQEnabled,
 
-		// 模块管理配置
-		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
+		// 侧边栏模块配置
 		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
 
 		"setup": constant.Setup,

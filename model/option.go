@@ -235,7 +235,7 @@ func isRemovedPublicContentOption(key string) bool {
 	switch key {
 	case "Notice", "About", "HomePageContent", "Footer", "Announcements",
 		"console_setting.announcements", "console_setting.announcements_enabled",
-		"legal.user_agreement", "legal.privacy_policy":
+		"legal.user_agreement", "legal.privacy_policy", "HeaderNavModules":
 		return true
 	default:
 		return false

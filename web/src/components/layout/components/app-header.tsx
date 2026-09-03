@@ -18,10 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { ConfigDrawer } from '@/components/config-drawer'
 import { LanguageSwitcher } from '@/components/language-switcher'
-import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
-import { useNotifications } from '@/hooks/use-notifications'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 
 import { defaultTopNavLinks } from '../config/top-nav.config'
@@ -55,7 +53,8 @@ import { TopNav } from './top-nav'
  */
 type AppHeaderProps = {
   /**
-   * Custom navigation links, uses default global navigation or dynamically generated from backend if not provided
+   * Custom navigation links kept for compatibility; the personal version
+   * always uses its fixed top navigation.
    */
   navLinks?: TopNavLink[]
   /**
@@ -77,11 +76,6 @@ type AppHeaderProps = {
    */
   rightContent?: React.ReactNode
   /**
-   * Whether to show notification button
-   * @default true
-   */
-  showNotifications?: boolean
-  /**
    * Whether to show config drawer
    * @default true
    */
@@ -99,16 +93,12 @@ export function AppHeader({
   leftContent,
   showSearch = true,
   rightContent,
-  showNotifications = true,
   showConfigDrawer = true,
   showProfileDropdown = true,
 }: AppHeaderProps) {
-  // Prioritize dynamically generated links from backend
+  // The personal version always uses the fixed console/model-square links.
   const dynamicLinks = useTopNavLinks()
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
-
-  // Notifications hook
-  const notifications = useNotifications()
 
   return (
     <>
@@ -127,18 +117,6 @@ export function AppHeader({
               </div>
             )}
             {showSearch && <Search />}
-            {showNotifications && (
-              <NotificationPopover
-                open={notifications.popoverOpen}
-                onOpenChange={notifications.setPopoverOpen}
-                unreadCount={notifications.unreadCount}
-                activeTab={notifications.activeTab}
-                onTabChange={notifications.setActiveTab}
-                notice={notifications.notice}
-                announcements={notifications.announcements}
-                loading={notifications.loading}
-              />
-            )}
             <LanguageSwitcher />
             {showConfigDrawer && <ConfigDrawer />}
             {showProfileDropdown && <ProfileDropdown />}

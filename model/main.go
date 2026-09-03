@@ -397,6 +397,7 @@ var removedPersonalOptionKeys = []string{
 	"DefaultCollapseSidebar",
 	"UserUsableGroups",
 	"group_ratio_setting.group_special_usable_group",
+	"HeaderNavModules",
 	// 公共运营内容配置已移除，旧库中的相关键仅做幂等清理。
 	"Notice",
 	"About",
