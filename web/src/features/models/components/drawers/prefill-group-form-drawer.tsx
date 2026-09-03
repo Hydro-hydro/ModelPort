@@ -143,27 +143,40 @@ export function PrefillGroupFormDrawer({
 
   const handleSubmit = async (values: PrefillGroupFormValues) => {
     setIsSaving(true)
+    if (isEdit && !currentGroup) {
+      toast.error(t('Operation failed'))
+      setIsSaving(false)
+      return
+    }
+
+    let items: string | string[]
+    if (values.type === 'endpoint') {
+      items = typeof values.items === 'string' ? values.items : ''
+    } else {
+      items = Array.isArray(values.items) ? values.items : []
+    }
+
     const payload = {
       name: values.name.trim(),
       type: values.type,
       description: values.description?.trim() || '',
-      items:
-        values.type === 'endpoint'
-          ? typeof values.items === 'string'
-            ? values.items
-            : ''
-          : Array.isArray(values.items)
-            ? values.items
-            : [],
+      items,
     }
 
     try {
-      const response = isEdit
-        ? await updatePrefillGroup({
-            id: currentGroup!.id,
-            ...payload,
-          })
-        : await createPrefillGroup(payload)
+      let response
+      if (isEdit) {
+        if (!currentGroup) {
+          toast.error(t('Operation failed'))
+          return
+        }
+        response = await updatePrefillGroup({
+          id: currentGroup.id,
+          ...payload,
+        })
+      } else {
+        response = await createPrefillGroup(payload)
+      }
 
       if (response.success) {
         toast.success(
@@ -185,6 +198,9 @@ export function PrefillGroupFormDrawer({
 
   const meta =
     PREFILL_GROUP_TYPE_META[selectedType] || PREFILL_GROUP_TYPE_META.model
+  let submitLabel = t('Create')
+  if (isEdit) submitLabel = t('Save changes')
+  if (isSaving) submitLabel = t('Saving...')
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -277,8 +293,7 @@ export function PrefillGroupFormDrawer({
                   <FormItem>
                     <FormLabel>Group Type</FormLabel>
                     <Select
-                      items={[
-                        ...PREFILL_GROUP_TYPES.map((type) => ({
+                      items={PREFILL_GROUP_TYPES.map((type) => ({
                           value: type.value,
                           label: (
                             <div className='flex flex-col text-left'>
@@ -291,8 +306,7 @@ export function PrefillGroupFormDrawer({
                               </span>
                             </div>
                           ),
-                        })),
-                      ]}
+                        }))}
                       value={field.value}
                       onValueChange={(value) =>
                         value !== null &&
@@ -399,11 +413,7 @@ export function PrefillGroupFormDrawer({
           </SheetClose>
           <Button type='submit' form='prefill-group-form' disabled={isSaving}>
             {isSaving && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-            {isSaving
-              ? t('Saving...')
-              : isEdit
-                ? t('Save changes')
-                : t('Create')}
+            {submitLabel}
           </Button>
         </SheetFooter>
       </SheetContent>
