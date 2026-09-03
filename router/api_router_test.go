@@ -26,3 +26,25 @@ func TestSetApiRouterRegistersModelPricingEndpoint(t *testing.T) {
 
 	t.Fatal("GET /api/pricing route is not registered")
 }
+
+func TestSetApiRouterOmitsRemovedPublicContentRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+
+	SetApiRouter(engine)
+
+	routes := make(map[string]struct{})
+	for _, route := range engine.Routes() {
+		routes[route.Method+" "+route.Path] = struct{}{}
+	}
+	for _, path := range []string{
+		"/api/notice",
+		"/api/about",
+		"/api/user-agreement",
+		"/api/privacy-policy",
+		"/api/home_page_content",
+	} {
+		_, registered := routes[http.MethodGet+" "+path]
+		assert.False(t, registered, path)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,6 +85,15 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 		"DefaultCollapseSidebar",
 		"UserUsableGroups",
 		"group_ratio_setting.group_special_usable_group",
+		"Notice",
+		"About",
+		"HomePageContent",
+		"Footer",
+		"Announcements",
+		"console_setting.announcements",
+		"console_setting.announcements_enabled",
+		"legal.user_agreement",
+		"legal.privacy_policy",
 		"ModelRatio",
 	} {
 		require.NoError(t, db.Create(&Option{Key: key, Value: "legacy"}).Error)
@@ -139,4 +149,55 @@ func TestCleanupRemovedPersonalSchemaIsIdempotent(t *testing.T) {
 	require.NoError(t, db.Find(&options).Error)
 	require.Len(t, options, 1)
 	assert.Equal(t, "ModelRatio", options[0].Key)
+}
+
+func TestRemovedPublicContentOptionsAreIgnored(t *testing.T) {
+	db := openPersonalSchemaCleanupTestDB(t)
+	require.NoError(t, db.AutoMigrate(&Option{}))
+
+	previousDB := DB
+	previousMap := common.OptionMap
+	DB = db
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() {
+		DB = previousDB
+		common.OptionMap = previousMap
+	})
+
+	for _, key := range []string{
+		"Notice",
+		"About",
+		"HomePageContent",
+		"Footer",
+		"Announcements",
+		"console_setting.announcements",
+		"console_setting.announcements_enabled",
+		"legal.user_agreement",
+		"legal.privacy_policy",
+	} {
+		require.NoError(t, UpdateOption(key, "legacy"), key)
+		_, published := common.OptionMap[key]
+		assert.False(t, published, key)
+	}
+
+	var options []Option
+	require.NoError(t, db.Find(&options).Error)
+	assert.Empty(t, options)
+}
+
+func TestRemovedPublicContentIsNotRegisteredAsConfiguration(t *testing.T) {
+	exported := config.GlobalConfig.ExportAllConfigs()
+	for _, key := range []string{
+		"Notice",
+		"About",
+		"HomePageContent",
+		"Footer",
+		"console_setting.announcements",
+		"console_setting.announcements_enabled",
+		"legal.user_agreement",
+		"legal.privacy_policy",
+	} {
+		assert.NotContains(t, exported, key)
+	}
+	assert.Nil(t, config.GlobalConfig.Get("legal"))
 }

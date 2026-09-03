@@ -52,15 +52,12 @@ func GetStatus(c *gin.Context) {
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
-	legalSetting := system_setting.GetLegalSettings()
-
 	data := gin.H{
 		"version":            common.Version,
 		"start_time":         common.StartTime,
 		"theme":              "default",
 		"system_name":        common.SystemName,
 		"logo":               common.Logo,
-		"footer_html":        common.Footer,
 		"server_address":     system_setting.ServerAddress,
 		"turnstile_check":    common.TurnstileCheckEnabled,
 		"turnstile_site_key": common.TurnstileSiteKey,
@@ -86,26 +83,20 @@ func GetStatus(c *gin.Context) {
 		"password_login_encryption_enabled": common.PasswordLoginEncryptionEnabled,
 
 		// 面板启用开关
-		"api_info_enabled":      cs.ApiInfoEnabled,
-		"uptime_kuma_enabled":   cs.UptimeKumaEnabled,
-		"announcements_enabled": cs.AnnouncementsEnabled,
-		"faq_enabled":           cs.FAQEnabled,
+		"api_info_enabled":    cs.ApiInfoEnabled,
+		"uptime_kuma_enabled": cs.UptimeKumaEnabled,
+		"faq_enabled":         cs.FAQEnabled,
 
 		// 模块管理配置
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
 		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
 
-		"setup":                  constant.Setup,
-		"user_agreement_enabled": legalSetting.UserAgreement != "",
-		"privacy_policy_enabled": legalSetting.PrivacyPolicy != "",
+		"setup": constant.Setup,
 	}
 
 	// 根据启用状态注入可选内容
 	if cs.ApiInfoEnabled {
 		data["api_info"] = console_setting.GetApiInfo()
-	}
-	if cs.AnnouncementsEnabled {
-		data["announcements"] = console_setting.GetAnnouncements()
 	}
 	if cs.FAQEnabled {
 		data["faq"] = console_setting.GetFAQ()
@@ -119,46 +110,6 @@ func GetStatus(c *gin.Context) {
 	return
 }
 
-func GetNotice(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    common.OptionMap["Notice"],
-	})
-	return
-}
-
-func GetAbout(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    common.OptionMap["About"],
-	})
-	return
-}
-
-func GetUserAgreement(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    system_setting.GetLegalSettings().UserAgreement,
-	})
-	return
-}
-
-func GetPrivacyPolicy(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    system_setting.GetLegalSettings().PrivacyPolicy,
-	})
-	return
-}
-
 func GetMidjourney(c *gin.Context) {
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
@@ -166,17 +117,6 @@ func GetMidjourney(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    common.OptionMap["Midjourney"],
-	})
-	return
-}
-
-func GetHomePageContent(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    common.OptionMap["HomePageContent"],
 	})
 	return
 }

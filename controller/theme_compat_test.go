@@ -44,4 +44,13 @@ func TestGetStatusAdvertisesDefaultDashboard(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
 	assert.True(t, payload.Success)
 	assert.Equal(t, "default", payload.Data["theme"])
+	for _, key := range []string{
+		"footer_html",
+		"announcements_enabled",
+		"announcements",
+		"user_agreement_enabled",
+		"privacy_policy_enabled",
+	} {
+		assert.NotContains(t, payload.Data, key)
+	}
 }

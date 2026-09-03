@@ -65,10 +65,6 @@ func InitOptionMap() {
 	common.OptionMap["SMTPStartTLSEnabled"] = strconv.FormatBool(common.SMTPStartTLSEnabled)
 	common.OptionMap["SMTPInsecureSkipVerify"] = strconv.FormatBool(common.SMTPInsecureSkipVerify)
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
-	common.OptionMap["Notice"] = ""
-	common.OptionMap["About"] = ""
-	common.OptionMap["HomePageContent"] = ""
-	common.OptionMap["Footer"] = common.Footer
 	common.OptionMap["SystemName"] = common.SystemName
 	common.OptionMap["Logo"] = common.Logo
 	common.OptionMap["ServerAddress"] = ""
@@ -162,7 +158,7 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
-	if isFixedPersonalModeOption(key) {
+	if isFixedPersonalModeOption(key) || isRemovedPublicContentOption(key) {
 		return nil
 	}
 	if err := validateOptionValue(key, value); err != nil {
@@ -194,7 +190,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 	filteredValues := make(map[string]string, len(values))
 	for key, value := range values {
-		if isFixedPersonalModeOption(key) {
+		if isFixedPersonalModeOption(key) || isRemovedPublicContentOption(key) {
 			continue
 		}
 		filteredValues[key] = value
@@ -235,8 +231,19 @@ func isFixedPersonalModeOption(key string) bool {
 	return key == "DemoSiteEnabled" || key == "SelfUseModeEnabled"
 }
 
+func isRemovedPublicContentOption(key string) bool {
+	switch key {
+	case "Notice", "About", "HomePageContent", "Footer", "Announcements",
+		"console_setting.announcements", "console_setting.announcements_enabled",
+		"legal.user_agreement", "legal.privacy_policy":
+		return true
+	default:
+		return false
+	}
+}
+
 func updateOptionMap(key string, value string) (err error) {
-	if isFixedPersonalModeOption(key) {
+	if isFixedPersonalModeOption(key) || isRemovedPublicContentOption(key) {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
 		common.OptionMapRWMutex.Unlock()
@@ -365,8 +372,6 @@ func updateOptionMap(key string, value string) (err error) {
 		system_setting.WorkerUrl = value
 	case "WorkerValidKey":
 		system_setting.WorkerValidKey = value
-	case "Footer":
-		common.Footer = value
 	case "SystemName":
 		common.SystemName = value
 	case "Logo":

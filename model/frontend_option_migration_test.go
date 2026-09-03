@@ -45,7 +45,6 @@ func TestMigrateRetiredFrontendOptionsMigratesValidValuesIdempotently(t *testing
 	legacy := []Option{
 		{Key: retiredThemeOptionKey, Value: "classic"},
 		{Key: "ApiInfo", Value: `[{"url":"https://api.example.com","route":"primary","description":"API","color":"blue"}]`},
-		{Key: "Announcements", Value: `[{"content":"maintenance","publishDate":"2026-07-20T00:00:00Z","type":"warning"}]`},
 		{Key: "FAQ", Value: `[{"title":"Question","content":"Answer"}]`},
 		{Key: "UptimeKumaUrl", Value: "https://status.example.com"},
 		{Key: "UptimeKumaSlug", Value: "status"},
@@ -55,12 +54,11 @@ func TestMigrateRetiredFrontendOptionsMigratesValidValuesIdempotently(t *testing
 	require.NoError(t, MigrateRetiredFrontendOptions())
 	assert.Equal(t, "default", requireOptionValue(t, db, retiredThemeOptionKey))
 	assert.JSONEq(t, legacy[1].Value, requireOptionValue(t, db, "console_setting.api_info"))
-	assert.Equal(t, legacy[2].Value, requireOptionValue(t, db, "console_setting.announcements"))
 	assert.JSONEq(t, `[{"question":"Question","answer":"Answer"}]`, requireOptionValue(t, db, "console_setting.faq"))
 	assert.JSONEq(t, `[{
 		"id":1,"categoryName":"old","url":"https://status.example.com","slug":"status","description":""
 	}]`, requireOptionValue(t, db, "console_setting.uptime_kuma_groups"))
-	for _, key := range []string{"ApiInfo", "Announcements", "FAQ", "UptimeKumaUrl", "UptimeKumaSlug"} {
+	for _, key := range []string{"ApiInfo", "FAQ", "UptimeKumaUrl", "UptimeKumaSlug"} {
 		requireOptionMissing(t, db, key)
 	}
 

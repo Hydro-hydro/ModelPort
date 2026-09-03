@@ -33,7 +33,6 @@ func MigrateRetiredFrontendOptions() error {
 		transform legacyOptionTransform
 	}{
 		{source: "ApiInfo", target: "console_setting.api_info", transform: transformLegacyAPIInfo},
-		{source: "Announcements", target: "console_setting.announcements", transform: transformLegacyAnnouncements},
 		{source: "FAQ", target: "console_setting.faq", transform: transformLegacyFAQ},
 	}
 	for _, migration := range migrations {
@@ -122,16 +121,6 @@ func transformLegacyAPIInfo(value string) (string, error) {
 		return "", err
 	}
 	return result, nil
-}
-
-func transformLegacyAnnouncements(value string) (string, error) {
-	if strings.TrimSpace(value) == "" {
-		return "", errors.New("value is empty")
-	}
-	if err := console_setting.ValidateConsoleSettings(value, "Announcements"); err != nil {
-		return "", err
-	}
-	return value, nil
 }
 
 func transformLegacyFAQ(value string) (string, error) {

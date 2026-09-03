@@ -397,6 +397,16 @@ var removedPersonalOptionKeys = []string{
 	"DefaultCollapseSidebar",
 	"UserUsableGroups",
 	"group_ratio_setting.group_special_usable_group",
+	// 公共运营内容配置已移除，旧库中的相关键仅做幂等清理。
+	"Notice",
+	"About",
+	"HomePageContent",
+	"Footer",
+	"Announcements",
+	"console_setting.announcements",
+	"console_setting.announcements_enabled",
+	"legal.user_agreement",
+	"legal.privacy_policy",
 }
 
 func cleanupRemovedPersonalSchema(db *gorm.DB) error {
