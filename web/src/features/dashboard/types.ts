@@ -239,18 +239,6 @@ export interface ProcessedChartData {
 }
 
 // ============================================================================
-// Announcement Types
-// ============================================================================
-
-export interface AnnouncementItem {
-  id?: number
-  content: string
-  publishDate?: string
-  type?: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
-  extra?: string
-}
-
-// ============================================================================
 // FAQ Types
 // ============================================================================
 

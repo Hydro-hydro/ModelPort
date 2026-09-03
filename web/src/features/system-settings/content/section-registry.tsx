@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { ContentSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
-import { AnnouncementsSection } from './announcements-section'
 import { ApiInfoSection } from './api-info-section'
 import { ChatSettingsSection } from './chat-settings-section'
 import { DashboardSection } from './dashboard-section'
@@ -50,16 +49,6 @@ const CONTENT_SECTIONS = [
             settings.DataExportDefaultTime
           ),
         }}
-      />
-    ),
-  },
-  {
-    id: 'announcements',
-    titleKey: 'Announcements',
-    build: (settings: ContentSettings) => (
-      <AnnouncementsSection
-        enabled={settings['console_setting.announcements_enabled']}
-        data={settings['console_setting.announcements']}
       />
     ),
   },
