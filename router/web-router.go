@@ -20,7 +20,7 @@ type WebAssets struct {
 }
 
 func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.HandlerFunc) {
-	frontendFS := common.EmbedFolder(assets.BuildFS, "web/dist")
+	frontendFS := common.EmbedFolder(assets.BuildFS, "web/embed")
 
 	router.NoRoute(
 		pluginDispatcher,

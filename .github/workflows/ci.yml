@@ -35,11 +35,6 @@ jobs:
             go.sum
             relaykit/go.sum
 
-      - name: Create frontend embed placeholder
-        run: |
-          mkdir -p web/dist
-          touch web/dist/index.html
-
       - name: Vet root module
         run: go vet ./...
 
