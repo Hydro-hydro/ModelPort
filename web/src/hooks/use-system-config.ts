@@ -39,7 +39,6 @@ interface StatusApiResponse {
   data: {
     system_name?: string
     logo?: string
-    footer_html?: string
     display_token_stat_enabled?: boolean
     display_in_currency?: boolean
     quota_display_type?: CurrencyDisplayType
@@ -99,7 +98,6 @@ export function mapStatusDataToConfig(
     features: data.features,
     systemName: data.system_name || DEFAULT_SYSTEM_NAME,
     logo: data.logo || DEFAULT_LOGO,
-    footerHtml: data.footer_html,
     displayTokenStatEnabled: data.display_token_stat_enabled,
     currency,
   }

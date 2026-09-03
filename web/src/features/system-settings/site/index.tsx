@@ -25,17 +25,10 @@ import {
 } from './section-registry.tsx'
 
 const defaultSiteSettings: SiteSettings = {
-  Notice: '',
   SystemName: 'New API',
   Logo: '',
-  Footer: '',
-  About: '',
-  HomePageContent: '',
   ServerAddress: '',
   TaskPublicAddress: '',
-  'legal.user_agreement': '',
-  'legal.privacy_policy': '',
-  HeaderNavModules: '',
   SidebarModulesAdmin: '',
 }
 

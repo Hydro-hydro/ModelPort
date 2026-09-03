@@ -42,7 +42,6 @@ export interface CurrencyConfig {
 export interface SystemConfig {
   systemName: string
   logo: string
-  footerHtml?: string
   usageMode?: string
   features?: Partial<Record<FeatureName, boolean>>
   displayTokenStatEnabled?: boolean
@@ -69,7 +68,7 @@ interface SystemConfigState {
 
 /**
  * System configuration store with automatic persistence
- * Manages system name, logo, footer HTML and loading states
+ * Manages system name, logo and loading states
  */
 export const useSystemConfigStore = create<SystemConfigState>()(
   persist(
@@ -110,6 +109,3 @@ export const getSystemName = () =>
   useSystemConfigStore.getState().config.systemName
 
 export const getLogo = () => useSystemConfigStore.getState().config.logo
-
-export const getFooterHtml = () =>
-  useSystemConfigStore.getState().config.footerHtml

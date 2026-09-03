@@ -34,6 +34,4 @@ export { useTurnstile } from './hooks/use-turnstile'
 export { useAuthRedirect } from './hooks/use-auth-redirect'
 
 export { AuthLayout } from './auth-layout'
-export { TermsFooter } from './components/terms-footer'
-export { LegalConsent } from './components/legal-consent'
 export { SignIn } from './sign-in'

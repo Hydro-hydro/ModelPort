@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import axios from 'axios'
 import { Loader2, LogIn } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -37,7 +37,6 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { login } from '@/features/auth/api'
-import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { loginFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
@@ -54,9 +53,7 @@ export function UserAuthForm({
 }: AuthFormProps) {
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
-  const [agreedToLegal, setAgreedToLegal] = useState(false)
   const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0)
-  const legalConsentErrorMessage = t('Please agree to the legal terms first')
   const loginFailedMessage = t('Login failed')
 
   const { status } = useStatus()
@@ -77,13 +74,6 @@ export function UserAuthForm({
   } = useTurnstile()
   const { handleLoginSuccess } = useAuthRedirect()
 
-  const hasUserAgreement = Boolean(status?.user_agreement_enabled)
-  const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
-  const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy
-
-  useEffect(() => {
-    setAgreedToLegal(!requiresLegalConsent)
-  }, [requiresLegalConsent])
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -93,11 +83,6 @@ export function UserAuthForm({
   })
 
   async function onSubmit(data: z.infer<typeof loginFormSchema>) {
-    if (requiresLegalConsent && !agreedToLegal) {
-      toast.error(legalConsentErrorMessage)
-      return
-    }
-
     if (!validateTurnstile()) return
 
     const submittedTurnstileToken = turnstileToken
@@ -164,7 +149,7 @@ export function UserAuthForm({
             <Button
               type='submit'
               className='mt-2 w-full justify-center gap-2'
-              disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
+              disabled={isLoading}
             >
               {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
               {t('Sign in')}
@@ -186,13 +171,6 @@ export function UserAuthForm({
             {t('Password Login')}
           </p>
         )}
-
-        <LegalConsent
-          status={status}
-          checked={agreedToLegal}
-          onCheckedChange={setAgreedToLegal}
-          className='mt-1'
-        />
       </form>
     </Form>
   )
