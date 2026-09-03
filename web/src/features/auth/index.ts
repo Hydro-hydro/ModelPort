@@ -26,9 +26,7 @@ export type {
   AuthFormProps,
 } from './types'
 
-export {
-  loginFormSchema,
-} from './constants'
+export { loginFormSchema } from './constants'
 
 export { useTurnstile } from './hooks/use-turnstile'
 export { useAuthRedirect } from './hooks/use-auth-redirect'

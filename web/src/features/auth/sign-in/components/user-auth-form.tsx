@@ -74,7 +74,6 @@ export function UserAuthForm({
   } = useTurnstile()
   const { handleLoginSuccess } = useAuthRedirect()
 
-
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {

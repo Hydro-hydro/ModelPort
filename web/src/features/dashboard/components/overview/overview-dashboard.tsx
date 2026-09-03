@@ -738,8 +738,7 @@ export function OverviewDashboard() {
             <div
               className={cn(
                 'grid min-w-0 grid-cols-1 gap-4',
-                (showApiInfoPanel || showFAQPanel) &&
-                  'lg:grid-cols-2'
+                (showApiInfoPanel || showFAQPanel) && 'lg:grid-cols-2'
               )}
             >
               {isAdmin && (
