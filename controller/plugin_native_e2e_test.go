@@ -40,8 +40,7 @@ func (b *nativeRouteBilling) Settle(int) error {
 
 func (b *nativeRouteBilling) Refund(*gin.Context) {
 	b.events = append(b.events, "refund")
-	if !b.settled && b.preConsumed > 0 {
-		_ = model.IncreaseUserQuota(b.userID, b.preConsumed, true)
+	if !b.settled {
 		b.preConsumed = 0
 	}
 }
@@ -56,9 +55,6 @@ func (b *nativeRouteBilling) GetPreConsumedQuota() int {
 
 func (b *nativeRouteBilling) Reserve(quota int) error {
 	b.events = append(b.events, "reserve")
-	if err := model.DecreaseUserQuota(b.userID, quota, true); err != nil {
-		return err
-	}
 	b.preConsumed = quota
 	return nil
 }
@@ -171,6 +167,7 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 		UserGroup:       "default",
 		UsingGroup:      "default",
 		UserQuota:       1_000_000,
+		BillingSource:   service.BillingSourceUsage,
 		TokenGroup:      "default",
 		OriginModelName: "kling-v1",
 		Billing:         billing,
@@ -218,7 +215,7 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 	assert.Equal(t, int32(1), queryCalls.Load())
 	var settledUser model.User
 	require.NoError(t, database.First(&settledUser, 7).Error)
-	assert.Equal(t, 999_999, settledUser.Quota)
+	assert.Equal(t, 1_000_000, settledUser.Quota)
 
 	queryBinding, found := generation.LookupDeclaredRoute(http.MethodGet, "/kling/v1/videos/text2video/:task_id")
 	require.True(t, found)

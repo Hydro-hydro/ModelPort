@@ -585,7 +585,7 @@ func TestMidjourneyRefundRestoresEveryAccountingElementOnBillingChannel(t *testi
 	billed, err := SettleMidjourneyTaskBilling(relayInfo, task, prepared)
 	require.NoError(t, err)
 	require.True(t, billed)
-	assert.Equal(t, initialUserQuota-chargedQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialUserQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-chargedQuota, getTokenRemainQuota(t, tokenID))
 	persisted := getMidjourneyTask(t, task.Id)
 	assert.Equal(t, chargedQuota, persisted.Quota)
@@ -619,7 +619,7 @@ func TestMidjourneyRefundRestoresEveryAccountingElementOnBillingChannel(t *testi
 	assert.Equal(t, int64(1), countLogs(t))
 }
 
-func TestSettleMidjourneyTaskBillingFundingFailureClearsMarkers(t *testing.T) {
+func TestSettleMidjourneyTaskBillingIgnoresWalletFailure(t *testing.T) {
 	truncate(t)
 
 	const userID, tokenID, channelID = 52, 52, 52
@@ -657,14 +657,14 @@ func TestSettleMidjourneyTaskBillingFundingFailureClearsMarkers(t *testing.T) {
 
 	billed, err := SettleMidjourneyTaskBilling(relayInfo, task, prepared)
 
-	require.Error(t, err)
-	assert.False(t, billed)
+	require.NoError(t, err)
+	assert.True(t, billed)
 	assert.Equal(t, initialUserQuota, getUserQuota(t, userID))
-	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, initialTokenQuota-chargedQuota, getTokenRemainQuota(t, tokenID))
 	persisted := getMidjourneyTask(t, task.Id)
-	assert.Zero(t, persisted.Quota)
-	assert.Zero(t, persisted.TokenId)
-	assert.Zero(t, persisted.BillingChannelId)
+	assert.Equal(t, chargedQuota, persisted.Quota)
+	assert.Equal(t, tokenID, persisted.TokenId)
+	assert.Equal(t, channelID, persisted.BillingChannelId)
 	usedQuota, requestCount := getUserUsageAccounting(t, userID)
 	assert.Zero(t, usedQuota)
 	assert.Zero(t, requestCount)
@@ -713,7 +713,7 @@ func TestSettleMidjourneyTaskBillingTokenFailureKeepsFundingRefundable(t *testin
 
 	require.Error(t, err)
 	require.True(t, billed)
-	assert.Equal(t, initialUserQuota-chargedQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialUserQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
 	assert.Zero(t, getTokenUsedQuota(t, tokenID))
 	persisted := getMidjourneyTask(t, task.Id)
@@ -757,7 +757,7 @@ func TestRefundMidjourneyQuotaUsesLegacyChannelFallbackWithoutTokenAdjustment(t 
 
 	assert.True(t, RefundMidjourneyQuota(ctx, task, "legacy failure"))
 
-	assert.Equal(t, walletAfterCharge+chargedQuota, getUserQuota(t, userID))
+	assert.Equal(t, walletAfterCharge, getUserQuota(t, userID))
 	assert.Equal(t, tokenQuota, getTokenRemainQuota(t, tokenID))
 	assert.Zero(t, getTokenUsedQuota(t, tokenID))
 	usedQuota, requestCount := getUserUsageAccounting(t, userID)
@@ -810,6 +810,31 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	assert.Equal(t, preConsumed, log.Quota)
 	assert.Equal(t, "test-model", log.ModelName)
 	assert.Zero(t, task.Quota)
+	assert.Zero(t, getTaskQuota(t, task.ID))
+}
+
+func TestRefundTaskQuota_UnmarkedSourceLeavesWalletUntouched(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 2, 2, 2
+	const initQuota, preConsumed = 10000, 3000
+	const tokenRemain = 5000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-unmarked-source", tokenRemain)
+	seedChannel(t, channelID)
+	seedChargedAccounting(t, userID, channelID, tokenID, preConsumed, 1)
+
+	// Empty billing markers must follow the usage-only default. Only an
+	// explicit legacy "wallet" marker is allowed to mutate user quota.
+	task := makeTask(userID, channelID, preConsumed, tokenID, "")
+	require.NoError(t, model.DB.Create(task).Error)
+
+	assert.True(t, RefundTaskQuota(ctx, task, "unmarked task failed"))
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
 	assert.Zero(t, getTaskQuota(t, task.ID))
 }
 

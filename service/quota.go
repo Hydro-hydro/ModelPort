@@ -86,12 +86,10 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
+	// Realtime requests do not use the administrator wallet in personal mode.
+	relayInfo.BillingSource = BillingSourceUsage
 	if relayInfo.UsePrice {
 		return nil
-	}
-	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
-	if err != nil {
-		return err
 	}
 
 	token, err := model.GetTokenByKey(strings.TrimPrefix(relayInfo.TokenKey, "sk-"), false)
@@ -137,10 +135,6 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
-
-	if userQuota < quota {
-		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
-	}
 
 	if !token.UnlimitedQuota && token.RemainQuota < quota {
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
@@ -422,16 +416,21 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 
 func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
 
-	// 1) Consume from the administrator wallet quota.
-	if quota > 0 {
-		err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
+	// 1) Apply the configured funding source. Personal mode records usage
+	// separately and deliberately leaves the legacy user wallet untouched.
+	if relayInfo.BillingSource != BillingSourceWallet {
+		result.FundingApplied = true
 	} else {
-		err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
+		if quota > 0 {
+			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
+		} else {
+			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
+		}
+		if err != nil {
+			return result, err
+		}
+		result.FundingApplied = true
 	}
-	if err != nil {
-		return result, err
-	}
-	result.FundingApplied = true
 
 	if !relayInfo.IsPlayground {
 		if quota > 0 {
@@ -455,6 +454,9 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 }
 
 func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int) {
+	if relayInfo == nil || relayInfo.BillingSource != BillingSourceWallet {
+		return
+	}
 	gopool.Go(func() {
 		userSetting := relayInfo.UserSetting
 		threshold := common.QuotaRemindThreshold

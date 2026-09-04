@@ -210,21 +210,16 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			Description: err.Error(),
 		}
 	}
-
-	userQuota, err := model.GetUserQuota(info.UserId, false)
-	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: err.Error(),
-		}
+	if apiErr := service.PreConsumeBilling(c, priceData.Quota, info); apiErr != nil {
+		return service.MidjourneyErrorWrapper(constant.MjRequestError, apiErr.Error())
 	}
-
-	if userQuota-priceData.Quota < 0 {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "quota_not_enough",
+	billingPending := true
+	defer func() {
+		if billingPending && info.Billing != nil {
+			info.Billing.Refund(c)
 		}
-	}
+	}()
+
 	requestURL := getMjRequestPath(c.Request.URL.String())
 	baseURL := c.GetString("base_url")
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
@@ -265,6 +260,9 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "insert_midjourney_task_failed")
 	}
 	billingApplied, billingErr := service.SettleMidjourneyTaskBilling(info, midjourneyTask, billingPrepared)
+	if billingPrepared {
+		billingPending = false
+	}
 	if billingErr != nil {
 		common.SysLog("error settling Midjourney quota: " + billingErr.Error())
 	}
@@ -523,21 +521,18 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			Description: err.Error(),
 		}
 	}
-
-	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
-	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: err.Error(),
+	var billingPending bool
+	if consumeQuota {
+		if apiErr := service.PreConsumeBilling(c, priceData.Quota, relayInfo); apiErr != nil {
+			return service.MidjourneyErrorWrapper(constant.MjRequestError, apiErr.Error())
 		}
+		billingPending = true
 	}
-
-	if consumeQuota && userQuota-priceData.Quota < 0 {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "quota_not_enough",
+	defer func() {
+		if billingPending && relayInfo.Billing != nil {
+			relayInfo.Billing.Refund(c)
 		}
-	}
+	}()
 
 	midjResponseWithStatus, responseBody, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	if err != nil {
@@ -630,6 +625,9 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		}
 	}
 	billingApplied, billingErr := service.SettleMidjourneyTaskBilling(relayInfo, midjourneyTask, billingPrepared)
+	if billingPrepared {
+		billingPending = false
+	}
 	if billingErr != nil {
 		common.SysLog("error settling Midjourney quota: " + billingErr.Error())
 	}

@@ -4,18 +4,33 @@ import (
 	"errors"
 
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
-const BillingSourceWallet = "wallet"
+const (
+	BillingSourceWallet = "wallet"
+	BillingSourceUsage  = relaycommon.BillingSourceUsage
+)
 
 // FundingSource 抽象了请求预扣费使用的额度来源。
-// 个人版只保留管理员钱包额度，接口仍用于隔离计费会话与额度存储。
+// 个人版只记录模型用量，不读写管理员钱包；WalletFunding 保留用于兼容
+// 已存在的历史结算数据。
 type FundingSource interface {
 	Source() string
 	PreConsume(amount int) error
 	Settle(delta int) error
 	Refund() error
 }
+
+// UsageFunding 表示个人版的用量记账来源。
+// 用户余额不参与请求授权或计费结算，实际用量由调用方写入 used_quota
+// 和消费日志；Token 额度仍由 BillingSession 单独处理。
+type UsageFunding struct{}
+
+func (*UsageFunding) Source() string       { return BillingSourceUsage }
+func (*UsageFunding) PreConsume(int) error { return nil }
+func (*UsageFunding) Settle(int) error     { return nil }
+func (*UsageFunding) Refund() error        { return nil }
 
 // ErrInsufficientWalletQuota 钱包原子预扣失败，未发生任何扣减。
 var ErrInsufficientWalletQuota = errors.New("wallet quota insufficient")

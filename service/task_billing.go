@@ -96,8 +96,13 @@ func resolveTokenKey(ctx context.Context, tokenId int, taskID string) string {
 	return token.Key
 }
 
-// taskAdjustFunding 调整任务使用的管理员钱包额度，delta > 0 表示扣费，delta < 0 表示退还。
+// taskAdjustFunding 调整任务的资金来源，delta > 0 表示扣费，delta < 0 表示退还。
+// 个人版任务使用用量记账，不触碰历史用户钱包；只有显式标记为 wallet
+// 的历史任务保留原有结算能力，避免空标记任务意外改动余额。
 func taskAdjustFunding(task *model.Task, delta int) error {
+	if task == nil || task.PrivateData.BillingSource != BillingSourceWallet {
+		return nil
+	}
 	if delta > 0 {
 		return model.DecreaseUserQuota(task.UserId, delta, false)
 	}
@@ -324,7 +329,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
 // 当任务成功且返回了 totalTokens 时，根据模型倍率和分组倍率重新计算实际扣费额度，
-// 与预扣费的差额进行补扣或退还。资金来源固定为管理员钱包。
+// 与预扣费的差额进行补扣或退还。
 func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) bool {
 	if totalTokens <= 0 {
 		return false

@@ -104,6 +104,9 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 	if ctx == nil || relayInfo == nil || apiErr == nil {
 		return false
 	}
+	// Violation fees are usage records in personal mode as well; they must not
+	// fall back to the legacy wallet path when the original request was free.
+	relayInfo.BillingSource = BillingSourceUsage
 	//if relayInfo.IsPlayground {
 	//	return false
 	//}

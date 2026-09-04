@@ -492,12 +492,13 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		Request:         request,
 		ReasoningEffort: reasoningEffort,
 
-		RequestId:  reqId,
-		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
-		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
-		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
-		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
-		UserEmail:  common.GetContextKeyString(c, constant.ContextKeyUserEmail),
+		RequestId:     reqId,
+		UserId:        common.GetContextKeyInt(c, constant.ContextKeyUserId),
+		UsingGroup:    common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+		UserGroup:     common.GetContextKeyString(c, constant.ContextKeyUserGroup),
+		UserQuota:     common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
+		UserEmail:     common.GetContextKeyString(c, constant.ContextKeyUserEmail),
+		BillingSource: BillingSourceUsage,
 
 		OriginModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
 

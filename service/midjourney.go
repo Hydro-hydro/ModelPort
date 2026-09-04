@@ -48,6 +48,9 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	if quota < 0 {
 		return false, errors.New("quota cannot be negative")
 	}
+	// Midjourney tasks use the same usage-only funding policy as ordinary
+	// relay requests. The marker is kept on RelayInfo for settlement/logging.
+	relayInfo.BillingSource = BillingSourceUsage
 
 	task.Quota = quota
 	task.BillingChannelId = task.ChannelId
@@ -67,6 +70,22 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 	}
 	if task == nil || task.Id == 0 {
 		return false, errors.New("Midjourney task must be persisted before billing")
+	}
+
+	// Midjourney routes reserve token quota before contacting the upstream.
+	// Reuse that session here so the successful task does not deduct the token
+	// a second time. Direct callers without a session keep the legacy fallback.
+	if relayInfo.Billing != nil {
+		billingErr := relayInfo.Billing.Settle(task.Quota)
+		if billingErr != nil {
+			task.TokenId = 0
+		} else if task.Quota > 0 && !relayInfo.IsPlayground {
+			task.TokenId = relayInfo.TokenId
+		}
+		if updateErr := task.UpdateBillingState(); updateErr != nil {
+			return true, errors.Join(billingErr, fmt.Errorf("update Midjourney billing state: %w", updateErr))
+		}
+		return true, billingErr
 	}
 
 	result, billingErr := postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
@@ -95,11 +114,6 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	quota := task.Quota
 	if quota == 0 {
 		return true
-	}
-
-	if err := model.IncreaseUserQuota(task.UserId, quota, false); err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 用户额度失败 task %s: %s", task.MjId, err.Error()))
-		return false
 	}
 
 	if task.TokenId > 0 {

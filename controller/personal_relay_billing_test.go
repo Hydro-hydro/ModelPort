@@ -57,7 +57,7 @@ func setupPersonalRelayBillingTest(t *testing.T) {
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
-	common.LogConsumeEnabled = false
+	common.LogConsumeEnabled = true
 	common.MemoryCacheEnabled = true
 	constant.CountToken = false
 	constant.StreamingTimeout = 30
@@ -231,9 +231,11 @@ func TestPersonalRelaySuccessSettlesOnlyOnce(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, userQuota, tokenQuota)
-	assert.Less(t, userQuota, 10_000)
+	assert.Equal(t, 10_000, userQuota)
+	assert.Less(t, tokenQuota, 10_000)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
+	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
+	assertPersonalRelayUsageRecorded(t)
 }
 
 func TestPersonalRelayResponseDecodeFailureRefundsPreConsumedQuota(t *testing.T) {
@@ -284,9 +286,10 @@ func TestPersonalRelayRetrySuccessSettlesOnlyFinalAttempt(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code)
 	assert.Equal(t, int32(2), requests.Load())
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, userQuota, tokenQuota)
+	assert.Equal(t, 10_000, userQuota)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
-	assert.Equal(t, 10_000-userQuota, getTokenUsedQuotaForPersonalRelay(t))
+	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
+	assertPersonalRelayUsageRecorded(t)
 }
 
 func TestPersonalRelayRetryExhaustionRefundsOnce(t *testing.T) {
@@ -362,9 +365,10 @@ func TestPersonalRelayTruncatedStreamSettlesReturnedUsageOnce(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, userQuota, tokenQuota)
+	assert.Equal(t, 10_000, userQuota)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
-	assert.Equal(t, 10_000-userQuota, getTokenUsedQuotaForPersonalRelay(t))
+	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
+	assertPersonalRelayUsageRecorded(t)
 	assert.Contains(t, response.Body.String(), "chatcmpl-truncated")
 }
 
@@ -394,9 +398,10 @@ func TestPersonalRelayStreamingSuccessSettlesOnce(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, userQuota, tokenQuota)
+	assert.Equal(t, 10_000, userQuota)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
-	assert.Equal(t, 10_000-userQuota, getTokenUsedQuotaForPersonalRelay(t))
+	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
+	assertPersonalRelayUsageRecorded(t)
 	assert.Contains(t, response.Body.String(), "chatcmpl-stream")
 }
 
@@ -509,9 +514,10 @@ func TestPersonalRelayStreamingClientCancellationKeepsAccountingConsistent(t *te
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, userQuota, tokenQuota)
+	assert.Equal(t, 10_000, userQuota)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
-	assert.Equal(t, 10_000-userQuota, getTokenUsedQuotaForPersonalRelay(t))
+	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
+	assertPersonalRelayUsageRecorded(t)
 }
 
 func getTokenUsedQuotaForPersonalRelay(t *testing.T) int {
@@ -519,4 +525,17 @@ func getTokenUsedQuotaForPersonalRelay(t *testing.T) int {
 	var token model.Token
 	require.NoError(t, model.DB.Select("used_quota").First(&token, personalRelayTokenID).Error)
 	return token.UsedQuota
+}
+
+func assertPersonalRelayUsageRecorded(t *testing.T) {
+	t.Helper()
+	var user model.User
+	require.NoError(t, model.DB.Select("quota", "used_quota", "request_count").First(&user, personalRelayUserID).Error)
+	assert.Equal(t, 10_000, user.Quota)
+	assert.Greater(t, user.UsedQuota, 0)
+	assert.Greater(t, user.RequestCount, 0)
+	var log model.Log
+	require.NoError(t, model.LOG_DB.Where("user_id = ? AND type = ?", personalRelayUserID, model.LogTypeConsume).Order("id DESC").First(&log).Error)
+	assert.Greater(t, log.Quota, 0)
+	assert.NotEmpty(t, log.ModelName)
 }

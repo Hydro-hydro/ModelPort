@@ -2,6 +2,10 @@ package common
 
 import "github.com/gin-gonic/gin"
 
+// BillingSourceUsage is the personal-edition funding source. It records
+// model usage without reading or modifying the legacy user wallet.
+const BillingSourceUsage = "usage"
+
 // UsageAccounting 抽象已完成预扣会话的终态用量记账操作。
 // 该接口只描述普通请求结束时需要的最小调用面：读取实际预扣额度、
 // 根据实际额度结算，以及异常时退款。预扣策略和追加预留仍由完整的

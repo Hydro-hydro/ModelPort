@@ -24,7 +24,7 @@ func TestPersonalBillingTerminalRefundsPreConsumedQuotaExactlyOnce(t *testing.T)
 	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
 	require.NotNil(t, relayInfo.Billing)
 	var accounting relaycommon.UsageAccounting = relayInfo.Billing
-	assert.Equal(t, initialQuota-preConsumedQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-preConsumedQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
 
@@ -80,14 +80,14 @@ func TestPersonalBillingTerminalSettlementIsIdempotentAndKeepsQuotasInSync(t *te
 			var accounting relaycommon.UsageAccounting = relayInfo.Billing
 
 			require.NoError(t, accounting.Settle(test.actualQuota))
-			assert.Equal(t, initialQuota-test.actualQuota, getUserQuota(t, test.userID))
+			assert.Equal(t, initialQuota, getUserQuota(t, test.userID))
 			assert.Equal(t, initialTokenQuota-test.actualQuota, getTokenRemainQuota(t, test.tokenID))
 			assert.Equal(t, test.actualQuota, getTokenUsedQuota(t, test.tokenID))
 
 			// A settled request is terminal; a later, different actual quota must not
 			// apply another adjustment.
 			require.NoError(t, accounting.Settle(test.actualQuota+50))
-			assert.Equal(t, initialQuota-test.actualQuota, getUserQuota(t, test.userID))
+			assert.Equal(t, initialQuota, getUserQuota(t, test.userID))
 			assert.Equal(t, initialTokenQuota-test.actualQuota, getTokenRemainQuota(t, test.tokenID))
 			assert.Equal(t, test.actualQuota, getTokenUsedQuota(t, test.tokenID))
 			assert.False(t, relayInfo.Billing.NeedsRefund())
@@ -140,7 +140,7 @@ func TestPersonalBillingTerminalCommittedFundingIsNotRefunded(t *testing.T) {
 	var accounting relaycommon.UsageAccounting = relayInfo.Billing
 	require.NoError(t, accounting.Settle(actualQuota))
 
-	assert.Equal(t, initialQuota-actualQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
 
@@ -150,7 +150,7 @@ func TestPersonalBillingTerminalCommittedFundingIsNotRefunded(t *testing.T) {
 	accounting.Refund(context)
 
 	assert.False(t, relayInfo.Billing.NeedsRefund())
-	assert.Equal(t, initialQuota-actualQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
 }
