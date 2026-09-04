@@ -70,7 +70,6 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   const [loading, setLoading] = useState(false)
   const [settings, setSettings] = useState<UserSettings>({
     notify_type: 'email',
-    quota_warning_threshold: DEFAULT_QUOTA_WARNING_THRESHOLD,
     notification_email: '',
     webhook_url: '',
     webhook_secret: '',
@@ -96,8 +95,6 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
       const parsed = parseUserSettings(profile.setting)
       setSettings({
         notify_type: normalizeNotifyType(parsed.notify_type),
-        quota_warning_threshold:
-          parsed.quota_warning_threshold ?? DEFAULT_QUOTA_WARNING_THRESHOLD,
         notification_email: parsed.notification_email ?? '',
         webhook_url: parsed.webhook_url ?? '',
         webhook_secret: parsed.webhook_secret ?? '',
@@ -117,7 +114,15 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   const handleSave = async () => {
     try {
       setLoading(true)
-      const response = await updateUserSettings(settings)
+      // Keep the legacy threshold in the payload for older servers while the
+      // deprecated setting remains hidden from the profile UI.
+      const storedThreshold =
+        parseUserSettings(profile?.setting).quota_warning_threshold ??
+        DEFAULT_QUOTA_WARNING_THRESHOLD
+      const response = await updateUserSettings({
+        ...settings,
+        quota_warning_threshold: storedThreshold,
+      })
 
       if (response.success) {
         toast.success(t('Settings updated successfully'))
@@ -143,8 +148,9 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
           value={[notifyType]}
           onValueChange={(value) => {
             const nextValue = value.find((item) => item !== notifyType)
-            if (nextValue)
-              {updateField('notify_type', normalizeNotifyType(nextValue))}
+            if (nextValue) {
+              updateField('notify_type', normalizeNotifyType(nextValue))
+            }
           }}
           aria-label={t('Notification Method')}
           variant='outline'
@@ -168,24 +174,6 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
             )
           })}
         </ToggleGroup>
-      </div>
-
-      {/* Warning Threshold */}
-      <div className='space-y-1.5'>
-        <Label htmlFor='threshold'>{t('Quota Warning Threshold')}</Label>
-        <Input
-          id='threshold'
-          type='number'
-          className='h-9'
-          value={settings.quota_warning_threshold}
-          onChange={(e) =>
-            updateField('quota_warning_threshold', Number(e.target.value))
-          }
-          placeholder={t('Enter threshold')}
-        />
-        <p className='text-muted-foreground text-xs'>
-          {t('Get notified when balance falls below this value')}
-        </p>
       </div>
 
       {/* Email Settings */}
