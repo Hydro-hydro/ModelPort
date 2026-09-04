@@ -20,6 +20,9 @@ import { describe, expect, test } from 'vitest'
 
 import {
   buildRouteGroupPricingRows,
+  isRouteAutoGroupJson,
+  isRouteGroupOverrideJson,
+  isRouteGroupRatioJson,
   parseRouteAutoGroupList,
   parseRouteGroupOverrideMap,
   parseRouteGroupRatioMap,
@@ -43,6 +46,12 @@ describe('route group editor data adapters', () => {
     expect(parseRouteGroupRatioMap('["default"]')).toEqual({})
   })
 
+  test('rejects reserved route group names and negative ratios', () => {
+    expect(isRouteGroupRatioJson('{"default":1,"premium":0}')).toBe(true)
+    expect(isRouteGroupRatioJson('{"auto":1}')).toBe(false)
+    expect(isRouteGroupRatioJson('{"default":-1}')).toBe(false)
+  })
+
   test('serializes pricing rows with trimmed names and normalized ratios', () => {
     const serialized = serializeRouteGroupPricingRows([
       { _id: 'row-1', name: ' default ', ratio: '1.5' },
@@ -51,7 +60,7 @@ describe('route group editor data adapters', () => {
       { _id: 'row-4', name: 'default', ratio: '2' },
     ])
 
-    expect(JSON.parse(serialized)).toEqual({ default: 2, premium: 1 })
+    expect(JSON.parse(serialized)).toEqual({ default: 2 })
   })
 
   test('builds pricing rows in source order with caller-provided ids', () => {
@@ -83,6 +92,7 @@ describe('route group editor data adapters', () => {
 
     expect(result).toEqual({
       default: { premium: 0.8 },
+      empty: {},
       premium: { default: 1 },
     })
   })
@@ -119,5 +129,17 @@ describe('route group editor data adapters', () => {
   test('falls back to an empty automatic group list for unknown JSON shapes', () => {
     expect(parseRouteAutoGroupList('{"default":1}')).toEqual([])
     expect(parseRouteAutoGroupList('not-json')).toEqual([])
+  })
+
+  test('rejects duplicate automatic groups so visual editing cannot drop history', () => {
+    expect(isRouteAutoGroupJson('["default","premium"]')).toBe(true)
+    expect(isRouteAutoGroupJson('["default","default"]')).toBe(false)
+    expect(isRouteAutoGroupJson('["default",1]')).toBe(false)
+  })
+
+  test('accepts empty override objects while rejecting malformed nested values', () => {
+    expect(isRouteGroupOverrideJson('{"default":{}}')).toBe(true)
+    expect(isRouteGroupOverrideJson('{"default":{"premium":-1}}')).toBe(false)
+    expect(isRouteGroupOverrideJson('{"default":[]}')).toBe(false)
   })
 })
