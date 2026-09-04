@@ -50,7 +50,7 @@ describe('personal billing settings', () => {
         url: '/system-settings/billing/model-pricing',
       },
       {
-        title: 'Group Pricing',
+        title: 'Group Configuration',
         url: '/system-settings/billing/group-pricing',
       },
     ])

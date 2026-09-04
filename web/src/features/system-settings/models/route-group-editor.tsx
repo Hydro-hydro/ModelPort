@@ -377,7 +377,7 @@ function RouteGroupPricingTable(props: PricingTableProps) {
       <CardHeader className={sectionHeaderClassName}>
         <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
           <div>
-            <CardTitle>{t('Pricing groups')}</CardTitle>
+            <CardTitle>{t('Group Configuration')}</CardTitle>
             <CardDescription>{t('Group ratios')}</CardDescription>
           </div>
           <Button

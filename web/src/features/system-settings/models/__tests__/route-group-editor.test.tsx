@@ -82,7 +82,7 @@ function readOutput(container: HTMLElement, testId: string) {
 describe('RouteGroupEditor', () => {
   test('adds a route group from the pricing table', () => {
     const { container } = render(<Harness />)
-    const pricingCard = getCard(container, 'Pricing groups')
+    const pricingCard = getCard(container, 'Group Configuration')
 
     fireEvent.click(
       within(pricingCard).getByRole('button', { name: 'Add group' })
@@ -100,7 +100,7 @@ describe('RouteGroupEditor', () => {
 
   test('renames a route group on blur while updating only override targets', () => {
     const { container } = render(<Harness />)
-    const pricingCard = getCard(container, 'Pricing groups')
+    const pricingCard = getCard(container, 'Group Configuration')
     const groupInputs = within(pricingCard).getAllByRole('textbox', {
       name: 'Group name',
     })
@@ -124,7 +124,7 @@ describe('RouteGroupEditor', () => {
 
   test('deleting a route group removes target references but preserves source maps', () => {
     const { container } = render(<Harness />)
-    const pricingCard = getCard(container, 'Pricing groups')
+    const pricingCard = getCard(container, 'Group Configuration')
 
     fireEvent.click(
       within(pricingCard).getByRole('button', { name: 'Remove default' })
@@ -140,7 +140,7 @@ describe('RouteGroupEditor', () => {
 
   test('deleting an uncommitted rename clears both old and current references', () => {
     const { container } = render(<Harness />)
-    const pricingCard = getCard(container, 'Pricing groups')
+    const pricingCard = getCard(container, 'Group Configuration')
     const groupInputs = within(pricingCard).getAllByRole('textbox', {
       name: 'Group name',
     })
@@ -171,7 +171,7 @@ describe('RouteGroupEditor', () => {
 
   test('reports invalid visual state when a group ratio is cleared', () => {
     const { container } = render(<Harness />)
-    const pricingCard = getCard(container, 'Pricing groups')
+    const pricingCard = getCard(container, 'Group Configuration')
     const ratioInput = within(pricingCard).getAllByRole('spinbutton', {
       name: 'Ratio',
     })[0]
@@ -186,7 +186,7 @@ describe('RouteGroupEditor', () => {
 
   test('reports invalid visual state when a group name is cleared', () => {
     const { container } = render(<Harness />)
-    const pricingCard = getCard(container, 'Pricing groups')
+    const pricingCard = getCard(container, 'Group Configuration')
     const groupInput = within(pricingCard).getAllByRole('textbox', {
       name: 'Group name',
     })[0]
@@ -200,7 +200,7 @@ describe('RouteGroupEditor', () => {
 
   test('reports invalid visual state when a group uses the reserved auto name', () => {
     const { container } = render(<Harness />)
-    const pricingCard = getCard(container, 'Pricing groups')
+    const pricingCard = getCard(container, 'Group Configuration')
     const groupInput = within(pricingCard).getAllByRole('textbox', {
       name: 'Group name',
     })[0]
