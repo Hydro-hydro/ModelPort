@@ -34,14 +34,7 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {
-	setting := dto.UserSetting{}
-	if user.Setting != "" {
-		err := common.Unmarshal([]byte(user.Setting), &setting)
-		if err != nil {
-			common.SysLog("failed to unmarshal setting: " + err.Error())
-		}
-	}
-	return SanitizePersonalUserSetting(setting)
+	return decodePersonalUserSetting(user.Setting)
 }
 
 // getUserCacheKey returns the key for user cache

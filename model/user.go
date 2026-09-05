@@ -15,6 +15,25 @@ import (
 
 const UserNameMaxLength = 20
 
+// personalUserSetting is the root application's persistence contract for user
+// preferences. relaykit.UserSetting retains retired platform fields for public
+// compatibility, but personal mode never decodes or serializes them.
+type personalUserSetting struct {
+	NotifyType                       string `json:"notify_type,omitempty"`
+	WebhookUrl                       string `json:"webhook_url,omitempty"`
+	WebhookSecret                    string `json:"webhook_secret,omitempty"`
+	NotificationEmail                string `json:"notification_email,omitempty"`
+	BarkUrl                          string `json:"bark_url,omitempty"`
+	GotifyUrl                        string `json:"gotify_url,omitempty"`
+	GotifyToken                      string `json:"gotify_token,omitempty"`
+	GotifyPriority                   int    `json:"gotify_priority"`
+	UpstreamModelUpdateNotifyEnabled bool   `json:"upstream_model_update_notify_enabled,omitempty"`
+	AcceptUnsetRatioModel            bool   `json:"accept_unset_model_ratio_model,omitempty"`
+	RecordIpLog                      bool   `json:"record_ip_log,omitempty"`
+	SidebarModules                   string `json:"sidebar_modules,omitempty"`
+	Language                         string `json:"language,omitempty"`
+}
+
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
@@ -82,19 +101,11 @@ func UpdateUserAccessToken(id int, token string) error {
 }
 
 func (user *User) GetSetting() dto.UserSetting {
-	setting := dto.UserSetting{}
-	if user.Setting != "" {
-		err := common.Unmarshal([]byte(user.Setting), &setting)
-		if err != nil {
-			common.SysLog("failed to unmarshal setting: " + err.Error())
-		}
-	}
-	return SanitizePersonalUserSetting(setting)
+	return decodePersonalUserSetting(user.Setting)
 }
 
 func (user *User) SetSetting(setting dto.UserSetting) {
-	setting = SanitizePersonalUserSetting(setting)
-	settingBytes, err := common.Marshal(setting)
+	settingBytes, err := marshalPersonalUserSetting(setting)
 	if err != nil {
 		common.SysLog("failed to marshal setting: " + err.Error())
 		return
@@ -102,21 +113,53 @@ func (user *User) SetSetting(setting dto.UserSetting) {
 	user.Setting = string(settingBytes)
 }
 
-// SanitizePersonalUserSetting removes fields that belong to the retired
-// platform wallet/notification model. The relaykit DTO keeps those fields for
-// public compatibility, but the root application must neither persist nor
-// expose them in personal mode.
-func SanitizePersonalUserSetting(setting dto.UserSetting) dto.UserSetting {
-	setting.QuotaWarningThreshold = 0
-	setting.BillingPreference = ""
-	return setting
+func decodePersonalUserSetting(raw string) dto.UserSetting {
+	setting := personalUserSetting{}
+	if raw != "" {
+		if err := common.Unmarshal([]byte(raw), &setting); err != nil {
+			common.SysLog("failed to unmarshal setting: " + err.Error())
+		}
+	}
+	return dto.UserSetting{
+		NotifyType:                       setting.NotifyType,
+		WebhookUrl:                       setting.WebhookUrl,
+		WebhookSecret:                    setting.WebhookSecret,
+		NotificationEmail:                setting.NotificationEmail,
+		BarkUrl:                          setting.BarkUrl,
+		GotifyUrl:                        setting.GotifyUrl,
+		GotifyToken:                      setting.GotifyToken,
+		GotifyPriority:                   setting.GotifyPriority,
+		UpstreamModelUpdateNotifyEnabled: setting.UpstreamModelUpdateNotifyEnabled,
+		AcceptUnsetRatioModel:            setting.AcceptUnsetRatioModel,
+		RecordIpLog:                      setting.RecordIpLog,
+		SidebarModules:                   setting.SidebarModules,
+		Language:                         setting.Language,
+	}
+}
+
+func marshalPersonalUserSetting(setting dto.UserSetting) ([]byte, error) {
+	return common.Marshal(personalUserSetting{
+		NotifyType:                       setting.NotifyType,
+		WebhookUrl:                       setting.WebhookUrl,
+		WebhookSecret:                    setting.WebhookSecret,
+		NotificationEmail:                setting.NotificationEmail,
+		BarkUrl:                          setting.BarkUrl,
+		GotifyUrl:                        setting.GotifyUrl,
+		GotifyToken:                      setting.GotifyToken,
+		GotifyPriority:                   setting.GotifyPriority,
+		UpstreamModelUpdateNotifyEnabled: setting.UpstreamModelUpdateNotifyEnabled,
+		AcceptUnsetRatioModel:            setting.AcceptUnsetRatioModel,
+		RecordIpLog:                      setting.RecordIpLog,
+		SidebarModules:                   setting.SidebarModules,
+		Language:                         setting.Language,
+	})
 }
 
 func UpdateUserSetting(userId int, setting dto.UserSetting) error {
 	if userId == 0 {
 		return errors.New("id 为空！")
 	}
-	settingBytes, err := common.Marshal(SanitizePersonalUserSetting(setting))
+	settingBytes, err := marshalPersonalUserSetting(setting)
 	if err != nil {
 		return err
 	}
