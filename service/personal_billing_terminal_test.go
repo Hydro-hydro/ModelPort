@@ -11,18 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type countingBillingFunding struct {
-	refunds int
-}
-
-func (*countingBillingFunding) Source() string       { return BillingSourceWallet }
-func (*countingBillingFunding) PreConsume(int) error { return nil }
-func (*countingBillingFunding) Settle(int) error     { return nil }
-func (f *countingBillingFunding) Refund() error {
-	f.refunds++
-	return nil
-}
-
 func TestPersonalBillingTerminalRefundsPreConsumedQuotaExactlyOnce(t *testing.T) {
 	truncate(t)
 
@@ -37,7 +25,6 @@ func TestPersonalBillingTerminalRefundsPreConsumedQuotaExactlyOnce(t *testing.T)
 	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
 	require.NotNil(t, relayInfo.Billing)
 	var accounting relaycommon.UsageAccounting = relayInfo.Billing
-	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-preConsumedQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
 
@@ -46,21 +33,15 @@ func TestPersonalBillingTerminalRefundsPreConsumedQuotaExactlyOnce(t *testing.T)
 	accounting.Refund(context)
 
 	require.Eventually(t, func() bool {
-		var user model.User
 		var token model.Token
-		if err := model.DB.Select("quota").Where("id = ?", userID).First(&user).Error; err != nil {
-			return false
-		}
 		if err := model.DB.Select("remain_quota", "used_quota").Where("id = ?", tokenID).First(&token).Error; err != nil {
 			return false
 		}
-		return user.Quota == initialQuota &&
-			token.RemainQuota == initialTokenQuota &&
+		return token.RemainQuota == initialTokenQuota &&
 			token.UsedQuota == 0
 	}, time.Second, 10*time.Millisecond)
 
 	assert.False(t, relayInfo.Billing.NeedsRefund())
-	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, 0, getTokenUsedQuota(t, tokenID))
 }
@@ -93,14 +74,12 @@ func TestPersonalBillingTerminalSettlementIsIdempotentAndKeepsQuotasInSync(t *te
 			var accounting relaycommon.UsageAccounting = relayInfo.Billing
 
 			require.NoError(t, accounting.Settle(test.actualQuota))
-			assert.Equal(t, initialQuota, getUserQuota(t, test.userID))
 			assert.Equal(t, initialTokenQuota-test.actualQuota, getTokenRemainQuota(t, test.tokenID))
 			assert.Equal(t, test.actualQuota, getTokenUsedQuota(t, test.tokenID))
 
 			// A settled request is terminal; a later, different actual quota must not
 			// apply another adjustment.
 			require.NoError(t, accounting.Settle(test.actualQuota+50))
-			assert.Equal(t, initialQuota, getUserQuota(t, test.userID))
 			assert.Equal(t, initialTokenQuota-test.actualQuota, getTokenRemainQuota(t, test.tokenID))
 			assert.Equal(t, test.actualQuota, getTokenUsedQuota(t, test.tokenID))
 			operation, err := model.GetBillingOperation(accounting.(*BillingSession).OperationKey())
@@ -129,13 +108,11 @@ func TestPersonalBillingTerminalZeroUsageSettlesOnlyOnce(t *testing.T) {
 
 	// 当前服务约定中，未取得最终 Usage 时以 actualQuota=0 结算。
 	require.NoError(t, accounting.Settle(0))
-	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, 0, getTokenUsedQuota(t, tokenID))
 
 	// 第二次传入不同的终态也不能再次调整已经结算的请求。
 	require.NoError(t, accounting.Settle(300))
-	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, 0, getTokenUsedQuota(t, tokenID))
 	assert.False(t, relayInfo.Billing.NeedsRefund())
@@ -179,7 +156,6 @@ func TestPersonalBillingTerminalCommittedFundingIsNotRefunded(t *testing.T) {
 	var accounting relaycommon.UsageAccounting = relayInfo.Billing
 	require.NoError(t, accounting.Settle(actualQuota))
 
-	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
 
@@ -189,7 +165,6 @@ func TestPersonalBillingTerminalCommittedFundingIsNotRefunded(t *testing.T) {
 	accounting.Refund(context)
 
 	assert.False(t, relayInfo.Billing.NeedsRefund())
-	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
 }
@@ -222,18 +197,16 @@ func TestPersonalBillingTerminalRefundStopsWhenDurableSettlementWon(t *testing.T
 	session.mu.Unlock()
 }
 
-func TestPersonalBillingTerminalRefundHonorsDurableFundingMarker(t *testing.T) {
+func TestPersonalBillingTerminalRefundHonorsDurableRefundMarkers(t *testing.T) {
 	truncate(t)
 
-	funding := &countingBillingFunding{}
 	operation, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
 		OperationKey:     "request:durable-funding-refund-marker",
 		RequestID:        "durable-funding-refund-marker",
-		FundingSource:    BillingSourceWallet,
 		PreConsumedQuota: 100,
 	})
 	require.NoError(t, err)
-	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		require.NoError(t, model.MarkBillingOperationRefundComponent(operation.OperationKey, component))
 	}
 	_, err = model.UpdateBillingOperationStatus(operation.OperationKey,
@@ -243,7 +216,6 @@ func TestPersonalBillingTerminalRefundHonorsDurableFundingMarker(t *testing.T) {
 
 	session := &BillingSession{
 		relayInfo:    personalBillingRelayInfo(912, 0, ""),
-		funding:      funding,
 		operationKey: operation.OperationKey,
 	}
 	session.Refund(newPersonalBillingTestContext())
@@ -253,7 +225,6 @@ func TestPersonalBillingTerminalRefundHonorsDurableFundingMarker(t *testing.T) {
 		return !session.refundInFlight
 	}, time.Second, 10*time.Millisecond)
 
-	assert.Zero(t, funding.refunds)
 	current, err := model.GetBillingOperation(operation.OperationKey)
 	require.NoError(t, err)
 	assert.Equal(t, model.BillingOperationRefunded, current.Status)

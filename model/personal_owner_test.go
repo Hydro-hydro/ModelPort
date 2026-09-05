@@ -56,19 +56,19 @@ func TestEnsurePersonalOwnerKeepsSingleRoot(t *testing.T) {
 	assert.Equal(t, common.RoleRootUser, owner.Role)
 }
 
-func TestEnsurePersonalOwnerPromotesSingleAdministratorIdempotently(t *testing.T) {
+func TestEnsurePersonalOwnerRejectsSingleAdministratorWithoutPromotion(t *testing.T) {
 	db := setupPersonalOwnerTestDB(t)
 	require.NoError(t, db.Create(&User{
 		Id: 2, Username: "admin", Password: "password", Role: common.RoleAdminUser, Status: common.UserStatusEnabled,
 	}).Error)
 
-	require.NoError(t, EnsurePersonalOwner())
-	require.NoError(t, EnsurePersonalOwner())
+	assert.ErrorIs(t, EnsurePersonalOwner(), ErrPersonalOwnerNotFound)
+	_, err := GetPersonalOwner()
+	assert.ErrorIs(t, err, ErrPersonalOwnerNotFound)
 
-	owner, err := GetPersonalOwner()
-	require.NoError(t, err)
-	assert.Equal(t, 2, owner.Id)
-	assert.Equal(t, common.RoleRootUser, owner.Role)
+	var user User
+	require.NoError(t, db.First(&user, 2).Error)
+	assert.Equal(t, common.RoleAdminUser, user.Role)
 }
 
 func TestEnsurePersonalOwnerRejectsCommonOnlyDatabase(t *testing.T) {

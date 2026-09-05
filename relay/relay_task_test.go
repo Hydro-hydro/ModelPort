@@ -166,14 +166,13 @@ func setupRelayTaskBillingFixture(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.BillingOperation{}))
 	require.NoError(t, db.Create(&model.User{
 		Id:       userID,
 		Username: "relay-task-billing-user",
 		Role:     common.RoleRootUser,
 		Status:   common.UserStatusEnabled,
 		Group:    "default",
-		Quota:    quota,
 	}).Error)
 	require.NoError(t, db.Create(&model.Token{
 		Id:             tokenID,

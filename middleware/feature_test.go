@@ -40,3 +40,34 @@ func TestRequireFeatureAllowsEnabledPersonalFeature(t *testing.T) {
 
 	assert.Equal(t, http.StatusNoContent, recorder.Code)
 }
+
+func TestRequireAnyFeatureAllowsWhenOneOptionalFeatureIsEnabled(t *testing.T) {
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+
+	router := gin.New()
+	router.GET("/task", RequireAnyFeature(usage_mode.FeatureMediaTasks, usage_mode.FeatureTaskPlugins), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/task", nil))
+
+	assert.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func TestRequireAnyFeatureBlocksWhenAllOptionalFeaturesAreDisabled(t *testing.T) {
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "false")
+
+	router := gin.New()
+	router.GET("/task", RequireAnyFeature(usage_mode.FeatureMediaTasks, usage_mode.FeatureTaskPlugins), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/task", nil))
+
+	assert.Equal(t, http.StatusNotFound, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "FEATURE_DISABLED")
+}

@@ -23,22 +23,21 @@ func TestBillingOperationRunnerRefundsFailureTaskOnce(t *testing.T) {
 		initialQuota = 10000
 		taskID       = "billing-runner-refund-once"
 	)
-	seedUser(t, userID, initialQuota-preConsumed)
+	seedUser(t, userID, initialQuota)
 	seedToken(t, tokenID, userID, "sk-billing-runner-refund", 5000)
 	seedChannel(t, channelID)
 	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{"used_quota": preConsumed}).Error)
 	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", tokenID).Update("used_quota", preConsumed).Error)
 	require.NoError(t, model.DB.Model(&model.Channel{}).Where("id = ?", channelID).Update("used_quota", preConsumed).Error)
 
-	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet)
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceUsage)
 	task.TaskID = taskID
 	task.Status = model.TaskStatusFailure
 	task.FailReason = "upstream failed"
 	task.SubmitTime = time.Now().Unix()
+	operation := markTaskBillingChargedFixture(t, task)
 	require.NoError(t, model.DB.Create(task).Error)
-	operation, err := model.EnsureTaskBillingOperation(task)
-	require.NoError(t, err)
-	require.Equal(t, model.BillingOperationReserved, operation.Status)
+	require.Equal(t, model.BillingOperationApplying, operation.Status)
 
 	summary := RunBillingOperationReconciliationOnce(context.Background())
 	assert.Equal(t, 1, summary.Claimed)
@@ -52,7 +51,6 @@ func TestBillingOperationRunnerRefundsFailureTaskOnce(t *testing.T) {
 	updated, err := model.GetBillingOperation(operation.OperationKey)
 	require.NoError(t, err)
 	assert.Equal(t, model.BillingOperationRefunded, updated.Status)
-	assert.True(t, updated.RefundFundingApplied)
 	assert.True(t, updated.RefundTokenApplied)
 	assert.True(t, updated.RefundStatsApplied)
 	assert.True(t, updated.RefundLogApplied)
@@ -86,9 +84,8 @@ func TestBillingOperationRunnerRefundsPendingTaskBeforeTerminalStatus(t *testing
 	task.Status = model.TaskStatusInProgress
 	task.PrivateData.BillingOperationKey = "request:billing-runner-pending-refund-task"
 	task.SubmitTime = time.Now().Unix()
+	operation := ensureTaskBillingFixture(t, task)
 	require.NoError(t, model.DB.Create(task).Error)
-	operation, err := model.EnsureTaskBillingOperation(task)
-	require.NoError(t, err)
 	require.NoError(t, model.DB.Model(&model.BillingOperation{}).
 		Where("operation_key = ?", operation.OperationKey).
 		Updates(map[string]any{"token_reserved": true, "token_reserved_quota": reserved}).Error)
@@ -124,13 +121,12 @@ func TestRefundTaskQuotaDoesNotRefundSettledOperation(t *testing.T) {
 	seedUser(t, userID, 7000)
 	seedToken(t, tokenID, userID, "sk-billing-runner-settled", 2000)
 	seedChannel(t, channelID)
-	task := makeTask(userID, channelID, 3000, tokenID, BillingSourceWallet)
+	task := makeTask(userID, channelID, 3000, tokenID, BillingSourceUsage)
 	task.TaskID = "billing-runner-settled-no-refund"
 	task.Status = model.TaskStatusFailure
+	operation := ensureTaskBillingFixture(t, task)
 	require.NoError(t, model.DB.Create(task).Error)
-	operation, err := model.EnsureTaskBillingOperation(task)
-	require.NoError(t, err)
-	_, err = model.UpdateBillingOperationStatus(operation.OperationKey,
+	_, err := model.UpdateBillingOperationStatus(operation.OperationKey,
 		[]model.BillingOperationStatus{model.BillingOperationReserved},
 		model.BillingOperationSettled, "", common.GetTimestamp())
 	require.NoError(t, err)
@@ -150,7 +146,7 @@ func TestBillingOperationRunnerPreservesRefundIntent(t *testing.T) {
 		PreConsumedQuota: 100,
 	})
 	require.NoError(t, err)
-	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, component))
 		require.NoError(t, model.MarkBillingOperationRefundComponent(operation.OperationKey, component))
 	}
@@ -252,13 +248,11 @@ func TestBillingOperationRunnerRecoversImmediateTaskFinalUsageMarker(t *testing.
 	task.FinishTime = task.SubmitTime
 	task.PrivateData.BillingOperationKey = operation
 	task.PrivateData.ImmediateTask = true
+	created := ensureTaskBillingFixture(t, task)
 	require.NoError(t, model.DB.Create(task).Error)
-
-	created, err := model.EnsureTaskBillingOperation(task)
-	require.NoError(t, err)
 	require.Equal(t, model.BillingOperationReserved, created.Status)
 	assert.False(t, created.FinalUsageApplied)
-	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		require.NoError(t, model.MarkBillingOperationComponent(created.OperationKey, component))
 	}
 
@@ -304,26 +298,24 @@ func TestBillingOperationRunnerRecoversRequestTaskFinalUsageMarker(t *testing.T)
 	task.SubmitTime = time.Now().Unix()
 	task.FinishTime = task.SubmitTime
 	task.PrivateData.BillingOperationKey = operation
-	require.NoError(t, model.DB.Create(task).Error)
-
 	_, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
 		OperationKey:     operation,
 		RequestID:        "billing-runner-request-success",
 		UserID:           userID,
 		TokenID:          tokenID,
 		ChannelID:        channelID,
-		FundingSource:    BillingSourceUsage,
 		PreConsumedQuota: quota,
 	})
 	require.NoError(t, err)
 	require.NoError(t, model.UpdateBillingOperationActualQuota(operation, quota))
 	created, err := model.EnsureTaskBillingOperation(task)
 	require.NoError(t, err)
+	require.NoError(t, model.DB.Create(task).Error)
 	require.Equal(t, model.BillingOperationReserved, created.Status)
 	require.True(t, created.ActualQuotaSet)
 	require.Equal(t, quota, created.ActualQuota)
 	require.False(t, created.FinalUsageApplied)
-	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		require.NoError(t, model.MarkBillingOperationComponent(created.OperationKey, component))
 	}
 
@@ -339,13 +331,12 @@ func TestBillingOperationRunnerRecoversRequestTaskFinalUsageMarker(t *testing.T)
 	assert.Equal(t, model.BillingOperationSettled, updated.Status)
 }
 
-func TestBillingOperationRunnerDefersWalletFundingRefund(t *testing.T) {
+func TestBillingOperationRunnerDefersUsageRefundUntilComponentsReady(t *testing.T) {
 	truncate(t)
 
 	operation, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
-		OperationKey:     "request:billing-runner-wallet-refund",
-		RequestID:        "billing-runner-wallet-refund",
-		FundingSource:    BillingSourceWallet,
+		OperationKey:     "request:billing-runner-usage-refund",
+		RequestID:        "billing-runner-usage-refund",
 		PreConsumedQuota: 100,
 		UserID:           975,
 	})
@@ -364,7 +355,6 @@ func TestBillingOperationRunnerDefersWalletFundingRefund(t *testing.T) {
 	current, err := model.GetBillingOperation(operation.OperationKey)
 	require.NoError(t, err)
 	assert.Equal(t, model.BillingOperationRefundPending, current.Status)
-	assert.False(t, current.RefundFundingApplied)
 }
 
 func TestBillingOperationRunnerRefundsStatsUsingActualQuotaWhenStatsQuotaMissing(t *testing.T) {
@@ -385,7 +375,6 @@ func TestBillingOperationRunnerRefundsStatsUsingActualQuotaWhenStatsQuotaMissing
 		RequestID:        "billing-runner-stats-fallback",
 		UserID:           userID,
 		ChannelID:        channelID,
-		FundingSource:    BillingSourceUsage,
 		PreConsumedQuota: quota,
 		ActualQuota:      quota,
 		ActualQuotaSet:   true,
@@ -436,7 +425,6 @@ func TestBillingOperationRunnerRefundsAppliedTokenWithoutReservation(t *testing.
 		UserID:           userID,
 		TokenID:          tokenID,
 		ChannelID:        channelID,
-		FundingSource:    BillingSourceUsage,
 		PreConsumedQuota: 0,
 	})
 	require.NoError(t, err)
@@ -446,7 +434,6 @@ func TestBillingOperationRunnerRefundsAppliedTokenWithoutReservation(t *testing.
 	require.NoError(t, model.ApplyBillingOperationStats(
 		operation.OperationKey, userID, channelID, actual, true,
 	))
-	require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, model.BillingComponentFunding))
 	require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, model.BillingComponentLog))
 	updated, err := model.UpdateBillingOperationStatus(operation.OperationKey,
 		[]model.BillingOperationStatus{model.BillingOperationReserved},
@@ -481,7 +468,6 @@ func TestBillingOperationRunnerDefersPositiveTokenRefundWithoutTokenID(t *testin
 	operation, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
 		OperationKey:     "request:billing-runner-token-refund-missing-id",
 		RequestID:        "billing-runner-token-refund-missing-id",
-		FundingSource:    BillingSourceUsage,
 		PreConsumedQuota: 200,
 	})
 	require.NoError(t, err)
@@ -515,7 +501,7 @@ func TestFinalizeTaskBillingOperationOwnedRequiresLease(t *testing.T) {
 		ActualQuota:      100,
 	})
 	require.NoError(t, err)
-	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, component))
 	}
 
@@ -558,10 +544,9 @@ func TestBillingOperationRunnerPreservesExplicitZeroActualQuota(t *testing.T) {
 	task.TaskID = taskID
 	task.Status = model.TaskStatusSuccess
 	task.SubmitTime = time.Now().Unix()
+	operation := ensureTaskBillingFixture(t, task)
 	require.NoError(t, model.DB.Create(task).Error)
-	operation, err := model.EnsureTaskBillingOperation(task)
-	require.NoError(t, err)
-	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, component))
 	}
 	require.NoError(t, model.UpdateBillingOperationActualQuota(operation.OperationKey, 0))
@@ -587,14 +572,14 @@ func TestBillingOperationRunnerSettlesSuccessfulTaskWithOwnedWorker(t *testing.T
 	seedUser(t, userID, 10_000)
 	seedToken(t, tokenID, userID, "sk-billing-runner-owned-success", 5_000)
 	seedChannel(t, channelID)
-	task := makeTask(userID, channelID, 300, tokenID, BillingSourceWallet)
+	task := makeTask(userID, channelID, 300, tokenID, BillingSourceUsage)
 	task.TaskID = taskID
 	task.Status = model.TaskStatusSuccess
 	task.SubmitTime = time.Now().Unix()
+	operation := ensureTaskBillingFixture(t, task)
 	require.NoError(t, model.DB.Create(task).Error)
-	operation, err := model.EnsureTaskBillingOperation(task)
-	require.NoError(t, err)
-	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+	require.NoError(t, model.UpdateBillingOperationActualQuota(operation.OperationKey, task.Quota))
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, component))
 	}
 
@@ -625,11 +610,10 @@ func TestBillingOperationRunnerWaitsForFinalTaskUsage(t *testing.T) {
 	task := makeTask(userID, channelID, preQuota, tokenID, BillingSourceUsage)
 	task.TaskID = taskID
 	task.SubmitTime = time.Now().Unix()
+	operation := ensureTaskBillingFixture(t, task)
 	require.NoError(t, model.DB.Create(task).Error)
-	operation, err := model.EnsureTaskBillingOperation(task)
-	require.NoError(t, err)
 	require.False(t, operation.FinalUsageApplied)
-	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, component))
 	}
 	task.Status = model.TaskStatusSuccess
@@ -680,9 +664,8 @@ func TestBillingOperationRunnerSettlesPendingTaskAfterSubmissionSettlementFailur
 	task.Status = model.TaskStatusInProgress
 	task.SubmitTime = time.Now().Unix()
 	task.PrivateData.BillingOperationKey = "request:pending-submission"
+	operation := ensureTaskBillingFixture(t, task)
 	require.NoError(t, model.DB.Create(task).Error)
-	operation, err := model.EnsureTaskBillingOperation(task)
-	require.NoError(t, err)
 	require.Equal(t, model.BillingOperationReserved, operation.Status)
 	require.True(t, operation.ActualQuotaSet)
 
@@ -694,7 +677,6 @@ func TestBillingOperationRunnerSettlesPendingTaskAfterSubmissionSettlementFailur
 	updated, err := model.GetBillingOperation(operation.OperationKey)
 	require.NoError(t, err)
 	assert.Equal(t, model.BillingOperationApplying, updated.Status)
-	assert.True(t, updated.FundingApplied)
 	assert.True(t, updated.TokenApplied)
 	assert.True(t, updated.StatsApplied)
 	assert.True(t, updated.LogApplied)
@@ -799,7 +781,6 @@ func TestBillingOperationRunnerRefundsStaleUnfinishedRequest(t *testing.T) {
 		UserID:           userID,
 		TokenID:          tokenID,
 		ChannelID:        channelID,
-		FundingSource:    BillingSourceUsage,
 		PreConsumedQuota: reserved,
 	})
 	require.NoError(t, err)

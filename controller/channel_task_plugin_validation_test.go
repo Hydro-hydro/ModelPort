@@ -11,6 +11,8 @@ import (
 )
 
 func TestValidateTaskPluginChannel(t *testing.T) {
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+
 	source := `
 export const meta = {apiVersion: 1, key: "channel-validation", name: "Validation", version: "1.0.0", author: {name: "Test"}, models: ["doc"], fetchMode: "per_task"};
 export function buildSubmitRequest() { return {}; }
@@ -38,4 +40,12 @@ export function parseTaskResult() { return {}; }
 	channel.Setting = &valid
 	channel.BaseURL = nil
 	require.ErrorContains(t, validateChannel(channel, false), "base URL is required")
+}
+
+func TestValidateTaskPluginChannelRejectsDisabledFeature(t *testing.T) {
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "false")
+
+	baseURL := "https://example.com"
+	channel := &model.Channel{Type: constant.ChannelTypeTaskPlugin, BaseURL: &baseURL}
+	require.ErrorContains(t, validateChannel(channel, false), "task plugin feature is disabled")
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/gin-gonic/gin"
 )
@@ -152,30 +153,21 @@ func SetRelayRouter(router *gin.Engine) {
 			controller.Relay(c, types.RelayFormatOpenAI)
 		})
 
-		// not implemented
-		httpRouter.POST("/images/variations", controller.RelayNotImplemented)
-		httpRouter.GET("/files", controller.RelayNotImplemented)
-		httpRouter.POST("/files", controller.RelayNotImplemented)
-		httpRouter.DELETE("/files/:id", controller.RelayNotImplemented)
-		httpRouter.GET("/files/:id", controller.RelayNotImplemented)
-		httpRouter.GET("/files/:id/content", controller.RelayNotImplemented)
-		httpRouter.POST("/fine-tunes", controller.RelayNotImplemented)
-		httpRouter.GET("/fine-tunes", controller.RelayNotImplemented)
-		httpRouter.GET("/fine-tunes/:id", controller.RelayNotImplemented)
-		httpRouter.POST("/fine-tunes/:id/cancel", controller.RelayNotImplemented)
-		httpRouter.GET("/fine-tunes/:id/events", controller.RelayNotImplemented)
-		httpRouter.DELETE("/models/:model", controller.RelayNotImplemented)
 	}
 
-	relayMjRouter := router.Group("/mj")
-	relayMjRouter.Use(middleware.RouteTag("relay"))
-	relayMjRouter.Use(middleware.SystemPerformanceCheck())
-	registerMjRouterGroup(relayMjRouter)
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) {
+		relayMjRouter := router.Group("/mj")
+		relayMjRouter.Use(middleware.RouteTag("relay"))
+		relayMjRouter.Use(middleware.SystemPerformanceCheck())
+		relayMjRouter.Use(middleware.RequireFeature(usage_mode.FeatureMediaTasks))
+		registerMjRouterGroup(relayMjRouter)
 
-	relayMjModeRouter := router.Group("/:mode/mj")
-	relayMjModeRouter.Use(middleware.RouteTag("relay"))
-	relayMjModeRouter.Use(middleware.SystemPerformanceCheck())
-	registerMjRouterGroup(relayMjModeRouter)
+		relayMjModeRouter := router.Group("/:mode/mj")
+		relayMjModeRouter.Use(middleware.RouteTag("relay"))
+		relayMjModeRouter.Use(middleware.SystemPerformanceCheck())
+		relayMjModeRouter.Use(middleware.RequireFeature(usage_mode.FeatureMediaTasks))
+		registerMjRouterGroup(relayMjModeRouter)
+	}
 	//relayMjRouter.Use()
 
 	relayGeminiRouter := router.Group("/v1beta")

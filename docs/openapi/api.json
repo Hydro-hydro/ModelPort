@@ -85,10 +85,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "username": {
+                  "password": {
                     "type": "string"
                   },
-                  "password": {
+                  "confirmPassword": {
                     "type": "string"
                   }
                 }
@@ -648,9 +648,6 @@
                 "properties": {
                   "notify_type": {
                     "type": "string"
-                  },
-                  "quota_warning_threshold": {
-                    "type": "number"
                   },
                   "webhook_url": {
                     "type": "string"
@@ -3182,9 +3179,6 @@
           },
           "group": {
             "type": "string"
-          },
-          "quota": {
-            "type": "integer"
           },
           "used_quota": {
             "type": "integer"

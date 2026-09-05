@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 )
 
 // RegisterScheduledSystemTasks wires the periodic channel test, upstream model
@@ -18,10 +19,18 @@ import (
 // instances and each run is recorded as one task row. Call this before
 // service.StartSystemTaskRunner.
 func RegisterScheduledSystemTasks() {
+	if !usage_mode.IsFeatureEnabled(usage_mode.FeatureSystemTasks) {
+		return
+	}
 	service.RegisterSystemTaskHandler(channelTestHandler{})
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
-	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
-	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) ||
+		usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+		service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	}
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) {
+		service.RegisterSystemTaskHandler(midjourneyPollHandler{})
+	}
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and

@@ -17,7 +17,6 @@ type UserBase struct {
 	Id          int    `json:"id"`
 	Group       string `json:"group"`
 	Email       string `json:"email"`
-	Quota       int    `json:"quota"`
 	Status      int    `json:"status"`
 	Role        int    `json:"role"`
 	Username    string `json:"username"`
@@ -28,7 +27,6 @@ type UserBase struct {
 
 func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserGroup, user.Group)
-	common.SetContextKey(c, constant.ContextKeyUserQuota, user.Quota)
 	common.SetContextKey(c, constant.ContextKeyUserStatus, user.Status)
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
@@ -43,7 +41,7 @@ func (user *UserBase) GetSetting() dto.UserSetting {
 			common.SysLog("failed to unmarshal setting: " + err.Error())
 		}
 	}
-	return setting
+	return SanitizePersonalUserSetting(setting)
 }
 
 // getUserCacheKey returns the key for user cache
@@ -74,9 +72,9 @@ func populateUserCache(user User) error {
 	return writeUserCache(user.ToBaseUser(), true)
 }
 
-// updateUserCache refreshes non-quota user cache fields.
-// Quota is maintained by atomic quota delta paths and must not be overwritten
-// by stale user snapshots from profile/settings updates.
+// updateUserCache refreshes profile and authentication fields. Usage counters
+// are never part of this cache and therefore cannot be overwritten by a stale
+// profile/settings snapshot.
 func updateUserCache(user User) error {
 	if !common.RedisEnabled {
 		return nil
@@ -137,21 +135,6 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	return &userCache, nil
 }
 
-// Add atomic quota operations using hash fields.
-// 通过守卫式 Lua 脚本执行：哈希不存在时直接跳过（下次读取会从数据库水合），
-// 不会像裸 HINCRBY 那样创建只含 Quota 字段的残缺哈希。
-func cacheIncrUserQuota(userId int, delta int64) error {
-	if !common.RedisEnabled {
-		return nil
-	}
-	_, err := cacheApplyUserQuotaDelta(userId, delta)
-	return err
-}
-
-func cacheDecrUserQuota(userId int, delta int64) error {
-	return cacheIncrUserQuota(userId, -delta)
-}
-
 // Helper functions to get individual fields if needed
 func getUserGroupCache(userId int) (string, error) {
 	cache, err := GetUserCache(userId)
@@ -159,14 +142,6 @@ func getUserGroupCache(userId int) (string, error) {
 		return "", err
 	}
 	return cache.Group, nil
-}
-
-func getUserQuotaCache(userId int) (int, error) {
-	cache, err := GetUserCache(userId)
-	if err != nil {
-		return 0, err
-	}
-	return cache.Quota, nil
 }
 
 func getUserNameCache(userId int) (string, error) {

@@ -637,7 +637,7 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 	// A durable operation can outlive the polling process. Keep the operation
 	// available for the no-adjustment paths below so a successful task can close
 	// the already-reserved charge instead of leaving it in applying forever.
-	operation, _, operationErr := loadTaskBillingOperation(task)
+	operation, operationErr := loadTaskBillingOperation(task)
 	if operationErr != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("任务 %s 账单操作读取失败: %v", task.TaskID, operationErr))
 		// A successful task must not be turned into a refund merely because the

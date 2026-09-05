@@ -25,6 +25,9 @@ var legacyTaskActionAliases = map[string]string{
 
 // TaskPluginEnabled is the master switch for the whole task-plugin system.
 // When disabled, factory and override plugins both stop serving.
+// The process-level registry remains enabled until InitEnv applies the
+// personal-edition default. This keeps isolated registry/unit tests usable;
+// production startup still defaults the optional feature to false.
 var TaskPluginEnabled = true
 
 // TaskPluginOverrideEnabled controls whether the database override layer is

@@ -39,7 +39,14 @@ func setupPersonalRelayBillingTest(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Token{},
+		&model.Channel{},
+		&model.Ability{},
+		&model.Log{},
+		&model.BillingOperation{},
+	))
 
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
@@ -83,7 +90,6 @@ func setupPersonalRelayBillingTest(t *testing.T) {
 		Username: "personal-relay-user",
 		Role:     common.RoleRootUser,
 		Status:   common.UserStatusEnabled,
-		Quota:    10_000,
 	}).Error)
 	require.NoError(t, db.Create(&model.Token{
 		Id:             personalRelayTokenID,
@@ -180,11 +186,9 @@ func (w *personalRelayCancelWriter) WriteString(data string) (int, error) {
 
 func getPersonalRelayQuota(t *testing.T) (int, int) {
 	t.Helper()
-	var user model.User
 	var token model.Token
-	require.NoError(t, model.DB.Select("quota").First(&user, personalRelayUserID).Error)
 	require.NoError(t, model.DB.Select("remain_quota", "used_quota").First(&token, personalRelayTokenID).Error)
-	return user.Quota, token.RemainQuota
+	return 0, token.RemainQuota
 }
 
 func TestPersonalRelayFailureRefundsPreConsumedQuotaExactlyOnce(t *testing.T) {
@@ -206,10 +210,10 @@ func TestPersonalRelayFailureRefundsPreConsumedQuotaExactlyOnce(t *testing.T) {
 	require.Equal(t, http.StatusBadGateway, response.Code)
 	require.Eventually(t, func() bool {
 		userQuota, tokenQuota := getPersonalRelayQuota(t)
-		return userQuota == 10_000 && tokenQuota == 10_000 && getTokenUsedQuotaForPersonalRelay(t) == 0
+		return userQuota == 0 && tokenQuota == 10_000 && getTokenUsedQuotaForPersonalRelay(t) == 0
 	}, time.Second, 10*time.Millisecond)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, 10_000, userQuota)
+	assert.Zero(t, userQuota)
 	assert.Equal(t, 10_000, tokenQuota)
 	assert.Equal(t, 0, getTokenUsedQuotaForPersonalRelay(t))
 }
@@ -231,7 +235,7 @@ func TestPersonalRelaySuccessSettlesOnlyOnce(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, 10_000, userQuota)
+	assert.Zero(t, userQuota)
 	assert.Less(t, tokenQuota, 10_000)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
 	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
@@ -256,7 +260,7 @@ func TestPersonalRelayResponseDecodeFailureRefundsPreConsumedQuota(t *testing.T)
 	require.Equal(t, http.StatusInternalServerError, response.Code)
 	require.Eventually(t, func() bool {
 		userQuota, tokenQuota := getPersonalRelayQuota(t)
-		return userQuota == 10_000 && tokenQuota == 10_000 && getTokenUsedQuotaForPersonalRelay(t) == 0
+		return userQuota == 0 && tokenQuota == 10_000 && getTokenUsedQuotaForPersonalRelay(t) == 0
 	}, time.Second, 10*time.Millisecond)
 }
 
@@ -286,7 +290,7 @@ func TestPersonalRelayRetrySuccessSettlesOnlyFinalAttempt(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code)
 	assert.Equal(t, int32(2), requests.Load())
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, 10_000, userQuota)
+	assert.Zero(t, userQuota)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
 	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
 	assertPersonalRelayUsageRecorded(t)
@@ -315,7 +319,7 @@ func TestPersonalRelayRetryExhaustionRefundsOnce(t *testing.T) {
 	assert.Equal(t, int32(2), requests.Load())
 	require.Eventually(t, func() bool {
 		userQuota, tokenQuota := getPersonalRelayQuota(t)
-		return userQuota == 10_000 && tokenQuota == 10_000 && getTokenUsedQuotaForPersonalRelay(t) == 0
+		return userQuota == 0 && tokenQuota == 10_000 && getTokenUsedQuotaForPersonalRelay(t) == 0
 	}, time.Second, 10*time.Millisecond)
 }
 
@@ -336,7 +340,7 @@ func TestPersonalRelayZeroUsageSettlesReservationToZero(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, 10_000, userQuota)
+	assert.Zero(t, userQuota)
 	assert.Equal(t, 10_000, tokenQuota)
 	assert.Equal(t, 0, getTokenUsedQuotaForPersonalRelay(t))
 }
@@ -365,7 +369,7 @@ func TestPersonalRelayTruncatedStreamSettlesReturnedUsageOnce(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, 10_000, userQuota)
+	assert.Zero(t, userQuota)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
 	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
 	assertPersonalRelayUsageRecorded(t)
@@ -398,7 +402,7 @@ func TestPersonalRelayStreamingSuccessSettlesOnce(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, 10_000, userQuota)
+	assert.Zero(t, userQuota)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
 	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
 	assertPersonalRelayUsageRecorded(t)
@@ -448,7 +452,7 @@ func TestPersonalRelayStreamingTimeoutSettlesZeroUsageOnce(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, 10_000, userQuota)
+	assert.Zero(t, userQuota)
 	assert.Equal(t, 10_000, tokenQuota)
 	assert.Equal(t, 0, getTokenUsedQuotaForPersonalRelay(t))
 }
@@ -514,7 +518,7 @@ func TestPersonalRelayStreamingClientCancellationKeepsAccountingConsistent(t *te
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	userQuota, tokenQuota := getPersonalRelayQuota(t)
-	assert.Equal(t, 10_000, userQuota)
+	assert.Zero(t, userQuota)
 	assert.Greater(t, getTokenUsedQuotaForPersonalRelay(t), 0)
 	assert.Equal(t, 10_000-tokenQuota, getTokenUsedQuotaForPersonalRelay(t))
 	assertPersonalRelayUsageRecorded(t)
@@ -530,8 +534,7 @@ func getTokenUsedQuotaForPersonalRelay(t *testing.T) int {
 func assertPersonalRelayUsageRecorded(t *testing.T) {
 	t.Helper()
 	var user model.User
-	require.NoError(t, model.DB.Select("quota", "used_quota", "request_count").First(&user, personalRelayUserID).Error)
-	assert.Equal(t, 10_000, user.Quota)
+	require.NoError(t, model.DB.Select("used_quota", "request_count").First(&user, personalRelayUserID).Error)
 	assert.Greater(t, user.UsedQuota, 0)
 	assert.Greater(t, user.RequestCount, 0)
 	var log model.Log

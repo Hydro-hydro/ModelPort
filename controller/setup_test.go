@@ -59,11 +59,8 @@ func TestPostSetupAlwaysCreatesFixedRootOwner(t *testing.T) {
 	db := setupControllerSetupTest(t)
 
 	recorder := performSetupRequest(t, `{
-		"username":"legacy-admin-name",
 		"password":"root-password",
-		"confirmPassword":"root-password",
-		"SelfUseModeEnabled":false,
-		"DemoSiteEnabled":true
+		"confirmPassword":"root-password"
 	}`)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
@@ -83,9 +80,11 @@ func TestPostSetupAlwaysCreatesFixedRootOwner(t *testing.T) {
 	var setup model.Setup
 	require.NoError(t, db.First(&setup).Error)
 	assert.NotZero(t, setup.InitializedAt)
+	assert.Equal(t, model.SetupEditionModelPort, setup.Edition)
+	assert.Equal(t, model.CurrentSchemaVersion, setup.SchemaVersion)
 }
 
-func TestGetSetupDoesNotExposeLegacyModeFields(t *testing.T) {
+func TestGetSetupReportsCurrentFieldsOnly(t *testing.T) {
 	db := setupControllerSetupTest(t)
 	passwordHash, err := common.Password2Hash("root-password")
 	require.NoError(t, err)
@@ -95,6 +94,13 @@ func TestGetSetupDoesNotExposeLegacyModeFields(t *testing.T) {
 		Role:     common.RoleRootUser,
 		Status:   common.UserStatusEnabled,
 	}).Error)
+	require.NoError(t, db.Create(&model.Setup{
+		Version:       "test",
+		InitializedAt: 1,
+		Edition:       model.SetupEditionModelPort,
+		SchemaVersion: model.CurrentSchemaVersion,
+	}).Error)
+	constant.Setup = true
 
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
@@ -109,6 +115,25 @@ func TestGetSetupDoesNotExposeLegacyModeFields(t *testing.T) {
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
 	assert.Equal(t, true, response.Data["root_init"])
+	assert.NotContains(t, response.Data, "username")
 	assert.NotContains(t, response.Data, "SelfUseModeEnabled")
 	assert.NotContains(t, response.Data, "DemoSiteEnabled")
+}
+
+func TestGetSetupRejectsExistingRootWithoutSetupRecord(t *testing.T) {
+	db := setupControllerSetupTest(t)
+	require.NoError(t, db.Create(&model.User{
+		Username: "root",
+		Password: "password",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/setup", nil)
+	GetSetup(context)
+
+	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "新的数据目录")
 }

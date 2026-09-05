@@ -714,7 +714,7 @@ func executeTaskSubmissionWith(
 		diagnostics.reserve("reserve_start", result.Quota)
 		if reserveErr := relayInfo.Billing.Reserve(result.Quota); reserveErr != nil {
 			common.SysError("reserve adjusted task billing error: " + reserveErr.Error())
-			reserveCode := string(types.ErrorCodeInsufficientUserQuota)
+			reserveCode := string(types.ErrorCodePreConsumeTokenQuotaFailed)
 			reserveStatus := http.StatusForbidden
 			if apiErr, ok := reserveErr.(*types.NewAPIError); ok {
 				reserveCode = string(apiErr.GetErrorCode())

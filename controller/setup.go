@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type Setup struct {
@@ -15,15 +16,12 @@ type Setup struct {
 	DatabaseType string `json:"database_type"`
 }
 
-// SetupRequest keeps the legacy username and mode fields so older clients can
-// still submit their existing payload shape. Personal edition initialization
-// deliberately ignores those fields and always creates the root owner.
+// SetupRequest contains only the values needed by the current fresh-install
+// wizard. The personal edition always creates the fixed root owner and has no
+// legacy mode or username migration inputs.
 type SetupRequest struct {
-	Username           string `json:"username"`
-	Password           string `json:"password"`
-	ConfirmPassword    string `json:"confirmPassword"`
-	SelfUseModeEnabled bool   `json:"SelfUseModeEnabled"`
-	DemoSiteEnabled    bool   `json:"DemoSiteEnabled"`
+	Password        string `json:"password"`
+	ConfirmPassword string `json:"confirmPassword"`
 }
 
 func GetSetup(c *gin.Context) {
@@ -31,6 +29,13 @@ func GetSetup(c *gin.Context) {
 		c.JSON(500, gin.H{
 			"success": false,
 			"message": "无法确定个人版管理员账户，请检查数据库中的管理员记录",
+		})
+		return
+	}
+	if !constant.Setup && model.RootUserExists() {
+		c.JSON(500, gin.H{
+			"success": false,
+			"message": "数据库已包含管理员账户但缺少当前初始化记录，请使用新的数据目录重新部署",
 		})
 		return
 	}
@@ -65,9 +70,9 @@ func PostSetup(c *gin.Context) {
 		return
 	}
 
-	// Reconcile a legacy administrator before initialization. A single legacy
-	// admin is promoted by EnsurePersonalOwner; ambiguous or disabled account
-	// layouts must be fixed manually instead of creating another owner.
+	// Refuse to initialize a non-empty database that has no current setup record.
+	// This keeps the setup endpoint limited to genuinely fresh installations;
+	// existing data must be removed and initialized again explicitly.
 	if err := model.EnsurePersonalOwner(); err != nil {
 		c.JSON(200, gin.H{
 			"success": false,
@@ -77,62 +82,73 @@ func PostSetup(c *gin.Context) {
 	}
 
 	rootExists := model.RootUserExists()
-	if !rootExists {
-		if req.Password != req.ConfirmPassword {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "两次输入的密码不一致",
-			})
-			return
-		}
-
-		if len(req.Password) < 8 {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "密码长度至少为8个字符",
-			})
-			return
-		}
-
-		hashedPassword, err := common.Password2Hash(req.Password)
-		if err != nil {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "系统错误: " + err.Error(),
-			})
-			return
-		}
-		rootUser := model.User{
-			Username:    "root",
-			Password:    hashedPassword,
-			Role:        common.RoleRootUser,
-			Status:      common.UserStatusEnabled,
-			DisplayName: "Root User",
-			AccessToken: nil,
-		}
-		if err = model.DB.Create(&rootUser).Error; err != nil {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "创建管理员账号失败: " + err.Error(),
-			})
-			return
-		}
-	}
-
-	// Update setup status
-	constant.Setup = true
-
-	setup := model.Setup{
-		Version:       common.Version,
-		InitializedAt: time.Now().Unix(),
-	}
-	if err := model.DB.Create(&setup).Error; err != nil {
+	if rootExists {
 		c.JSON(200, gin.H{
 			"success": false,
-			"message": "系统初始化失败: " + err.Error(),
+			"message": "数据库已包含管理员账户但缺少当前初始化记录，请使用新的数据目录重新部署",
 		})
 		return
 	}
+	if req.Password != req.ConfirmPassword {
+		c.JSON(200, gin.H{
+			"success": false,
+			"message": "两次输入的密码不一致",
+		})
+		return
+	}
+
+	if len(req.Password) < 8 {
+		c.JSON(200, gin.H{
+			"success": false,
+			"message": "密码长度至少为8个字符",
+		})
+		return
+	}
+
+	hashedPassword, err := common.Password2Hash(req.Password)
+	if err != nil {
+		c.JSON(200, gin.H{
+			"success": false,
+			"message": "系统错误: " + err.Error(),
+		})
+		return
+	}
+	rootUser := model.User{
+		Username:    "root",
+		Password:    hashedPassword,
+		Role:        common.RoleRootUser,
+		Status:      common.UserStatusEnabled,
+		DisplayName: "Root User",
+		AccessToken: nil,
+	}
+	if err = model.DB.Transaction(func(tx *gorm.DB) error {
+		var userCount int64
+		if err := tx.Model(&model.User{}).Count(&userCount).Error; err != nil {
+			return err
+		}
+		if userCount > 0 {
+			return model.ErrPersonalOwnerNotFound
+		}
+		if err := tx.Create(&rootUser).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.Setup{
+			Version:       common.Version,
+			InitializedAt: time.Now().Unix(),
+			Edition:       model.SetupEditionModelPort,
+			SchemaVersion: model.CurrentSchemaVersion,
+		}).Error
+	}); err != nil {
+		c.JSON(200, gin.H{
+			"success": false,
+			"message": "创建管理员账号失败: " + err.Error(),
+		})
+		return
+	}
+
+	// Update runtime setup status only after the user and setup row commit
+	// successfully. A failed transaction must leave the process in setup mode.
+	constant.Setup = true
 
 	c.JSON(200, gin.H{
 		"success": true,

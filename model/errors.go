@@ -4,8 +4,7 @@ import "errors"
 
 // Common errors
 var (
-	ErrDatabase                 = errors.New("database error")
-	ErrWalletQuotaLimitExceeded = errors.New("wallet quota limit exceeded")
+	ErrDatabase = errors.New("database error")
 )
 
 // Token auth errors

@@ -61,9 +61,40 @@ func TestValidatePersonalOwnerAtStartupRejectsAmbiguousUninitializedDatabase(t *
 	assert.Zero(t, setupCount)
 }
 
+func TestValidatePersonalOwnerAtStartupRejectsNonEmptyDatabaseWithoutSetupRecord(t *testing.T) {
+	db := setupStartupOwnerTest(t)
+	require.NoError(t, db.Create(&model.User{
+		Id: 3, Username: "root", Password: "password", Role: common.RoleRootUser,
+		Status: common.UserStatusEnabled,
+	}).Error)
+
+	err := validatePersonalOwnerAtStartup()
+	assert.ErrorIs(t, err, model.ErrSetupRecordMissing)
+}
+
+func TestCheckSetupDoesNotCreateSetupRecordForExistingRoot(t *testing.T) {
+	db := setupStartupOwnerTest(t)
+	require.NoError(t, db.Create(&model.User{
+		Id: 4, Username: "root", Password: "password", Role: common.RoleRootUser,
+		Status: common.UserStatusEnabled,
+	}).Error)
+
+	model.CheckSetup()
+
+	assert.False(t, constant.Setup)
+	var setupCount int64
+	require.NoError(t, db.Model(&model.Setup{}).Count(&setupCount).Error)
+	assert.Zero(t, setupCount)
+}
+
 func TestValidatePersonalOwnerAtStartupRejectsInitializedDatabaseWithoutOwner(t *testing.T) {
 	db := setupStartupOwnerTest(t)
-	require.NoError(t, db.Create(&model.Setup{Version: "test", InitializedAt: 1}).Error)
+	require.NoError(t, db.Create(&model.Setup{
+		Version:       "test",
+		InitializedAt: 1,
+		Edition:       model.SetupEditionModelPort,
+		SchemaVersion: model.CurrentSchemaVersion,
+	}).Error)
 	constant.Setup = true
 
 	err := validatePersonalOwnerAtStartup()

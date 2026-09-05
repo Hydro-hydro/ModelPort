@@ -12,17 +12,25 @@ import (
 
 var StartTime = time.Now().Unix() // unit: second
 var Version = "v0.0.0"            // this hard coding will be replaced automatically when building, no need to manually change
-var SystemName = "New API"
+// SystemName is the runtime display name for a fresh ModelPort installation.
+// Upstream/project attribution strings remain unchanged elsewhere in the
+// repository; this value only controls the default site name shown to users.
+var SystemName = "ModelPort"
 var Logo = ""
 
 // var ChatLink = ""
 // var ChatLink2 = ""
 var QuotaPerUnit = 500 * 1000.0 // $0.002 / 1K tokens
-// 保留旧变量以兼容历史逻辑，实际展示由 general_setting.quota_display_type 控制
+// DisplayInCurrencyEnabled is an internal settings bridge; actual display is
+// controlled by general_setting.quota_display_type.
 var DisplayInCurrencyEnabled = true
 var DisplayTokenStatEnabled = true
 var DrawingEnabled = true
-var TaskEnabled = true
+
+// TaskEnabled controls the optional asynchronous task surface. A new personal
+// installation starts with the synchronous gateway only; task modules must be
+// explicitly enabled by configuration.
+var TaskEnabled = false
 var DataExportEnabled = true
 var DataExportInterval = 5         // unit: minute
 var DataExportDefaultTime = "hour" // unit: minute
@@ -88,7 +96,6 @@ var TurnstileSecretKey = ""
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
-var QuotaRemindThreshold = 1000
 var PreConsumedQuota = 500
 
 var RetryTimes = 0

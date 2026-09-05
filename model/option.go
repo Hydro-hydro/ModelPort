@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 	"gorm.io/gorm"
 )
 
@@ -30,6 +32,7 @@ func AllOption() ([]*Option, error) {
 }
 
 func InitOptionMap() {
+	rateLimitConfig := setting.GetModelRequestRateLimitConfig()
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
 
@@ -46,11 +49,11 @@ func InitOptionMap() {
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
-	common.OptionMap["TaskEnabled"] = strconv.FormatBool(common.TaskEnabled)
-	common.OptionMap["TaskPluginEnabled"] = strconv.FormatBool(constant.TaskPluginEnabled)
 	jsplugin.DefaultRegistry.SetEnabled(constant.TaskPluginEnabled)
-	common.OptionMap["TaskPluginOverrideEnabled"] = strconv.FormatBool(constant.TaskPluginOverrideEnabled)
 	jsplugin.DefaultRegistry.SetOverrideEnabled(constant.TaskPluginOverrideEnabled)
+	for _, feature := range usage_mode.OptionalFeatures() {
+		common.OptionMap[usage_mode.OptionalFeatureOptionKey(feature)] = strconv.FormatBool(usage_mode.IsFeatureEnabled(feature))
+	}
 	common.OptionMap[setting.TaskPluginMarketplaceSourcesKey] = setting.TaskPluginMarketplaceSources2JsonString()
 	common.OptionMap[setting.TaskPluginDisabledFactoryKeysKey] = "[]"
 	jsplugin.DefaultRegistry.SetDisabledFactoryKeys(nil)
@@ -74,15 +77,14 @@ func InitOptionMap() {
 	common.OptionMap["WorkerAllowHttpImageRequestEnabled"] = strconv.FormatBool(system_setting.WorkerAllowHttpImageRequestEnabled)
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
-	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
+	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.GetDefaultUseAutoGroup())
 	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
 	common.OptionMap["TurnstileSiteKey"] = ""
 	common.OptionMap["TurnstileSecretKey"] = ""
-	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
-	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
-	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(setting.ModelRequestRateLimitDurationMinutes)
-	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(setting.ModelRequestRateLimitSuccessCount)
+	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(rateLimitConfig.Count)
+	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(rateLimitConfig.DurationMinutes)
+	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(rateLimitConfig.SuccessCount)
 	common.OptionMap["ModelRequestRateLimitGroup"] = setting.ModelRequestRateLimitGroup2JSONString()
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
@@ -106,7 +108,7 @@ func InitOptionMap() {
 	common.OptionMap["MjForwardUrlEnabled"] = strconv.FormatBool(setting.MjForwardUrlEnabled)
 	common.OptionMap["MjActionCheckSuccessEnabled"] = strconv.FormatBool(setting.MjActionCheckSuccessEnabled)
 	common.OptionMap["CheckSensitiveEnabled"] = strconv.FormatBool(setting.CheckSensitiveEnabled)
-	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(setting.ModelRequestRateLimitEnabled)
+	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(rateLimitConfig.Enabled)
 	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnPromptEnabled)
 	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(setting.StopOnSensitiveEnabled)
 	common.OptionMap["SensitiveWords"] = setting.SensitiveWordsToString()
@@ -127,8 +129,18 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
-	options, _ := AllOption()
+	options, err := AllOption()
+	if err != nil {
+		// A transient database read failure must not replace the currently
+		// published runtime configuration with an empty result. Keep the last
+		// known-good values and let the next sync pass retry the read.
+		common.SysLog("failed to load options from database: " + err.Error())
+		return
+	}
 	for _, option := range options {
+		if isRetiredPersonalOption(option.Key) {
+			continue
+		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
@@ -145,6 +157,15 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if usage_mode.IsOptionalFeatureOptionKey(key) {
+		if _, err := strconv.ParseBool(strings.TrimSpace(value)); err != nil {
+			return fmt.Errorf("optional feature %s must be a boolean: %w", key, err)
+		}
+		return nil
+	}
+	if strings.HasPrefix(key, "feature.") {
+		return fmt.Errorf("unknown optional feature option: %s", key)
+	}
 	if key == operation_setting.ToolPriceOptionKey {
 		return operation_setting.ValidateToolPricesJSON(value)
 	}
@@ -179,7 +200,7 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
-	if isFixedPersonalModeOption(key) || isRemovedPublicContentOption(key) {
+	if isFixedPersonalModeOption(key) || isRemovedPublicContentOption(key) || isRetiredPersonalOption(key) {
 		return nil
 	}
 	if err := validateOptionValue(key, value); err != nil {
@@ -205,15 +226,14 @@ func UpdateOption(key string, value string) error {
 // UpdateOptionsBulk persists multiple key/value pairs in a single database
 // transaction, then dispatches them through updateOptionMap in one pass. If
 // any DB write fails the whole transaction rolls back and no in-memory state
-// is touched — safe for callers that must commit a set of related options
-// atomically (e.g. payment gateway binding).
+// is touched, which keeps related runtime settings consistent.
 func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
 	filteredValues := make(map[string]string, len(values))
 	for key, value := range values {
-		if isFixedPersonalModeOption(key) || isRemovedPublicContentOption(key) {
+		if isFixedPersonalModeOption(key) || isRemovedPublicContentOption(key) || isRetiredPersonalOption(key) {
 			continue
 		}
 		filteredValues[key] = value
@@ -254,6 +274,15 @@ func isFixedPersonalModeOption(key string) bool {
 	return key == "DemoSiteEnabled" || key == "SelfUseModeEnabled"
 }
 
+func isRetiredPersonalOption(key string) bool {
+	switch key {
+	case "TaskEnabled", "TaskPluginEnabled", "TaskPluginOverrideEnabled":
+		return true
+	default:
+		return false
+	}
+}
+
 func isRemovedPublicContentOption(key string) bool {
 	switch key {
 	case "Notice", "About", "HomePageContent", "Footer", "Announcements",
@@ -266,13 +295,7 @@ func isRemovedPublicContentOption(key string) bool {
 }
 
 func updateOptionMap(key string, value string) (err error) {
-	if isFixedPersonalModeOption(key) || isRemovedPublicContentOption(key) {
-		common.OptionMapRWMutex.Lock()
-		delete(common.OptionMap, key)
-		common.OptionMapRWMutex.Unlock()
-		return nil
-	}
-	if key == retiredThemeOptionKey {
+	if isFixedPersonalModeOption(key) || isRemovedPublicContentOption(key) || isRetiredPersonalOption(key) {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
 		common.OptionMapRWMutex.Unlock()
@@ -338,14 +361,6 @@ func updateOptionMap(key string, value string) (err error) {
 			common.DisplayTokenStatEnabled = boolValue
 		case "DrawingEnabled":
 			common.DrawingEnabled = boolValue
-		case "TaskEnabled":
-			common.TaskEnabled = boolValue
-		case "TaskPluginEnabled":
-			constant.TaskPluginEnabled = boolValue
-			jsplugin.DefaultRegistry.SetEnabled(boolValue)
-		case "TaskPluginOverrideEnabled":
-			constant.TaskPluginOverrideEnabled = boolValue
-			jsplugin.DefaultRegistry.SetOverrideEnabled(boolValue)
 		case "DataExportEnabled":
 			common.DataExportEnabled = boolValue
 		case "MjNotifyEnabled":
@@ -363,7 +378,7 @@ func updateOptionMap(key string, value string) (err error) {
 		case "CheckSensitiveOnPromptEnabled":
 			setting.CheckSensitiveOnPromptEnabled = boolValue
 		case "ModelRequestRateLimitEnabled":
-			setting.ModelRequestRateLimitEnabled = boolValue
+			setting.SetModelRequestRateLimitEnabled(boolValue)
 		case "StopOnSensitiveEnabled":
 			setting.StopOnSensitiveEnabled = boolValue
 		case "SMTPSSLEnabled":
@@ -377,7 +392,7 @@ func updateOptionMap(key string, value string) (err error) {
 		case "WorkerAllowHttpImageRequestEnabled":
 			system_setting.WorkerAllowHttpImageRequestEnabled = boolValue
 		case "DefaultUseAutoGroup":
-			setting.DefaultUseAutoGroup = boolValue
+			setting.SetDefaultUseAutoGroup(boolValue)
 		case "ExposeRatioEnabled":
 			ratio_setting.SetExposeRatioEnabled(boolValue)
 		}
@@ -413,16 +428,17 @@ func updateOptionMap(key string, value string) (err error) {
 		common.TurnstileSiteKey = value
 	case "TurnstileSecretKey":
 		common.TurnstileSecretKey = value
-	case "QuotaRemindThreshold":
-		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
 		common.PreConsumedQuota, _ = strconv.Atoi(value)
 	case "ModelRequestRateLimitCount":
-		setting.ModelRequestRateLimitCount, _ = strconv.Atoi(value)
+		count, _ := strconv.Atoi(value)
+		setting.SetModelRequestRateLimitCount(count)
 	case "ModelRequestRateLimitDurationMinutes":
-		setting.ModelRequestRateLimitDurationMinutes, _ = strconv.Atoi(value)
+		duration, _ := strconv.Atoi(value)
+		setting.SetModelRequestRateLimitDurationMinutes(duration)
 	case "ModelRequestRateLimitSuccessCount":
-		setting.ModelRequestRateLimitSuccessCount, _ = strconv.Atoi(value)
+		successCount, _ := strconv.Atoi(value)
+		setting.SetModelRequestRateLimitSuccessCount(successCount)
 	case "ModelRequestRateLimitGroup":
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
 	case "RetryTimes":

@@ -70,7 +70,7 @@ func GetStatus(c *gin.Context) {
 		"custom_currency_exchange_rate": operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate,
 		"enable_batch_update":           common.BatchUpdateEnabled,
 		"enable_drawing":                common.DrawingEnabled,
-		"enable_task":                   common.TaskEnabled,
+		"enable_task":                   usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) || usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins),
 		"enable_data_export":            common.DataExportEnabled,
 		"data_export_default_time":      common.DataExportDefaultTime,
 		"mj_notify_enabled":             setting.MjNotifyEnabled,
@@ -78,7 +78,7 @@ func GetStatus(c *gin.Context) {
 		"usage_mode":                    string(usage_mode.CurrentMode()),
 		"features":                      usage_mode.Capabilities(),
 		"password_login_enabled":        common.PasswordLoginEnabled,
-		"default_use_auto_group":        setting.DefaultUseAutoGroup,
+		"default_use_auto_group":        setting.GetDefaultUseAutoGroup(),
 
 		"password_login_encryption_enabled": common.PasswordLoginEncryptionEnabled,
 

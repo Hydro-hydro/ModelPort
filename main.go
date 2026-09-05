@@ -31,6 +31,7 @@ import (
 	"github.com/QuantumNous/new-api/service/authz"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -61,6 +62,8 @@ func main() {
 		return
 	}
 
+	// Keep the upstream project identity in startup diagnostics; SystemName is
+	// only the configurable runtime site title.
 	common.SysLog("New API " + common.Version + " started")
 	if os.Getenv("GIN_MODE") != "debug" {
 		gin.SetMode(gin.ReleaseMode)
@@ -110,10 +113,15 @@ func main() {
 
 	// 热更新配置
 	go model.SyncOptions(common.SyncFrequency)
-	go controller.SyncTaskPlugins()
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+		go controller.SyncTaskPlugins()
+	}
 
-	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
-	go authz.StartPolicySync(common.SyncFrequency)
+	// 周期性重载授权策略只服务于多节点部署；单机实例的权限写入会在
+	// 当前进程内立即刷新，不需要额外启动数据库轮询 worker。
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureMultiNode) {
+		go authz.StartPolicySync(common.SyncFrequency)
+	}
 
 	// 数据看板
 	go model.UpdateQuotaData()
@@ -131,7 +139,9 @@ func main() {
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
-	service.StartSystemInstanceReporter()
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureMultiNode) {
+		service.StartSystemInstanceReporter()
+	}
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle).
 	// Must run before the system task runner starts: the async_task_poll handler
@@ -144,13 +154,16 @@ func main() {
 		return a
 	}
 
-	// Register the periodic channel test, upstream model update, and async task
-	// polling (Midjourney / Suno / video) jobs as scheduled system tasks
-	// (DB-lease dedup across masters + run history), then start the runner that
-	// schedules and executes them. Master-only execution and the UpdateTask
-	// switch are enforced inside the runner and each handler's Enabled().
-	controller.RegisterScheduledSystemTasks()
-	service.StartSystemTaskRunner()
+	// Durable usage accounting is a core personal-gateway capability and has its
+	// own compensator. Optional SystemTask maintenance/polling remains disabled
+	// unless explicitly enabled (or required by task/media features).
+	service.StartBillingOperationRunner()
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureSystemTasks) {
+		// Register the periodic channel test, upstream model update, and optional
+		// task polling jobs as scheduled SystemTasks, then start their runner.
+		controller.RegisterScheduledSystemTasks()
+		service.StartSystemTaskRunner()
+	}
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true
@@ -283,14 +296,21 @@ func InjectGoogleAnalytics() {
 }
 
 func validatePersonalOwnerAtStartup() error {
-	// Owner validation must run even before the setup record exists. Otherwise
-	// an old database with multiple administrators but no root could enter the
-	// setup flow without a deterministic personal owner. Empty databases remain
-	// valid because EnsurePersonalOwner deliberately allows the setup wizard.
+	// Owner validation must run before the setup record exists. Empty databases
+	// remain valid because EnsurePersonalOwner deliberately allows the setup
+	// wizard; a non-empty database without a setup row is rejected instead of
+	// being repaired implicitly.
 	if err := model.EnsurePersonalOwner(); err != nil {
 		return fmt.Errorf("个人版管理员账户校验失败: %w", err)
 	}
 	if !constant.Setup {
+		var userCount int64
+		if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
+			return fmt.Errorf("个人版初始化状态校验失败: %w", err)
+		}
+		if userCount > 0 {
+			return fmt.Errorf("个人版初始化记录缺失，请使用新的数据目录重新部署: %w", model.ErrSetupRecordMissing)
+		}
 		return nil
 	}
 	if _, err := model.GetPersonalOwner(); err != nil {
@@ -340,12 +360,9 @@ func InitResources() error {
 
 	model.CheckSetup()
 
-	// Initialize options, should after model.InitDB()
-	if common.IsMasterNode {
-		if err := model.MigrateRetiredFrontendOptions(); err != nil {
-			common.SysError("failed to migrate retired frontend options: " + err.Error())
-		}
-	}
+	// Initialize options after the current schema is ready. This installation
+	// only supports the current schema and deliberately does not migrate legacy
+	// New API options or data.
 	model.InitOptionMap()
 	if err := validatePersonalOwnerAtStartup(); err != nil {
 		return err

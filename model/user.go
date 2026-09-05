@@ -27,7 +27,6 @@ type User struct {
 	Status           int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
 	Email            string                     `json:"email" gorm:"index" validate:"max=50"`
 	AccessToken      *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
@@ -44,7 +43,6 @@ func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
 		Id:          user.Id,
 		Group:       user.Group,
-		Quota:       user.Quota,
 		Status:      user.Status,
 		Role:        user.Role,
 		Username:    user.Username,
@@ -91,10 +89,11 @@ func (user *User) GetSetting() dto.UserSetting {
 			common.SysLog("failed to unmarshal setting: " + err.Error())
 		}
 	}
-	return setting
+	return SanitizePersonalUserSetting(setting)
 }
 
 func (user *User) SetSetting(setting dto.UserSetting) {
+	setting = SanitizePersonalUserSetting(setting)
 	settingBytes, err := common.Marshal(setting)
 	if err != nil {
 		common.SysLog("failed to marshal setting: " + err.Error())
@@ -103,11 +102,21 @@ func (user *User) SetSetting(setting dto.UserSetting) {
 	user.Setting = string(settingBytes)
 }
 
+// SanitizePersonalUserSetting removes fields that belong to the retired
+// platform wallet/notification model. The relaykit DTO keeps those fields for
+// public compatibility, but the root application must neither persist nor
+// expose them in personal mode.
+func SanitizePersonalUserSetting(setting dto.UserSetting) dto.UserSetting {
+	setting.QuotaWarningThreshold = 0
+	setting.BillingPreference = ""
+	return setting
+}
+
 func UpdateUserSetting(userId int, setting dto.UserSetting) error {
 	if userId == 0 {
 		return errors.New("id 为空！")
 	}
-	settingBytes, err := common.Marshal(setting)
+	settingBytes, err := common.Marshal(SanitizePersonalUserSetting(setting))
 	if err != nil {
 		return err
 	}
@@ -181,7 +190,6 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	if err = tx.Model(&current).Omit(
 		"access_token",
-		"quota",
 		"used_quota",
 		"request_count",
 		"auth_version",
@@ -218,19 +226,6 @@ func ValidateAccessToken(token string) (*User, error) {
 		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
 	}
 	return user, nil
-}
-
-// GetUserQuota gets quota from Redis first, falls back to DB if needed
-func GetUserQuota(id int, fromDB bool) (quota int, err error) {
-	if !fromDB && common.RedisEnabled {
-		return getUserQuotaCache(id)
-	}
-	err = DB.Model(&User{}).Where("id = ?", id).Select("quota").Find(&quota).Error
-	if err != nil {
-		return 0, err
-	}
-
-	return quota, nil
 }
 
 func GetUserUsedQuota(id int) (quota int, err error) {
@@ -309,88 +304,6 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
-func IncreaseUserQuota(id int, quota int, db bool) (err error) {
-	if quota < 0 {
-		return errors.New("quota 不能为负数！")
-	}
-	if err := common.ValidateWalletQuota(quota); err != nil {
-		return err
-	}
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
-		if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-			common.SysLog("failed to increase user quota: " + err.Error())
-		}
-		return nil
-	}
-	if err := increaseUserQuota(id, quota); err != nil {
-		return err
-	}
-	if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-		common.SysLog("failed to increase user quota: " + err.Error())
-	}
-	return nil
-}
-
-func increaseUserQuota(id int, quota int) (err error) {
-	result := DB.Model(&User{}).
-		Where("id = ? AND quota <= ?", id, common.MaxWalletQuota-quota).
-		Update("quota", gorm.Expr("quota + ?", quota))
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 1 {
-		return nil
-	}
-	var count int64
-	if err := DB.Model(&User{}).Where("id = ?", id).Count(&count).Error; err != nil {
-		return err
-	}
-	if count == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return ErrWalletQuotaLimitExceeded
-}
-
-func DecreaseUserQuota(id int, quota int, db bool) (err error) {
-	if quota < 0 {
-		return errors.New("quota 不能为负数！")
-	}
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
-		if err := cacheDecrUserQuota(id, int64(quota)); err != nil {
-			common.SysLog("failed to decrease user quota: " + err.Error())
-		}
-		return nil
-	}
-	if err := decreaseUserQuota(id, quota); err != nil {
-		return err
-	}
-	if err := cacheDecrUserQuota(id, int64(quota)); err != nil {
-		common.SysLog("failed to decrease user quota: " + err.Error())
-	}
-	return nil
-}
-
-func decreaseUserQuota(id int, quota int) (err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota - ?", quota)).Error
-	if err != nil {
-		return err
-	}
-	return err
-}
-
-func DeltaUpdateUserQuota(id int, delta int) (err error) {
-	if delta == 0 {
-		return nil
-	}
-	if delta > 0 {
-		return IncreaseUserQuota(id, delta, false)
-	} else {
-		return DecreaseUserQuota(id, -delta, false)
-	}
-}
-
 //func GetRootUserEmail() (email string) {
 //	DB.Model(&User{}).Where("role = ?", common.RoleRootUser).Select("email").Find(&email)
 //	return email
@@ -420,17 +333,7 @@ func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
 // synchronously for a durable billing operation. It deliberately bypasses the
 // process-local batch queue.
 func UpdateUserUsedQuotaAndRequestCountImmediate(id int, quota int) error {
-	result := DB.Model(&User{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"used_quota":    gorm.Expr("used_quota + ?", quota),
-		"request_count": gorm.Expr("request_count + ?", 1),
-	})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return updateUserUsedQuotaAndRequestCountImmediate(id, quota, 1)
 }
 
 // UpdateUserUsedQuota adjusts accumulated usage without changing request count.
@@ -468,38 +371,28 @@ func UpdateUserUsedQuotaImmediate(id int, quota int) error {
 }
 
 func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
+	if err := updateUserUsedQuotaAndRequestCountImmediate(id, quota, count); err != nil {
+		common.SysLog("failed to update user used quota and request count: " + err.Error())
+	}
+}
+
+func updateUserUsedQuotaAndRequestCountImmediate(id int, quota int, count int) error {
+	if id <= 0 {
+		return gorm.ErrRecordNotFound
+	}
+	result := DB.Model(&User{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
 			"used_quota":    gorm.Expr("used_quota + ?", quota),
 			"request_count": gorm.Expr("request_count + ?", count),
 		},
-	).Error
-	if err != nil {
-		common.SysLog("failed to update user used quota and request count: " + err.Error())
-		return
+	)
+	if result.Error != nil {
+		return result.Error
 	}
-
-	//// 更新缓存
-	//if err := invalidateUserCache(id); err != nil {
-	//	common.SysError("failed to invalidate user cache: " + err.Error())
-	//}
-}
-
-func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) {
-	if quota == 0 && usedQuota == 0 && requestCount == 0 {
-		return
+	if result.RowsAffected != 1 {
+		return gorm.ErrRecordNotFound
 	}
-
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
-			"quota":         gorm.Expr("quota + ?", quota),
-			"used_quota":    gorm.Expr("used_quota + ?", usedQuota),
-			"request_count": gorm.Expr("request_count + ?", requestCount),
-		},
-	).Error
-	if err != nil {
-		common.SysLog("failed to batch update user quota, used quota and request count: " + err.Error())
-	}
+	return nil
 }
 
 // GetUsernameById gets username from Redis first, falls back to DB if needed

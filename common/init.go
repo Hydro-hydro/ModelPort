@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 )
 
 var (
@@ -188,9 +189,18 @@ func initConstantEnv() {
 	constant.CountToken = GetEnvOrDefaultBool("CountToken", true)
 	constant.GetMediaToken = GetEnvOrDefaultBool("GET_MEDIA_TOKEN", true)
 	constant.GetMediaTokenNotStream = GetEnvOrDefaultBool("GET_MEDIA_TOKEN_NOT_STREAM", false)
-	constant.UpdateTask = GetEnvOrDefaultBool("UPDATE_TASK", true)
-	constant.TaskPluginEnabled = GetEnvOrDefaultBool("TASK_PLUGIN_ENABLED", true)
-	constant.TaskPluginOverrideEnabled = GetEnvOrDefaultBool("TASK_PLUGIN_OVERRIDE_ENABLED", true)
+	optionalTasksEnabled := usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) ||
+		usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins)
+	// Optional task capability is controlled only by the personal feature
+	// matrix. The historical TASK_PLUGIN_ENABLED switch must not bypass it.
+	constant.TaskPluginEnabled = usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins)
+	if os.Getenv("TASK_PLUGIN_ENABLED") != "" {
+		SysLog("TASK_PLUGIN_ENABLED is ignored; use feature.task_plugins or MODELPORT_ENABLE_TASK_PLUGINS")
+	}
+	TaskEnabled = optionalTasksEnabled
+	constant.UpdateTask = GetEnvOrDefaultBool("UPDATE_TASK", optionalTasksEnabled)
+	constant.TaskPluginOverrideEnabled = usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) &&
+		GetEnvOrDefaultBool("TASK_PLUGIN_OVERRIDE_ENABLED", true)
 	constant.AzureDefaultAPIVersion = GetEnvOrDefaultString("AZURE_DEFAULT_API_VERSION", "2025-04-01-preview")
 	constant.NotifyLimitCount = GetEnvOrDefault("NOTIFY_LIMIT_COUNT", 2)
 	constant.NotificationLimitDurationMinute = GetEnvOrDefault("NOTIFICATION_LIMIT_DURATION_MINUTE", 10)

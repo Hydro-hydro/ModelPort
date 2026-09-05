@@ -243,7 +243,7 @@ func TestServeTaskPluginProtocolDisconnectDuringTerminalSettlementStopsOnlyObser
 	previousMemoryCache := common.MemoryCacheEnabled
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, database.AutoMigrate(&model.Channel{}, &model.Task{}))
+	require.NoError(t, database.AutoMigrate(&model.Channel{}, &model.Task{}, &model.BillingOperation{}))
 	model.DB = database
 	common.MemoryCacheEnabled = false
 	t.Cleanup(func() {
@@ -267,9 +267,12 @@ func TestServeTaskPluginProtocolDisconnectDuringTerminalSettlementStopsOnlyObser
 		Quota:     10,
 		Status:    model.TaskStatusSubmitted,
 		PrivateData: model.TaskPrivateData{
-			UpstreamTaskID: "upstream-terminal",
+			UpstreamTaskID:      "upstream-terminal",
+			BillingOperationKey: model.BillingOperationKeyForTask("task_terminal_disconnect"),
 		},
 	}
+	_, err = model.EnsureTaskBillingOperation(&task)
+	require.NoError(t, err)
 	require.NoError(t, database.Create(&task).Error)
 
 	c, recorder := newPluginProtocolTestContext(true, true)

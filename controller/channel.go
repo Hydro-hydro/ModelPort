@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -465,6 +466,9 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
 	}
 	if channel.Type == constant.ChannelTypeTaskPlugin {
+		if !usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+			return fmt.Errorf("task plugin feature is disabled")
+		}
 		pluginKey := strings.TrimSpace(channel.GetSetting().TaskPluginKey)
 		if pluginKey == "" {
 			return fmt.Errorf("task plugin key is required")
@@ -1439,6 +1443,11 @@ func CopyChannel(c *gin.Context) {
 	if err != nil {
 		common.SysError("failed to get channel by id: " + err.Error())
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取渠道信息失败，请稍后重试"})
+		return
+	}
+	if origin.Type == constant.ChannelTypeTaskPlugin &&
+		!usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "task plugin feature is disabled"})
 		return
 	}
 	if origin.Type == constant.ChannelTypeTaskPlugin &&

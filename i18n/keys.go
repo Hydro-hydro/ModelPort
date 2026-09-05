@@ -84,16 +84,13 @@ const (
 	MsgUserOriginalPasswordError   = "user.original_password_error"
 	MsgUserDefaultTokenFailed      = "user.default_token_failed"
 	MsgUserEmailEmpty              = "user.email_empty"
-	MsgUserQuotaChangeZero         = "user.quota_change_zero"
 )
 
 // Quota related messages
 const (
-	MsgQuotaNegative        = "quota.negative"
-	MsgQuotaExceedMax       = "quota.exceed_max"
-	MsgQuotaInsufficient    = "quota.insufficient"
-	MsgQuotaWarningInvalid  = "quota.warning_invalid"
-	MsgQuotaThresholdGtZero = "quota.threshold_gt_zero"
+	MsgQuotaNegative     = "quota.negative"
+	MsgQuotaExceedMax    = "quota.exceed_max"
+	MsgQuotaInsufficient = "quota.insufficient"
 )
 
 // Channel related messages

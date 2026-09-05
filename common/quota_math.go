@@ -9,19 +9,18 @@ import (
 
 // Quota conversions are centralized here so every billing path shares one
 // saturation + logging policy. Single-request charges stay bounded to int32;
-// top-ups and wallet-priced purchases use a JavaScript-safe 64-bit domain.
+// API access limits use a JavaScript-safe integer domain when exposed in JSON.
 const (
 	MaxQuota       = math.MaxInt32
 	MinQuota       = math.MinInt32
-	MaxWalletQuota = 1<<53 - 1
+	MaxAccessQuota = 1<<53 - 1
 )
 
-// ValidateWalletQuota enforces the upper bound shared by wallet mutations.
-// Negative balances remain valid because billing can temporarily overdraw a
-// wallet; callers that accept credits must apply their own positive check.
-func ValidateWalletQuota(quota int) error {
-	if quota > MaxWalletQuota {
-		return fmt.Errorf("wallet quota exceeds %d", MaxWalletQuota)
+// ValidateAccessQuota enforces the JSON-safe upper bound for a Token access
+// limit. It is intentionally separate from per-request billing quota bounds.
+func ValidateAccessQuota(quota int) error {
+	if quota > MaxAccessQuota {
+		return fmt.Errorf("access quota exceeds %d", MaxAccessQuota)
 	}
 	return nil
 }
@@ -41,7 +40,7 @@ const (
 // therefore clamped. It is surfaced to billing callers so the event can be
 // recorded on the related consume/task log for admin auditing.
 type QuotaClamp struct {
-	Op       string         `json:"op"`       // "QuotaFromFloat" | "QuotaRound" | "QuotaFromDecimal" | "WalletQuotaFromDecimal"
+	Op       string         `json:"op"`       // "QuotaFromFloat" | "QuotaRound" | "QuotaFromDecimal" | "AccessQuotaFromDecimal"
 	Kind     QuotaClampKind `json:"kind"`     // "overflow" | "underflow" | "nan"
 	Original float64        `json:"original"` // best-effort pre-clamp value (decimal -> float64 approx)
 	Clamped  int            `json:"clamped"`  // the saturated result actually used
@@ -167,9 +166,10 @@ func QuotaFromDecimalStrict(d decimal.Decimal) (int, error) {
 	return strictQuota(QuotaFromDecimalChecked(d))
 }
 
-// WalletQuotaFromDecimalStrict converts wallet and top-up values within the
-// JavaScript-safe integer range, which is also exactly representable by float64.
-func WalletQuotaFromDecimalStrict(d decimal.Decimal) (int, error) {
+// AccessQuotaFromDecimalStrict converts a Token access limit within the
+// JavaScript-safe integer range, which is also exactly representable by
+// float64.
+func AccessQuotaFromDecimalStrict(d decimal.Decimal) (int, error) {
 	f, _ := d.Round(0).Float64()
-	return strictQuota(saturateQuotaBounded(f, "WalletQuotaFromDecimal", MaxWalletQuota, -MaxWalletQuota))
+	return strictQuota(saturateQuotaBounded(f, "AccessQuotaFromDecimal", MaxAccessQuota, -MaxAccessQuota))
 }

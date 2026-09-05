@@ -82,7 +82,7 @@ func finalizeRequestBillingOperation(session *BillingSession) error {
 	if err != nil {
 		return err
 	}
-	if !operation.FundingApplied || !operation.TokenApplied || !operation.StatsApplied || !operation.LogApplied {
+	if !operation.TokenApplied || !operation.StatsApplied || !operation.LogApplied {
 		return nil
 	}
 	updated, err := model.UpdateBillingOperationStatus(session.OperationKey(),
@@ -123,7 +123,7 @@ func newBillingConsumeLogParams(relayInfo *relaycommon.RelayInfo, quota int, mod
 	}
 }
 
-// PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。
+// PreConsumeBilling 创建 usage-only BillingSession 并执行 Token 额度预扣。
 // 会话存储在 relayInfo.Billing 上，供后续 Settle / Refund 使用。
 func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycommon.RelayInfo) *types.NewAPIError {
 	if relayInfo != nil && relayInfo.QuotaClamp != nil {
@@ -154,8 +154,8 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 // SettleBilling — 后结算辅助函数
 // ---------------------------------------------------------------------------
 
-// SettleBilling 执行计费结算。如果 RelayInfo 上有 BillingSession 则通过 session 结算，
-// 否则回退到旧的 PostConsumeQuota 路径（兼容按次计费等场景）。
+// SettleBilling executes usage settlement through the request's BillingSession.
+// A session is mandatory so no user-balance fallback can be selected.
 func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
 	if relayInfo.Billing != nil {
 		// 普通请求的终态结算只依赖 UsageAccounting；完整的
@@ -186,16 +186,8 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 			return err
 		}
 
-		if actualQuota != 0 {
-			checkAndSendQuotaNotify(relayInfo, actualQuota-preConsumed, preConsumed)
-		}
 		return nil
 	}
 
-	// 回退：无 BillingSession 时使用旧路径
-	quotaDelta := actualQuota - relayInfo.FinalPreConsumedQuota
-	if quotaDelta != 0 {
-		return PostConsumeQuota(relayInfo, quotaDelta, relayInfo.FinalPreConsumedQuota, true)
-	}
-	return nil
+	return fmt.Errorf("billing session is required for usage settlement")
 }

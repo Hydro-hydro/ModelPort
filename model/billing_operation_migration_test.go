@@ -22,8 +22,8 @@ func testBillingOperationMigration(t *testing.T, db *gorm.DB) {
 	tableDB := db.Table(tableName)
 	t.Cleanup(func() { _ = db.Migrator().DropTable(tableName) })
 
-	// Running the migration twice models both a fresh database and an upgrade
-	// restart. The second pass must not alter or reject the existing schema.
+	// Running the current-schema initialization twice models a fresh database
+	// and a repeated startup. The second pass must remain idempotent.
 	require.NoError(t, tableDB.AutoMigrate(&BillingOperation{}))
 	require.NoError(t, tableDB.AutoMigrate(&BillingOperation{}))
 	require.True(t, db.Migrator().HasTable(tableName))
@@ -48,13 +48,13 @@ func testBillingOperationMigration(t *testing.T, db *gorm.DB) {
 
 }
 
-func TestBillingOperationMigrationSQLite(t *testing.T) {
+func TestBillingOperationSchemaIdempotentSQLite(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	testBillingOperationMigration(t, db)
 }
 
-func TestBillingOperationMigrationMySQL(t *testing.T) {
+func TestBillingOperationSchemaIdempotentMySQL(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("TEST_MYSQL_DSN"))
 	if dsn == "" {
 		t.Skip("TEST_MYSQL_DSN is not configured")
@@ -68,7 +68,7 @@ func TestBillingOperationMigrationMySQL(t *testing.T) {
 	testBillingOperationMigration(t, db)
 }
 
-func TestBillingOperationMigrationPostgreSQL(t *testing.T) {
+func TestBillingOperationSchemaIdempotentPostgreSQL(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("TEST_POSTGRES_DSN"))
 	if dsn == "" {
 		t.Skip("TEST_POSTGRES_DSN is not configured")

@@ -18,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 )
@@ -539,7 +538,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if err := recordBillingConsumeLog(ctx, relayInfo, logParams); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("error recording text consume log: %v", err))
 	}
-	gopool.Go(func() {
-		perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
-	})
+	// Record the optional in-process performance sample before returning. The
+	// recorder already batches persistence; keeping this call synchronous gives
+	// request completion a clear happens-before edge for shutdown and tests.
+	perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
 }

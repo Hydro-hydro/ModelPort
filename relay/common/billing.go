@@ -2,8 +2,8 @@ package common
 
 import "github.com/gin-gonic/gin"
 
-// BillingSourceUsage is the personal-edition funding source. It records
-// model usage without reading or modifying the legacy user wallet.
+// BillingSourceUsage identifies the personal-edition usage accounting path.
+// It records model usage and Token allowance changes without a user wallet.
 const BillingSourceUsage = "usage"
 
 // UsageAccounting 抽象已完成预扣会话的终态用量记账操作。
@@ -16,10 +16,10 @@ type UsageAccounting interface {
 	GetPreConsumedQuota() int
 
 	// Settle 根据实际消耗额度进行结算，计算 delta = actualQuota - preConsumedQuota，
-	// 同时调整资金来源（钱包/订阅）和令牌额度。
+	// 并调整 Token 访问额度及用量统计。
 	Settle(actualQuota int) error
 
-	// Refund 退还所有预扣费额度（资金来源 + 令牌），幂等安全。
+	// Refund 退还所有预扣的 Token 访问额度，幂等安全。
 	// 通过 gopool 异步执行。如果已经结算或退款则不做任何操作。
 	Refund(c *gin.Context)
 }

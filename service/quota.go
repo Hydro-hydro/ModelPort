@@ -88,7 +88,8 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if relayInfo == nil || usage == nil {
 		return errors.New("realtime billing info and usage are required")
 	}
-	// Realtime requests do not use the administrator wallet in personal mode.
+	// Realtime requests use the same usage-only accounting mode as other
+	// personal requests.
 	relayInfo.BillingSource = BillingSourceUsage
 	// The normal websocket route pre-consumes before opening the upstream
 	// connection. Older callers may still invoke this helper, so never charge a
@@ -402,102 +403,4 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(remainQuota), logger.FormatQuota(quota))
 	}
 	return nil
-}
-
-type postConsumeQuotaResult struct {
-	FundingApplied bool
-	TokenApplied   bool
-}
-
-func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) error {
-	_, err := postConsumeQuotaWithResult(relayInfo, quota, preConsumedQuota, sendEmail)
-	return err
-}
-
-func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
-
-	// 1) Apply the configured funding source. Personal mode records usage
-	// separately and deliberately leaves the legacy user wallet untouched.
-	if relayInfo.BillingSource != BillingSourceWallet {
-		result.FundingApplied = true
-	} else {
-		if quota > 0 {
-			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
-		} else {
-			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
-		}
-		if err != nil {
-			return result, err
-		}
-		result.FundingApplied = true
-	}
-
-	if !relayInfo.IsPlayground {
-		if quota > 0 {
-			err = model.DecreaseTokenQuotaImmediate(relayInfo.TokenId, relayInfo.TokenKey, quota)
-		} else {
-			err = model.IncreaseTokenQuotaImmediate(relayInfo.TokenId, relayInfo.TokenKey, -quota)
-		}
-		if err != nil {
-			return result, err
-		}
-		result.TokenApplied = true
-	}
-
-	if sendEmail {
-		if (quota + preConsumedQuota) != 0 {
-			checkAndSendQuotaNotify(relayInfo, quota, preConsumedQuota)
-		}
-	}
-
-	return result, nil
-}
-
-func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int) {
-	if relayInfo == nil || relayInfo.BillingSource != BillingSourceWallet {
-		return
-	}
-	gopool.Go(func() {
-		userSetting := relayInfo.UserSetting
-		threshold := common.QuotaRemindThreshold
-		if userSetting.QuotaWarningThreshold != 0 {
-			threshold = int(userSetting.QuotaWarningThreshold)
-		}
-
-		//noMoreQuota := userCache.Quota-(quota+preConsumedQuota) <= 0
-		quotaTooLow := false
-		consumeQuota := quota + preConsumedQuota
-		if relayInfo.UserQuota-consumeQuota < threshold {
-			quotaTooLow = true
-		}
-		if quotaTooLow {
-			prompt := "您的额度即将用尽"
-			// 根据通知方式生成不同的内容格式
-			var content string
-			var values []interface{}
-
-			notifyType := userSetting.NotifyType
-			if notifyType == "" {
-				notifyType = dto.NotifyTypeEmail
-			}
-
-			if notifyType == dto.NotifyTypeBark {
-				// Bark推送使用简短文本，不支持HTML
-				content = "{{value}}，剩余额度：{{value}}，请注意额度使用情况"
-				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota)}
-			} else if notifyType == dto.NotifyTypeGotify {
-				content = "{{value}}，当前剩余额度为 {{value}}，请注意额度使用情况。"
-				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota)}
-			} else {
-				// 默认内容格式，适用于Email和Webhook（支持HTML）
-				content = "{{value}}，当前剩余额度为 {{value}}，请注意额度使用情况。"
-				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota)}
-			}
-
-			err := NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
-			if err != nil {
-				common.SysError(fmt.Sprintf("failed to send quota notify to user %d: %s", relayInfo.UserId, err.Error()))
-			}
-		}
-	})
 }

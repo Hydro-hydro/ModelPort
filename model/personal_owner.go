@@ -15,15 +15,15 @@ var (
 	ErrPersonalOwnerMismatch  = errors.New("request is not from the personal owner")
 )
 
-// EnsurePersonalOwner validates the single administrator account used by
-// personal mode. A lone administrator is promoted to root; ambiguous or
-// unusable legacy account layouts fail instead of silently reassigning data.
+// EnsurePersonalOwner validates the single root administrator required by
+// personal mode. It is deliberately read-only: a non-empty database that does
+// not already contain exactly one enabled root is rejected instead of being
+// repaired or promoted as part of a legacy migration.
 func EnsurePersonalOwner() error {
 	if DB == nil {
 		return fmt.Errorf("database is nil")
 	}
 
-	promotedUserID := 0
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var administrators []User
 		if err := lockForUpdate(tx).Where("role >= ?", common.RoleAdminUser).Order("id ASC").Find(&administrators).Error; err != nil {
@@ -42,18 +42,12 @@ func EnsurePersonalOwner() error {
 			return ErrPersonalOwnerNotFound
 		case 1:
 			owner := administrators[0]
+			if owner.Role != common.RoleRootUser {
+				return ErrPersonalOwnerNotFound
+			}
 			if owner.Status != common.UserStatusEnabled {
 				return ErrPersonalOwnerDisabled
 			}
-			if owner.Role == common.RoleRootUser {
-				return nil
-			}
-			if err := tx.Model(&User{}).
-				Where("id = ? AND role = ?", owner.Id, common.RoleAdminUser).
-				Update("role", common.RoleRootUser).Error; err != nil {
-				return err
-			}
-			promotedUserID = owner.Id
 			return nil
 		default:
 			return ErrPersonalOwnerAmbiguous
@@ -61,9 +55,6 @@ func EnsurePersonalOwner() error {
 	})
 	if err != nil {
 		return err
-	}
-	if promotedUserID > 0 {
-		return invalidateUserCache(promotedUserID)
 	}
 	return nil
 }
@@ -86,6 +77,9 @@ func GetPersonalOwner() (*User, error) {
 	if len(administrators) > 1 {
 		return nil, ErrPersonalOwnerAmbiguous
 	}
+	if administrators[0].Role != common.RoleRootUser {
+		return nil, ErrPersonalOwnerNotFound
+	}
 	if administrators[0].Status != common.UserStatusEnabled {
 		return nil, ErrPersonalOwnerDisabled
 	}
@@ -94,8 +88,8 @@ func GetPersonalOwner() (*User, error) {
 
 // ValidatePersonalOwner verifies that userID is the single account selected as
 // the personal edition owner. It is intentionally separate from role checks:
-// historical administrator and token records must not regain access merely by
-// carrying an administrator role.
+// non-root accounts must not regain dashboard access merely by carrying an
+// administrator role.
 func ValidatePersonalOwner(userID int) error {
 	owner, err := GetPersonalOwner()
 	if err != nil {

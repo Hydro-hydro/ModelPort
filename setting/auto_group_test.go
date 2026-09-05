@@ -8,6 +8,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUpdateAutoGroupsPreservesValueWhenJSONIsInvalid(t *testing.T) {
+	original := AutoGroups2JsonString()
+	require.NoError(t, UpdateAutoGroupsByJsonString(`["default"]`))
+	t.Cleanup(func() {
+		require.NoError(t, UpdateAutoGroupsByJsonString(original))
+	})
+
+	err := UpdateAutoGroupsByJsonString(`{"broken"`)
+
+	require.Error(t, err)
+	assert.Equal(t, []string{"default"}, GetAutoGroups())
+}
+
 func TestUpdateMaxTokenAutoGroupsAcceptsAnyPositiveInteger(t *testing.T) {
 	original := GetMaxTokenAutoGroups()
 	t.Cleanup(func() {

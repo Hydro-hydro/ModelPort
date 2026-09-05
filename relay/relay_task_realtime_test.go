@@ -37,7 +37,7 @@ func setupRealtimeTaskTestDB(t *testing.T) *gorm.DB {
 	previousDB := model.DB
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, database.AutoMigrate(&model.Task{}))
+	require.NoError(t, database.AutoMigrate(&model.Task{}, &model.BillingOperation{}))
 	model.DB = database
 	t.Cleanup(func() { model.DB = previousDB })
 	return database
@@ -50,7 +50,12 @@ func TestApplyRealtimeTaskResultUsesCASAndFinalizesBillingOnce(t *testing.T) {
 		Platform: "vertex-ai",
 		Status:   model.TaskStatusInProgress,
 		Progress: "40%",
+		PrivateData: model.TaskPrivateData{
+			BillingOperationKey: model.BillingOperationKeyForTask("realtime-cas"),
+		},
 	}
+	_, err := model.EnsureTaskBillingOperation(task)
+	require.NoError(t, err)
 	require.NoError(t, database.Create(task).Error)
 	stale := *task
 	adaptor := &realtimeTaskTestAdaptor{}

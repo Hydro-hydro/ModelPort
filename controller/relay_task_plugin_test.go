@@ -198,7 +198,7 @@ func TestExecuteTaskSubmissionSettlementFailureReconcilesPendingOperation(t *tes
 		channelID = 975
 		quota     = 300
 	)
-	require.NoError(t, database.Create(&model.User{Id: userID, Username: "pending-settlement-user", Quota: 10_000}).Error)
+	require.NoError(t, database.Create(&model.User{Id: userID, Username: "pending-settlement-user"}).Error)
 	require.NoError(t, database.Create(&model.Token{Id: tokenID, UserId: userID, Key: "sk-pending-settlement", Name: "test", Status: common.TokenStatusEnabled, RemainQuota: 10_000}).Error)
 	require.NoError(t, database.Create(&model.Channel{Id: channelID, Name: "pending-settlement", Status: common.ChannelStatusEnabled}).Error)
 
@@ -241,7 +241,6 @@ func TestExecuteTaskSubmissionSettlementFailureReconcilesPendingOperation(t *tes
 	require.NoError(t, err)
 	assert.Equal(t, model.BillingOperationApplying, operation.Status)
 	assert.True(t, operation.ActualQuotaSet)
-	assert.True(t, operation.FundingApplied)
 	assert.False(t, operation.TokenApplied)
 	assert.False(t, operation.StatsApplied)
 	assert.False(t, operation.LogApplied)
@@ -303,7 +302,7 @@ func TestExecuteTaskSubmissionImmediateFailureRefundsDurableOperation(t *testing
 		common.RedisEnabled = previousRedisEnabled
 		common.BatchUpdateEnabled = previousBatchUpdate
 	})
-	require.NoError(t, database.Create(&model.User{Id: 1, Username: "immediate-failure-user", Quota: 10_000}).Error)
+	require.NoError(t, database.Create(&model.User{Id: 1, Username: "immediate-failure-user"}).Error)
 	require.NoError(t, database.Create(&model.Token{Id: 1, UserId: 1, Key: "sk-immediate-failure", Name: "test", Status: common.TokenStatusEnabled, RemainQuota: 10_000}).Error)
 	require.NoError(t, database.Create(&model.Channel{Id: 1, Name: "immediate-failure", Status: common.ChannelStatusEnabled}).Error)
 
@@ -535,6 +534,7 @@ func setupTaskSubmissionDatabase(t *testing.T, migrate bool, events *[]string) *
 			*events = append(*events, "insert")
 		}
 	}))
+	require.NoError(t, database.AutoMigrate(&model.BillingOperation{}))
 	if migrate {
 		require.NoError(t, database.AutoMigrate(&model.Task{}))
 	}

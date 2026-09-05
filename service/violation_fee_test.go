@@ -17,13 +17,13 @@ import (
 func TestChargeViolationFeeIsOperationKeyedAndIdempotent(t *testing.T) {
 	truncate(t)
 	const (
-		userID        = 990
-		tokenID       = 990
-		channelID     = 990
-		initialWallet = 20_000
-		initialToken  = 10_000
+		userID             = 990
+		tokenID            = 990
+		channelID          = 990
+		initialUserBalance = 20_000
+		initialToken       = 10_000
 	)
-	seedUser(t, userID, initialWallet)
+	seedUser(t, userID, initialUserBalance)
 	seedToken(t, tokenID, userID, "sk-violation-fee", initialToken)
 	seedChannel(t, channelID)
 
@@ -45,7 +45,6 @@ func TestChargeViolationFeeIsOperationKeyedAndIdempotent(t *testing.T) {
 	require.True(t, ChargeViolationFeeIfNeeded(ctx, relayInfo, err))
 
 	feeQuota := calcViolationFeeQuota(settings.ViolationDeductionAmount, 1)
-	assert.Equal(t, initialWallet, getUserQuota(t, userID), "violation fee must not mutate wallet quota")
 	var user model.User
 	require.NoError(t, model.DB.Select("used_quota").First(&user, userID).Error)
 	assert.Equal(t, feeQuota, user.UsedQuota)
@@ -57,7 +56,6 @@ func TestChargeViolationFeeIsOperationKeyedAndIdempotent(t *testing.T) {
 	operation, opErr := model.GetBillingOperation(violationFeeOperationKey(ctx, relayInfo))
 	require.NoError(t, opErr)
 	assert.Equal(t, model.BillingOperationSettled, operation.Status)
-	assert.True(t, operation.FundingApplied)
 	assert.True(t, operation.TokenApplied)
 	assert.True(t, operation.StatsApplied)
 	assert.True(t, operation.LogApplied)

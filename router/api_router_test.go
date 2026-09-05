@@ -48,3 +48,49 @@ func TestSetApiRouterOmitsRemovedPublicContentRoutes(t *testing.T) {
 		assert.False(t, registered, path)
 	}
 }
+
+func TestSetApiRouterOmitsDisabledOptionalFeatureRoutes(t *testing.T) {
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "false")
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+	t.Setenv("MODELPORT_ENABLE_DEPLOYMENTS", "false")
+	t.Setenv("MODELPORT_ENABLE_MULTI_NODE", "false")
+
+	engine := gin.New()
+	SetApiRouter(engine)
+
+	routes := make(map[string]struct{})
+	for _, route := range engine.Routes() {
+		routes[route.Method+" "+route.Path] = struct{}{}
+	}
+
+	for _, route := range []string{
+		"GET /api/plugin/task",
+		"GET /api/task_plugin_options",
+		"GET /api/mj/",
+		"GET /api/task",
+		"GET /api/system-task/list",
+		"GET /api/system-info/instances",
+		"GET /api/deployments/",
+	} {
+		_, registered := routes[route]
+		assert.False(t, registered, route)
+	}
+}
+
+func TestSetApiRouterRegistersTaskRoutesForTaskPlugins(t *testing.T) {
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+
+	engine := gin.New()
+	SetApiRouter(engine)
+
+	routes := make(map[string]struct{})
+	for _, route := range engine.Routes() {
+		routes[route.Method+" "+route.Path] = struct{}{}
+	}
+
+	_, taskRegistered := routes[http.MethodGet+" /api/task"]
+	assert.True(t, taskRegistered)
+	_, mjRegistered := routes[http.MethodGet+" /api/mj/"]
+	assert.False(t, mjRegistered)
+}

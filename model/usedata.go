@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -99,32 +100,71 @@ func LogQuotaData(params QuotaDataLogParams) {
 
 func SaveQuotaDataCache() {
 	CacheQuotaDataLock.Lock()
-	defer CacheQuotaDataLock.Unlock()
-	size := len(CacheQuotaData)
+	// Detach a value snapshot before touching the database. New usage events can
+	// continue to accumulate while a slow database write is in progress; failed
+	// entries are merged back below instead of being silently discarded.
+	pending := make(map[string]QuotaData, len(CacheQuotaData))
+	for key, quotaData := range CacheQuotaData {
+		if quotaData == nil {
+			continue
+		}
+		pending[key] = *quotaData
+	}
+	CacheQuotaData = make(map[string]*QuotaData)
+	CacheQuotaDataLock.Unlock()
+
+	size := len(pending)
+	failed := make(map[string]QuotaData)
 	// 如果缓存中有数据，就保存到数据库中
 	// 1. 先查询数据库中是否有数据
 	// 2. 如果有数据，就更新数据
 	// 3. 如果没有数据，就插入数据
-	for _, quotaData := range CacheQuotaData {
+	for key, quotaData := range pending {
 		quotaDataDB := &QuotaData{}
-		DB.Table("quota_data").
+		result := DB.Table("quota_data").
 			Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
 				quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
 			First(quotaDataDB)
+		if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			common.SysLog(fmt.Sprintf("查询数据看板记录失败: %s", result.Error))
+			failed[key] = quotaData
+			continue
+		}
 		if quotaDataDB.Id > 0 {
 			//quotaDataDB.Count += quotaData.Count
 			//quotaDataDB.Quota += quotaData.Quota
 			//DB.Table("quota_data").Save(quotaDataDB)
-			increaseQuotaData(quotaData)
+			if err := increaseQuotaData(&quotaData); err != nil {
+				failed[key] = quotaData
+			}
 		} else {
-			DB.Table("quota_data").Create(quotaData)
+			if err := DB.Table("quota_data").Create(&quotaData).Error; err != nil {
+				common.SysLog(fmt.Sprintf("写入数据看板记录失败: %s", err))
+				failed[key] = quotaData
+			}
 		}
 	}
-	CacheQuotaData = make(map[string]*QuotaData)
-	common.SysLog(fmt.Sprintf("保存数据看板数据成功，共保存%d条数据", size))
+
+	CacheQuotaDataLock.Lock()
+	for key, quotaData := range failed {
+		if current, ok := CacheQuotaData[key]; ok && current != nil {
+			current.Count += quotaData.Count
+			current.Quota += quotaData.Quota
+			current.TokenUsed += quotaData.TokenUsed
+			continue
+		}
+		copy := quotaData
+		CacheQuotaData[key] = &copy
+	}
+	CacheQuotaDataLock.Unlock()
+	if len(failed) > 0 {
+		common.SysLog(fmt.Sprintf("数据看板保存失败，保留%d条待重试记录", len(failed)))
+	} else {
+		common.SysLog(fmt.Sprintf("保存数据看板成功，共保存%d条数据", size))
+	}
 }
 
-func increaseQuotaData(quotaData *QuotaData) {
+func increaseQuotaData(quotaData *QuotaData) error {
 	err := DB.Table("quota_data").
 		Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
 			quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
@@ -136,6 +176,7 @@ func increaseQuotaData(quotaData *QuotaData) {
 	if err != nil {
 		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", err))
 	}
+	return err
 }
 
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {

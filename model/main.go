@@ -1,16 +1,19 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/clickhouse"
@@ -70,23 +73,15 @@ var LOG_DB *gorm.DB
 func CheckSetup() {
 	setup := GetSetup()
 	if setup == nil {
-		// No setup record exists, check if we have a root user
+		// A missing setup row is valid only for an empty database. Do not create
+		// one from an existing root account: that would silently repair a legacy
+		// database instead of enforcing the fresh-install contract.
 		if RootUserExists() {
-			common.SysLog("system is not initialized, but root user exists")
-			// Create setup record
-			newSetup := Setup{
-				Version:       common.Version,
-				InitializedAt: time.Now().Unix(),
-			}
-			err := DB.Create(&newSetup).Error
-			if err != nil {
-				common.SysLog("failed to create setup record: " + err.Error())
-			}
-			constant.Setup = true
+			common.SysLog("setup record is missing while a root user exists; a fresh data directory is required")
 		} else {
 			common.SysLog("system is not initialized and no root user exists")
-			constant.Setup = false
 		}
+		constant.Setup = false
 	} else {
 		// Setup record exists, system is initialized
 		common.SysLog("system is already initialized at: " + time.Unix(setup.InitializedAt, 0).String())
@@ -186,11 +181,11 @@ func InitDB() (err error) {
 		sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
 		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
 
+		if err := loadPersistedOptionalFeatureSettings(); err != nil {
+			return err
+		}
 		if !common.IsMasterNode {
 			return nil
-		}
-		if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-			//_, _ = sqlDB.Exec("ALTER TABLE channels MODIFY model_mapping TEXT;") // TODO: delete this line when most users have upgraded
 		}
 		common.SysLog("database migration started")
 		err = migrateDB()
@@ -199,6 +194,36 @@ func InitDB() (err error) {
 		common.FatalLog(err)
 	}
 	return err
+}
+
+// loadPersistedOptionalFeatureSettings reads only the current personal-edition
+// feature options before schema creation. This lets a saved setting determine
+// which optional tables are initialized on the next start without making the
+// feature package depend on the model package.
+func loadPersistedOptionalFeatureSettings() error {
+	if DB == nil || !DB.Migrator().HasTable(&Option{}) {
+		usage_mode.SetPersistedOptionalFeatures(nil)
+		return nil
+	}
+
+	var options []Option
+	if err := DB.Where("key IN ?", usage_mode.OptionalFeatureOptionKeys()).Find(&options).Error; err != nil {
+		return fmt.Errorf("load optional feature settings: %w", err)
+	}
+	overrides := make(map[usage_mode.Feature]bool, len(options))
+	for _, option := range options {
+		if !usage_mode.IsOptionalFeatureOptionKey(option.Key) {
+			continue
+		}
+		enabled, err := strconv.ParseBool(strings.TrimSpace(option.Value))
+		if err != nil {
+			return fmt.Errorf("invalid optional feature setting %s: %w", option.Key, err)
+		}
+		feature := usage_mode.Feature(strings.TrimPrefix(option.Key, "feature."))
+		overrides[feature] = enabled
+	}
+	usage_mode.SetPersistedOptionalFeatures(overrides)
+	return nil
 }
 
 func InitLogDB() (err error) {
@@ -243,18 +268,15 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
-	if err := migrateTokenKeyUniqueness(DB); err != nil {
+	// The core schema is deliberately small for a fresh personal installation.
+	// Optional task/media/deployment tables are created only when their feature
+	// is explicitly enabled before startup. We do not run legacy upgrade or
+	// cleanup migrations here; an existing old New API database must be
+	// re-created for this edition.
+	if err := rejectLegacySchema(); err != nil {
 		return err
 	}
-	if err := migratePrefillGroupUniqueness(DB); err != nil {
-		return err
-	}
-	// Migrate model_limits column from varchar to text for existing tables
-	if err := migrateTokenModelLimitsToText(); err != nil {
-		return err
-	}
-
-	err := DB.AutoMigrate(
+	coreModels := []interface{}{
 		&Channel{},
 		&Token{},
 		&User{},
@@ -263,36 +285,133 @@ func migrateDB() error {
 		&LoginEncryptionKey{},
 		&Ability{},
 		&Log{},
-		&Midjourney{},
 		&QuotaData{},
-		&Task{},
-		&TaskPlugin{},
 		&Model{},
 		&Vendor{},
 		&PrefillGroup{},
 		&Setup{},
 		&PerfMetric{},
-		&SystemInstance{},
-		&SystemTask{},
-		&SystemTaskLock{},
 		&BillingOperation{},
 		&CasbinRule{},
 		&AuthzRole{},
-	)
-	if err != nil {
+	}
+	if err := DB.AutoMigrate(coreModels...); err != nil {
 		return err
 	}
-	if err := InitializeUserAuthVersions(); err != nil {
+
+	optionalModels := make([]interface{}, 0, 6)
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureSystemTasks) {
+		optionalModels = append(optionalModels, &SystemTask{}, &SystemTaskLock{})
+	}
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) ||
+		usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) {
+		optionalModels = append(optionalModels, &Task{})
+	}
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+		optionalModels = append(optionalModels, &TaskPlugin{})
+	}
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) {
+		optionalModels = append(optionalModels, &Midjourney{})
+	}
+	if usage_mode.IsFeatureEnabled(usage_mode.FeatureMultiNode) {
+		optionalModels = append(optionalModels, &SystemInstance{})
+	}
+	if len(optionalModels) == 0 {
+		return nil
+	}
+	err := DB.AutoMigrate(optionalModels...)
+	if err != nil {
 		return err
 	}
 	return nil
 }
 
+func rejectLegacySchema() error {
+	if DB == nil {
+		return fmt.Errorf("database is nil")
+	}
+	tables, err := DB.Migrator().GetTables()
+	if err != nil {
+		return fmt.Errorf("list database tables: %w", err)
+	}
+	persistentTableCount := 0
+	for _, table := range tables {
+		if table != "sqlite_sequence" {
+			persistentTableCount++
+		}
+	}
+	if persistentTableCount == 0 {
+		return nil
+	}
+	if !DB.Migrator().HasTable(&Setup{}) ||
+		!DB.Migrator().HasColumn(&Setup{}, "edition") ||
+		!DB.Migrator().HasColumn(&Setup{}, "schema_version") {
+		return fmt.Errorf("database is not a current ModelPort personal schema; use a new data directory")
+	}
+	for _, currentModel := range []interface{}{
+		&Channel{}, &Token{}, &User{}, &UserSession{}, &Option{},
+		&LoginEncryptionKey{}, &Ability{}, &Log{}, &QuotaData{},
+		&Model{}, &Vendor{}, &PrefillGroup{}, &Setup{}, &PerfMetric{},
+		&BillingOperation{}, &CasbinRule{}, &AuthzRole{},
+	} {
+		if !DB.Migrator().HasTable(currentModel) {
+			return fmt.Errorf("database is missing a current core schema table; use a new data directory")
+		}
+	}
+	var setup Setup
+	err = DB.First(&setup).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		var userCount int64
+		if countErr := DB.Model(&User{}).Count(&userCount).Error; countErr != nil {
+			return fmt.Errorf("validate uninitialized database: %w", countErr)
+		}
+		if userCount == 0 {
+			return nil
+		}
+		return fmt.Errorf("database contains users but no current setup record; use a new data directory")
+	}
+	if err != nil {
+		return fmt.Errorf("read setup record: %w", err)
+	}
+	if !setup.IsCurrentSchema() {
+		return fmt.Errorf("database setup record does not identify the current ModelPort personal schema; use a new data directory")
+	}
+	return nil
+}
+
 func migrateLOGDB() error {
+	if err := rejectLegacyLogSchema(); err != nil {
+		return err
+	}
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
 	return LOG_DB.AutoMigrate(&Log{})
+}
+
+func rejectLegacyLogSchema() error {
+	if LOG_DB == nil {
+		return fmt.Errorf("log database is nil")
+	}
+	if !LOG_DB.Migrator().HasTable(&Log{}) {
+		return nil
+	}
+	for _, column := range []string{
+		"id", "user_id", "created_at", "type", "content", "username",
+		"token_name", "model_name", "quota", "prompt_tokens",
+		"completion_tokens", "use_time", "is_stream", "channel_id",
+		"token_id", "group", "ip", "request_id", "upstream_request_id",
+		"billing_operation_key", "other",
+	} {
+		if !LOG_DB.Migrator().HasColumn(&Log{}, column) {
+			return fmt.Errorf("log database is missing current logs.%s; use a new log database", column)
+		}
+	}
+	if !common.UsingLogDatabase(common.DatabaseTypeClickHouse) &&
+		!LOG_DB.Migrator().HasIndex(&Log{}, "idx_logs_billing_operation_key") {
+		return fmt.Errorf("log database is missing the current billing operation index; use a new log database")
+	}
+	return nil
 }
 
 func migrateClickHouseLogDB() error {
@@ -383,62 +502,6 @@ func clickHouseLogTableHasTTL() (bool, error) {
 func clickHouseCreateTableHasTTL(createTableSQL string) bool {
 	upperSQL := strings.ToUpper(createTableSQL)
 	return strings.Contains(upperSQL, "\nTTL ") || strings.Contains(upperSQL, " TTL ")
-}
-
-type sqliteColumnDef struct {
-	Name string
-	DDL  string
-}
-
-func migrateTokenModelLimitsToText() error {
-	// SQLite uses type affinity, so TEXT and VARCHAR are effectively the same — no migration needed
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		return nil
-	}
-
-	tableName := "tokens"
-	columnName := "model_limits"
-
-	if !DB.Migrator().HasTable(tableName) {
-		return nil
-	}
-
-	if !DB.Migrator().HasColumn(&Token{}, columnName) {
-		return nil
-	}
-
-	var alterSQL string
-	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		var dataType string
-		if err := DB.Raw(`SELECT data_type FROM information_schema.columns
-			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
-			tableName, columnName).Scan(&dataType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
-		} else if dataType == "text" {
-			return nil
-		}
-		alterSQL = fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN %s TYPE text`, tableName, columnName)
-	} else if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-		var columnType string
-		if err := DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
-				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
-			tableName, columnName).Scan(&columnType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
-		} else if strings.ToLower(columnType) == "text" {
-			return nil
-		}
-		alterSQL = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s text", tableName, columnName)
-	} else {
-		return nil
-	}
-
-	if alterSQL != "" {
-		if err := DB.Exec(alterSQL).Error; err != nil {
-			return fmt.Errorf("failed to migrate %s.%s to text: %w", tableName, columnName, err)
-		}
-		common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to text", tableName, columnName))
-	}
-	return nil
 }
 
 func closeDB(db *gorm.DB) error {

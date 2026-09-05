@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -27,10 +26,9 @@ const (
 )
 
 const (
-	BillingComponentFunding = "funding"
-	BillingComponentToken   = "token"
-	BillingComponentStats   = "stats"
-	BillingComponentLog     = "log"
+	BillingComponentToken = "token"
+	BillingComponentStats = "stats"
+	BillingComponentLog   = "log"
 )
 
 // ErrBillingOperationQuotaConflict means that a retry attempted to replace a
@@ -49,7 +47,6 @@ type BillingOperation struct {
 	UserID           int    `json:"user_id" gorm:"index"`
 	TokenID          int    `json:"token_id" gorm:"index"`
 	ChannelID        int    `json:"channel_id" gorm:"index"`
-	FundingSource    string `json:"funding_source" gorm:"type:varchar(16)"`
 	PreConsumedQuota int    `json:"pre_consumed_quota"`
 	// PreConsumedQuotaSet distinguishes an intentional zero reservation from a
 	// row that has not recorded its first reservation yet.
@@ -70,7 +67,6 @@ type BillingOperation struct {
 	TokenDelta              int                    `json:"token_delta"`
 	TokenDeltaSet           bool                   `json:"token_delta_set"`
 	Status                  BillingOperationStatus `json:"status" gorm:"type:varchar(32);index"`
-	FundingApplied          bool                   `json:"funding_applied"`
 	TokenApplied            bool                   `json:"token_applied"`
 	StatsApplied            bool                   `json:"stats_applied"`
 	StatsQuota              int                    `json:"stats_quota"`
@@ -78,7 +74,6 @@ type BillingOperation struct {
 	LogApplied              bool                   `json:"log_applied"`
 	LogPayload              string                 `json:"log_payload" gorm:"type:text"`
 	LogPayloadSet           bool                   `json:"log_payload_set"`
-	RefundFundingApplied    bool                   `json:"refund_funding_applied"`
 	RefundTokenApplied      bool                   `json:"refund_token_applied"`
 	RefundStatsApplied      bool                   `json:"refund_stats_applied"`
 	RefundLogApplied        bool                   `json:"refund_log_applied"`
@@ -153,7 +148,6 @@ type BillingOperationAttrs struct {
 	UserID            int
 	TokenID           int
 	ChannelID         int
-	FundingSource     string
 	PreConsumedQuota  int
 	ActualQuota       int
 	ActualQuotaSet    bool
@@ -161,29 +155,16 @@ type BillingOperationAttrs struct {
 	Status            BillingOperationStatus
 }
 
-var billingOperationMigrateMu sync.Mutex
-var billingOperationMigratedDB *gorm.DB
-
-// ensureBillingOperationTable keeps isolated model tests usable when they
-// replace the package database handle. Production startup creates the table
-// through migrateDB before any billing request is accepted.
+// ensureBillingOperationTable enforces the startup schema boundary. Billing
+// requests must never create or repair tables at runtime; isolated tests are
+// responsible for installing the current schema in their fixtures.
 func ensureBillingOperationTable() error {
 	if DB == nil {
 		return errors.New("database is not initialized")
 	}
-	billingOperationMigrateMu.Lock()
-	defer billingOperationMigrateMu.Unlock()
-	if billingOperationMigratedDB == DB {
-		return nil
+	if !DB.Migrator().HasTable(&BillingOperation{}) {
+		return errors.New("billing operation table is missing; initialize the current schema before serving requests")
 	}
-	if DB.Migrator().HasTable(&BillingOperation{}) {
-		billingOperationMigratedDB = DB
-		return nil
-	}
-	if err := DB.AutoMigrate(&BillingOperation{}); err != nil {
-		return err
-	}
-	billingOperationMigratedDB = DB
 	return nil
 }
 
@@ -210,7 +191,6 @@ func EnsureBillingOperation(attrs BillingOperationAttrs) (*BillingOperation, err
 		UserID:              attrs.UserID,
 		TokenID:             attrs.TokenID,
 		ChannelID:           attrs.ChannelID,
-		FundingSource:       attrs.FundingSource,
 		PreConsumedQuota:    attrs.PreConsumedQuota,
 		PreConsumedQuotaSet: attrs.PreConsumedQuota != 0,
 		ActualQuota:         attrs.ActualQuota,
@@ -262,9 +242,6 @@ func validateBillingOperationAttrs(operation *BillingOperation, attrs BillingOpe
 	if attrs.ChannelID > 0 && operation.ChannelID > 0 && attrs.ChannelID != operation.ChannelID {
 		return fmt.Errorf("billing operation %s belongs to channel %d: %w", attrs.OperationKey, operation.ChannelID, ErrBillingOperationQuotaConflict)
 	}
-	if attrs.FundingSource != "" && operation.FundingSource != "" && attrs.FundingSource != operation.FundingSource {
-		return fmt.Errorf("billing operation %s has funding source %s: %w", attrs.OperationKey, operation.FundingSource, ErrBillingOperationQuotaConflict)
-	}
 	if attrs.PreConsumedQuota != 0 && operation.PreConsumedQuotaSet && attrs.PreConsumedQuota != operation.PreConsumedQuota {
 		return fmt.Errorf("billing operation %s has reserved quota %d: %w", attrs.OperationKey, operation.PreConsumedQuota, ErrBillingOperationQuotaConflict)
 	}
@@ -313,10 +290,9 @@ func MarkBillingOperationTokenReserved(operationKey string) error {
 // idempotency barrier.
 func MarkBillingOperationComponent(operationKey, component string) error {
 	column := map[string]string{
-		BillingComponentFunding: "funding_applied",
-		BillingComponentToken:   "token_applied",
-		BillingComponentStats:   "stats_applied",
-		BillingComponentLog:     "log_applied",
+		BillingComponentToken: "token_applied",
+		BillingComponentStats: "stats_applied",
+		BillingComponentLog:   "log_applied",
 	}[component]
 	if column == "" {
 		return fmt.Errorf("unknown billing component: %s", component)
@@ -349,10 +325,9 @@ func MarkBillingOperationComponentOwned(operationKey, component, workerID string
 		return errors.New("billing worker id is required")
 	}
 	column := map[string]string{
-		BillingComponentFunding: "funding_applied",
-		BillingComponentToken:   "token_applied",
-		BillingComponentStats:   "stats_applied",
-		BillingComponentLog:     "log_applied",
+		BillingComponentToken: "token_applied",
+		BillingComponentStats: "stats_applied",
+		BillingComponentLog:   "log_applied",
 	}[component]
 	if column == "" {
 		return fmt.Errorf("unknown billing component: %s", component)
@@ -847,17 +822,15 @@ func MarkBillingOperationRefundComponentOwned(operationKey, component, workerID 
 
 func markBillingOperationComponent(operationKey, component string, refund bool, workerID string, now int64) error {
 	column := map[string]string{
-		BillingComponentFunding: "funding_applied",
-		BillingComponentToken:   "token_applied",
-		BillingComponentStats:   "stats_applied",
-		BillingComponentLog:     "log_applied",
+		BillingComponentToken: "token_applied",
+		BillingComponentStats: "stats_applied",
+		BillingComponentLog:   "log_applied",
 	}[component]
 	if refund {
 		column = map[string]string{
-			BillingComponentFunding: "refund_funding_applied",
-			BillingComponentToken:   "refund_token_applied",
-			BillingComponentStats:   "refund_stats_applied",
-			BillingComponentLog:     "refund_log_applied",
+			BillingComponentToken: "refund_token_applied",
+			BillingComponentStats: "refund_stats_applied",
+			BillingComponentLog:   "refund_log_applied",
 		}[component]
 	}
 	if column == "" {
@@ -1093,11 +1066,9 @@ func applyBillingOperationRefundStats(operationKey string, userID, channelID, qu
 		if !billingOperationStatusAllowsRefund(operation.Status) {
 			return fmt.Errorf("billing operation %s does not accept stats refund in state %s", operationKey, operation.Status)
 		}
-		// Standalone task submissions are marked StatsApplied by
-		// EnsureTaskBillingOperation when their submit path already updated the
-		// aggregates. An empty RequestID is not sufficient evidence: request
-		// operations may legitimately omit it, and refunding their stats would
-		// underflow the user/channel usage counters.
+		// Only a durable component marker proves that submit-time aggregates were
+		// written. Request/task identifiers alone are not sufficient evidence and
+		// must never trigger a speculative usage rollback.
 		if operation.StatsApplied {
 			if userID <= 0 {
 				return gorm.ErrRecordNotFound
@@ -1142,8 +1113,6 @@ func operationComponentApplied(operation *BillingOperation, component string, re
 	}
 	if refund {
 		switch component {
-		case BillingComponentFunding:
-			return operation.RefundFundingApplied
 		case BillingComponentToken:
 			return operation.RefundTokenApplied
 		case BillingComponentStats:
@@ -1154,8 +1123,6 @@ func operationComponentApplied(operation *BillingOperation, component string, re
 		return false
 	}
 	switch component {
-	case BillingComponentFunding:
-		return operation.FundingApplied
 	case BillingComponentToken:
 		return operation.TokenApplied
 	case BillingComponentStats:
@@ -1693,21 +1660,15 @@ func boundedBillingOperationKey(prefix, value string) string {
 }
 
 // EnsureTaskBillingOperation binds the task identity to the operation created
-// before submission. A deterministic task key is used only for callers that
-// construct a task without a request session (for example an internal task
-// runner); normal relay requests always carry the session key.
+// before submission. Callers must provide the durable operation key; missing
+// keys indicate a broken submission path and are never repaired at runtime.
 func EnsureTaskBillingOperation(task *Task) (*BillingOperation, error) {
 	if task == nil || task.TaskID == "" {
 		return nil, errors.New("task billing operation requires a task id")
 	}
 	key := strings.TrimSpace(task.PrivateData.BillingOperationKey)
 	if key == "" {
-		key = BillingOperationKeyForTask(task.TaskID)
-		task.PrivateData.BillingOperationKey = key
-	}
-	fundingSource := task.PrivateData.BillingSource
-	if strings.TrimSpace(fundingSource) == "" {
-		fundingSource = "usage"
+		return nil, errors.New("task billing operation requires an operation key")
 	}
 	// Re-entry happens after asynchronous quota reconciliation has updated the
 	// task row. The task's current quota is the latest actual amount, not the
@@ -1728,40 +1689,10 @@ func EnsureTaskBillingOperation(task *Task) (*BillingOperation, error) {
 		UserID:           task.UserId,
 		TokenID:          task.PrivateData.TokenId,
 		ChannelID:        task.ChannelId,
-		FundingSource:    fundingSource,
 		PreConsumedQuota: preConsumedQuota,
 	})
 	if err != nil {
 		return nil, err
-	}
-	// Standalone task runners do not have a request session to perform the
-	// submit-time reservation. Seed their persisted snapshot once so terminal
-	// retries can still reverse the exact token/statistics amount. Normal relay
-	// tasks use a request:* operation and never enter this branch.
-	if operation.RequestID == "" && strings.HasPrefix(key, "task:") {
-		updates := map[string]any{"updated_at": common.GetTimestamp()}
-		changed := false
-		if !operation.StatsApplied {
-			updates["stats_applied"] = true
-			updates["stats_quota"] = task.Quota
-			updates["stats_quota_set"] = true
-			changed = true
-		}
-		if task.PrivateData.TokenId > 0 && task.Quota > 0 && !operation.TokenReserved && !operation.TokenApplied {
-			updates["token_id"] = task.PrivateData.TokenId
-			updates["token_reserved"] = true
-			updates["token_reserved_quota"] = task.Quota
-			changed = true
-		}
-		if changed {
-			if err := DB.Model(&BillingOperation{}).Where("operation_key = ?", key).Updates(updates).Error; err != nil {
-				return nil, err
-			}
-			operation, err = GetBillingOperation(key)
-			if err != nil {
-				return nil, err
-			}
-		}
 	}
 	// A request-bound task may be reconstructed after the submitter has
 	// persisted the task row but before the synchronous settlement marker was
@@ -1787,13 +1718,6 @@ func EnsureTaskBillingOperation(task *Task) (*BillingOperation, error) {
 	}
 	if operation.TaskID != "" && operation.TaskID != task.TaskID {
 		return nil, fmt.Errorf("billing operation %s belongs to task %s", key, operation.TaskID)
-	}
-	if operation.FundingSource == "" && fundingSource != "" {
-		if err := DB.Model(&BillingOperation{}).Where("operation_key = ? AND funding_source = ''", key).
-			Update("funding_source", fundingSource).Error; err != nil {
-			return nil, err
-		}
-		operation.FundingSource = fundingSource
 	}
 	if operation.UserID != 0 && operation.UserID != task.UserId {
 		return nil, fmt.Errorf("billing operation %s belongs to user %d", key, operation.UserID)

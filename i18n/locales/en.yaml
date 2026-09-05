@@ -75,14 +75,11 @@ user.admin_cannot_promote: "Regular administrators cannot promote other users to
 user.original_password_error: "Original password is incorrect"
 user.default_token_failed: "Failed to generate default token"
 user.email_empty: "Email is empty!"
-user.quota_change_zero: "Quota change amount cannot be zero"
 
 # Quota messages
 quota.negative: "Quota cannot be negative!"
 quota.exceed_max: "Quota value exceeds valid range"
 quota.insufficient: "Insufficient quota"
-quota.warning_invalid: "Invalid warning type"
-quota.threshold_gt_zero: "Warning threshold must be greater than 0"
 
 
 

@@ -3,6 +3,7 @@ package setting
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"sync/atomic"
 
 	"github.com/QuantumNous/new-api/common"
@@ -13,6 +14,7 @@ const DefaultMaxTokenAutoGroups = 5
 var autoGroups = []string{
 	"default",
 }
+var autoGroupsMutex sync.RWMutex
 
 var DefaultUseAutoGroup = false
 
@@ -23,7 +25,7 @@ func init() {
 }
 
 func ContainsAutoGroup(group string) bool {
-	for _, autoGroup := range autoGroups {
+	for _, autoGroup := range GetAutoGroups() {
 		if autoGroup == group {
 			return true
 		}
@@ -32,12 +34,21 @@ func ContainsAutoGroup(group string) bool {
 }
 
 func UpdateAutoGroupsByJsonString(jsonString string) error {
-	autoGroups = make([]string, 0)
-	return common.Unmarshal([]byte(jsonString), &autoGroups)
+	var next []string
+	if err := common.Unmarshal([]byte(jsonString), &next); err != nil {
+		return err
+	}
+	if next == nil {
+		next = make([]string, 0)
+	}
+	autoGroupsMutex.Lock()
+	autoGroups = next
+	autoGroupsMutex.Unlock()
+	return nil
 }
 
 func AutoGroups2JsonString() string {
-	jsonBytes, err := common.Marshal(autoGroups)
+	jsonBytes, err := common.Marshal(GetAutoGroups())
 	if err != nil {
 		return "[]"
 	}
@@ -45,7 +56,21 @@ func AutoGroups2JsonString() string {
 }
 
 func GetAutoGroups() []string {
-	return autoGroups
+	autoGroupsMutex.RLock()
+	defer autoGroupsMutex.RUnlock()
+	return append([]string(nil), autoGroups...)
+}
+
+func GetDefaultUseAutoGroup() bool {
+	autoGroupsMutex.RLock()
+	defer autoGroupsMutex.RUnlock()
+	return DefaultUseAutoGroup
+}
+
+func SetDefaultUseAutoGroup(enabled bool) {
+	autoGroupsMutex.Lock()
+	DefaultUseAutoGroup = enabled
+	autoGroupsMutex.Unlock()
 }
 
 func GetMaxTokenAutoGroups() int {

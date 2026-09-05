@@ -88,9 +88,6 @@ type Log struct {
 // don't use iota, avoid change log type value
 const (
 	LogTypeUnknown = 0
-	// LogTypeTopup 保留历史编号，确保旧充值日志的类型值不会被重新解释。
-	// 当前版本不再生成新的充值日志。
-	LogTypeTopup   = 1
 	LogTypeConsume = 2
 	LogTypeManage  = 3
 	LogTypeSystem  = 4

@@ -294,8 +294,8 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 		return nil, err
 	}
 	if common.RedisEnabled {
-		// 冷缓存时用数据库快照初始化；已存在的哈希只刷新 TTL，
-		// 避免快照覆盖 Redis 中已被原子预扣的余额。初始化失败不影响本次读取。
+			// 冷缓存时用数据库快照初始化；已存在的哈希只刷新 TTL，
+			// 避免快照覆盖 Redis 中已被原子预扣的剩余额度。初始化失败不影响本次读取。
 		if _, cacheErr := cacheInitToken(*token); cacheErr != nil {
 			common.SysLog("failed to init token cache: " + cacheErr.Error())
 		}
@@ -413,10 +413,6 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 			common.SysLog("token quota cache refund unavailable, falling back to database: " + cacheErr.Error())
 		}
 	}
-	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
-		return nil
-	}
 	return increaseTokenQuota(tokenId, quota)
 }
 
@@ -483,10 +479,6 @@ func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 		if cacheErr != nil {
 			common.SysLog("token quota cache charge unavailable, falling back to database: " + cacheErr.Error())
 		}
-	}
-	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
-		return nil
 	}
 	return decreaseTokenQuota(id, quota)
 }

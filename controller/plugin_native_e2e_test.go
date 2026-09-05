@@ -71,7 +71,13 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 	previousRedisEnabled := common.RedisEnabled
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, database.AutoMigrate(&model.User{}, &model.Channel{}, &model.Task{}, &model.Log{}))
+	require.NoError(t, database.AutoMigrate(
+		&model.User{},
+		&model.Channel{},
+		&model.Task{},
+		&model.Log{},
+		&model.BillingOperation{},
+	))
 	model.DB = database
 	model.LOG_DB = database
 	common.MemoryCacheEnabled = false
@@ -93,7 +99,6 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 		Id:       7,
 		Username: "native-route-user",
 		Group:    "default",
-		Quota:    1_000_000,
 	}).Error)
 
 	var submitCalls atomic.Int32
@@ -153,7 +158,6 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 	common.SetContextKey(submitContext, constant.ContextKeyUserGroup, "default")
 	common.SetContextKey(submitContext, constant.ContextKeyUsingGroup, "default")
 	common.SetContextKey(submitContext, constant.ContextKeyTokenGroup, "default")
-	common.SetContextKey(submitContext, constant.ContextKeyUserQuota, 1_000_000)
 
 	middleware.PrepareTaskPluginRoute()(submitContext)
 	require.False(t, submitContext.IsAborted(), submitRecorder.Body.String())
@@ -166,7 +170,6 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 		UserId:          7,
 		UserGroup:       "default",
 		UsingGroup:      "default",
-		UserQuota:       1_000_000,
 		BillingSource:   service.BillingSourceUsage,
 		TokenGroup:      "default",
 		OriginModelName: "kling-v1",
@@ -215,7 +218,6 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 	assert.Equal(t, int32(1), queryCalls.Load())
 	var settledUser model.User
 	require.NoError(t, database.First(&settledUser, 7).Error)
-	assert.Equal(t, 1_000_000, settledUser.Quota)
 
 	queryBinding, found := generation.LookupDeclaredRoute(http.MethodGet, "/kling/v1/videos/text2video/:task_id")
 	require.True(t, found)

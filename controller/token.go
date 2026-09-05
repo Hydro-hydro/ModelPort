@@ -42,11 +42,11 @@ type tokenResponse struct {
 }
 
 func maxTokenQuota() int {
-	quota, err := common.WalletQuotaFromDecimalStrict(
+	quota, err := common.AccessQuotaFromDecimalStrict(
 		decimal.NewFromInt(1_000_000_000).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 	)
 	if err != nil {
-		return common.MaxWalletQuota
+		return common.MaxAccessQuota
 	}
 	return quota
 }

@@ -206,7 +206,7 @@ func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID st
 			UpstreamTaskID: upstreamID,
 		},
 	}
-	require.NoError(t, model.DB.Create(task).Error)
+	insertTaskBillingFixture(t, task, false)
 	return task
 }
 
@@ -365,7 +365,7 @@ func TestUpdateBatchTasksSettlesTieredUsageForTerminalStates(t *testing.T) {
 			seedTaskPollingChannel(t, channelID, true)
 
 			expression := `tier("actual", u("units"))`
-			task := makeTask(userID, channelID, preConsumedQuota, tokenID, BillingSourceWallet)
+			task := makeTask(userID, channelID, preConsumedQuota, tokenID, BillingSourceUsage)
 			task.TaskID = "task_batch_tiered_" + string(testCase.status)
 			task.Platform = "batch-plugin"
 			task.PrivateData.UpstreamTaskID = "upstream_batch_tiered_" + string(testCase.status)
@@ -378,7 +378,8 @@ func TestUpdateBatchTasksSettlesTieredUsageForTerminalStates(t *testing.T) {
 				ExprVersion:      1,
 				TaskUsageBilling: true,
 			}
-			require.NoError(t, model.DB.Create(task).Error)
+			seedChargedAccounting(t, userID, channelID, tokenID, preConsumedQuota, 1)
+			insertTaskBillingFixture(t, task, true)
 
 			upstreamID := task.GetUpstreamTaskID()
 			reason := ""
@@ -404,7 +405,7 @@ func TestUpdateBatchTasksSettlesTieredUsageForTerminalStates(t *testing.T) {
 			var persistedData map[string]any
 			require.NoError(t, common.Unmarshal(persisted.Data, &persistedData))
 			assert.Equal(t, "must-be-preserved", persistedData["provider_payload"])
-			assert.Equal(t, initialQuota+(preConsumedQuota-testCase.actualQuota), getUserQuota(t, userID))
+			assert.Equal(t, initialQuota, getUserQuota(t, userID))
 			assert.Equal(t, tokenRemain+(preConsumedQuota-testCase.actualQuota), getTokenRemainQuota(t, tokenID))
 			assert.Equal(t, int64(1), countLogs(t))
 			if testCase.status == model.TaskStatusFailure {
@@ -415,7 +416,7 @@ func TestUpdateBatchTasksSettlesTieredUsageForTerminalStates(t *testing.T) {
 
 			// A duplicate terminal response must not settle the same task twice.
 			require.NoError(t, UpdateBatchTasks(context.Background(), adaptor, map[int][]string{channelID: taskIDs}, taskMap))
-			assert.Equal(t, initialQuota+(preConsumedQuota-testCase.actualQuota), getUserQuota(t, userID))
+			assert.Equal(t, initialQuota, getUserQuota(t, userID))
 			assert.Equal(t, int64(1), countLogs(t))
 		})
 	}
@@ -431,7 +432,7 @@ func TestUpdateBatchTasksRefundsFailedTieredTask(t *testing.T) {
 	seedTaskPollingChannel(t, channelID, true)
 
 	expression := `tier("actual", u("units"))`
-	task := makeTask(userID, channelID, preConsumedQuota, tokenID, BillingSourceWallet)
+	task := makeTask(userID, channelID, preConsumedQuota, tokenID, BillingSourceUsage)
 	task.TaskID = "task_batch_tiered_refund"
 	task.Platform = "batch-plugin"
 	task.PrivateData.UpstreamTaskID = "upstream_batch_tiered_refund"
@@ -445,7 +446,8 @@ func TestUpdateBatchTasksRefundsFailedTieredTask(t *testing.T) {
 		UsageFacts:       map[string]any{"units": float64(5)},
 		EstimatedTier:    "actual",
 	}
-	require.NoError(t, model.DB.Create(task).Error)
+	seedChargedAccounting(t, userID, channelID, tokenID, preConsumedQuota, 1)
+	insertTaskBillingFixture(t, task, true)
 
 	upstreamID := task.GetUpstreamTaskID()
 	adaptor := &batchPollingAdaptor{results: map[string]*BatchTaskResult{
@@ -462,7 +464,7 @@ func TestUpdateBatchTasksRefundsFailedTieredTask(t *testing.T) {
 	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
 	assert.EqualValues(t, model.TaskStatusFailure, persisted.Status)
 	assert.Zero(t, persisted.Quota)
-	assert.Equal(t, initialQuota+preConsumedQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, tokenRemain+preConsumedQuota, getTokenRemainQuota(t, tokenID))
 
 	log := getLastLog(t)
@@ -487,13 +489,14 @@ func TestUpdateBatchTasksRefundsFailedTaskWithoutUsageSettlement(t *testing.T) {
 	seedToken(t, tokenID, userID, "sk-batch-refund", tokenRemain)
 	seedTaskPollingChannel(t, channelID, true)
 
-	task := makeTask(userID, channelID, preConsumedQuota, tokenID, BillingSourceWallet)
+	task := makeTask(userID, channelID, preConsumedQuota, tokenID, BillingSourceUsage)
 	task.TaskID = "task_batch_refund"
 	task.Platform = "batch-plugin"
 	task.Properties.OriginModelName = "missing-batch-token-price"
 	task.PrivateData.UpstreamTaskID = "upstream_batch_refund"
 	task.PrivateData.BillingContext.OriginModelName = "missing-batch-token-price"
-	require.NoError(t, model.DB.Create(task).Error)
+	seedChargedAccounting(t, userID, channelID, tokenID, preConsumedQuota, 1)
+	insertTaskBillingFixture(t, task, true)
 
 	upstreamID := task.GetUpstreamTaskID()
 	adaptor := &batchPollingAdaptor{results: map[string]*BatchTaskResult{
@@ -501,7 +504,7 @@ func TestUpdateBatchTasksRefundsFailedTaskWithoutUsageSettlement(t *testing.T) {
 	}}
 	require.NoError(t, UpdateBatchTasks(context.Background(), adaptor, map[int][]string{channelID: {upstreamID}}, map[string]*model.Task{upstreamID: task}))
 
-	assert.Equal(t, initialQuota+preConsumedQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, tokenRemain+preConsumedQuota, getTokenRemainQuota(t, tokenID))
 	log := getLastLog(t)
 	require.NotNil(t, log)
@@ -704,14 +707,15 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 		BaseURL: &baseURL,
 	}).Error)
 
-	task := makeTask(userID, channelID, taskQuota, tokenID, BillingSourceWallet)
+	task := makeTask(userID, channelID, taskQuota, tokenID, BillingSourceUsage)
 	task.TaskID = publicTaskID
 	task.Platform = constant.TaskPlatformSuno
 	task.Status = model.TaskStatusInProgress
 	task.Progress = "50%"
 	task.SubmitTime = time.Now().Unix()
 	task.PrivateData.UpstreamTaskID = upstreamTaskID
-	require.NoError(t, model.DB.Create(task).Error)
+	seedChargedAccounting(t, userID, channelID, tokenID, taskQuota, 1)
+	insertTaskBillingFixture(t, task, true)
 
 	var firstPollTask model.Task
 	var staleSecondPollTask model.Task
@@ -740,7 +744,7 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
 	assert.Zero(t, reloaded.Quota)
-	assert.Equal(t, initialUserQuota+taskQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialUserQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota+taskQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, int64(1), countLogs(t))
 }
@@ -756,7 +760,7 @@ func TestFailTaskWithoutUpstreamIDTreatsZeroSubmitTimeAsRefundable(t *testing.T)
 	task.TaskID = "zero-submit-missing-upstream"
 	task.SubmitTime = 0
 	task.PrivateData.UpstreamTaskID = ""
-	require.NoError(t, model.DB.Create(task).Error)
+	insertTaskBillingFixture(t, task, true)
 
 	assert.True(t, failTaskWithoutUpstreamID(context.Background(), task))
 	var persisted model.Task

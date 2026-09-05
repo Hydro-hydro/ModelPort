@@ -23,7 +23,6 @@ func TestListModelsSupportsOpenAIAndGeminiAuthentication(t *testing.T) {
 		Role:     common.RoleRootUser,
 		Status:   common.UserStatusEnabled,
 		Group:    "default",
-		Quota:    100,
 	}
 	require.NoError(t, model.DB.Create(&user).Error)
 	require.NoError(t, model.DB.Create(&model.Token{
@@ -87,6 +86,27 @@ func TestListModelsSupportsOpenAIAndGeminiAuthentication(t *testing.T) {
 				assert.Equal(t, test.expectedObject, payload["object"])
 			}
 		})
+	}
+}
+
+func TestSetRelayRouterOmitsDisabledMediaRoutes(t *testing.T) {
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+
+	engine := gin.New()
+	SetRelayRouter(engine)
+
+	routes := make(map[string]struct{})
+	for _, route := range engine.Routes() {
+		routes[route.Method+" "+route.Path] = struct{}{}
+	}
+
+	for _, route := range []string{
+		"GET /mj/image/:id",
+		"POST /mj/submit/imagine",
+		"GET /:mode/mj/image/:id",
+	} {
+		_, registered := routes[route]
+		assert.False(t, registered, route)
 	}
 }
 

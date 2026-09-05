@@ -112,14 +112,12 @@ type RelayInfo struct {
 	ReasoningEffort        string
 	UserSetting            dto.UserSetting
 	UserEmail              string
-	UserQuota              int
 	RelayFormat            types.RelayFormat
 	SendResponseCount      int
 	ReceivedResponseCount  int
 	FinalPreConsumedQuota  int // 最终预消耗的配额
-	// ForcePreConsume 为 true 时禁用 BillingSession 的信任额度旁路，
-	// 强制预扣全额。用于异步任务（视频/音乐生成等），因为请求返回后任务仍在运行，
-	// 必须在提交前锁定全额。
+	// ForcePreConsume 为 true 时在发送上游前锁定完整的预估 Token 额度。
+	// 用于异步任务（视频/音乐生成等），因为请求返回后任务仍在运行。
 	ForcePreConsume bool
 	// Billing 是计费会话，封装了预扣费/结算/退款的统一生命周期。
 	// 初始免费组可为 nil；若 auto 重试切换到付费组，会在发送前创建。
@@ -255,8 +253,8 @@ func (info *RelayInfo) ToString() string {
 	fmt.Fprintf(b, "FinalPreConsumedQuota: %d, ", info.FinalPreConsumedQuota)
 
 	// User & token info (mask secrets)
-	fmt.Fprintf(b, "User{ Id: %d, Email: %q, Group: %q, UsingGroup: %q, Quota: %d }, ",
-		info.UserId, common.MaskEmail(info.UserEmail), info.UserGroup, info.UsingGroup, info.UserQuota)
+	fmt.Fprintf(b, "User{ Id: %d, Email: %q, Group: %q, UsingGroup: %q }, ",
+		info.UserId, common.MaskEmail(info.UserEmail), info.UserGroup, info.UsingGroup)
 	fmt.Fprintf(b, "Token{ Id: %d, Unlimited: %t, Key: ***masked*** }, ", info.TokenId, info.TokenUnlimited)
 
 	// Time info
@@ -496,7 +494,6 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		UserId:        common.GetContextKeyInt(c, constant.ContextKeyUserId),
 		UsingGroup:    common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
 		UserGroup:     common.GetContextKeyString(c, constant.ContextKeyUserGroup),
-		UserQuota:     common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
 		UserEmail:     common.GetContextKeyString(c, constant.ContextKeyUserEmail),
 		BillingSource: BillingSourceUsage,
 

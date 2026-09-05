@@ -156,12 +156,9 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	if relayInfo == nil || other == nil {
 		return
 	}
-	// billing_source: "wallet"
+	// billing_source identifies the usage-only accounting mode for diagnostics.
 	if relayInfo.BillingSource != "" {
 		other["billing_source"] = relayInfo.BillingSource
-	}
-	if relayInfo.BillingSource == BillingSourceWallet {
-		other["wallet_quota_deducted"] = true
 	}
 }
 

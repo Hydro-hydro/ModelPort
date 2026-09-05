@@ -45,7 +45,6 @@ func TestGetOpenAIVideoRouteRendersJimengTask(t *testing.T) {
 		Username:    "jimeng-fetch-user",
 		Role:        common.RoleRootUser,
 		Status:      common.UserStatusEnabled,
-		Quota:       100,
 		Group:       "default",
 		AuthVersion: 1,
 	}).Error)

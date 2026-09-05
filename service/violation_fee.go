@@ -111,8 +111,8 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 	if ctx == nil || relayInfo == nil || apiErr == nil {
 		return false
 	}
-	// Violation fees are usage records in personal mode as well; they must not
-	// fall back to the legacy wallet path when the original request was free.
+	// Violation fees are usage records in personal mode as well; they use the
+	// same Token/statistics/log components as the normal request path.
 	relayInfo.BillingSource = BillingSourceUsage
 	//if relayInfo.IsPlayground {
 	//	return false
@@ -168,7 +168,6 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		UserID:           relayInfo.UserId,
 		TokenID:          relayInfo.TokenId,
 		ChannelID:        relayInfo.ChannelId,
-		FundingSource:    BillingSourceUsage,
 		PreConsumedQuota: 0,
 		ActualQuota:      feeQuota,
 		ActualQuotaSet:   true,
@@ -189,15 +188,6 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		return false
 	}
 
-	// FundingSource=usage deliberately has no wallet mutation. Persist its
-	// no-op marker before touching token/stat/log components so a retry can
-	// resume from a durable operation row.
-	if !operation.FundingApplied {
-		if err := model.MarkBillingOperationComponent(operationKey, model.BillingComponentFunding); err != nil {
-			logger.LogError(ctx, fmt.Sprintf("failed to mark violation fee funding: %s", err.Error()))
-			return false
-		}
-	}
 	operation, err = model.GetBillingOperation(operationKey)
 	if err != nil {
 		return false

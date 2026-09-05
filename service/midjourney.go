@@ -49,10 +49,6 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	if quota < 0 {
 		return false, errors.New("quota cannot be negative")
 	}
-	// Midjourney tasks use the same usage-only funding policy as ordinary
-	// relay requests. The marker is kept on RelayInfo for settlement/logging.
-	relayInfo.BillingSource = BillingSourceUsage
-
 	task.Quota = quota
 	task.BillingChannelId = task.ChannelId
 	if relayInfo.ChannelMeta != nil && relayInfo.ChannelId > 0 {
@@ -98,25 +94,35 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 		return true, billingErr
 	}
 
-	result, billingErr := postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
-	if !result.FundingApplied {
+	if task.Quota > 0 && !relayInfo.IsPlayground {
+		billingErr := model.DecreaseTokenQuotaImmediate(relayInfo.TokenId, relayInfo.TokenKey, task.Quota)
+		if billingErr != nil {
+			task.TokenId = 0
+			if updateErr := task.UpdateBillingState(); updateErr != nil {
+				return true, errors.Join(billingErr, fmt.Errorf("update Midjourney billing state: %w", updateErr))
+			}
+			// Keep the task's charge marker intact. A later refund worker can
+			// reconcile the usage/log components even though the Token mutation
+			// failed in this attempt.
+			return true, billingErr
+		}
+	}
+	if task.Quota == 0 || relayInfo.IsPlayground {
 		task.Quota = 0
 		task.TokenId = 0
 		task.BillingChannelId = 0
 		if updateErr := task.UpdateBillingState(); updateErr != nil {
-			return false, errors.Join(billingErr, fmt.Errorf("clear Midjourney billing state: %w", updateErr))
+			return false, updateErr
 		}
-		return false, billingErr
+		return false, nil
 	}
 
 	task.TokenId = 0
-	if result.TokenApplied {
-		task.TokenId = relayInfo.TokenId
-	}
+	task.TokenId = relayInfo.TokenId
 	if updateErr := task.UpdateBillingState(); updateErr != nil {
-		return true, errors.Join(billingErr, fmt.Errorf("update Midjourney billing state: %w", updateErr))
+		return true, fmt.Errorf("update Midjourney billing state: %w", updateErr)
 	}
-	return true, billingErr
+	return true, nil
 }
 
 // RecordMidjourneyTaskConsumption persists the consume log and usage counters
@@ -167,7 +173,7 @@ func RecordMidjourneyTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo
 	if err != nil {
 		return err
 	}
-	if !operation.FundingApplied || !operation.TokenApplied || !operation.StatsApplied || !operation.LogApplied {
+	if !operation.TokenApplied || !operation.StatsApplied || !operation.LogApplied {
 		return nil
 	}
 	updated, err := model.UpdateBillingOperationStatus(operationKey,
@@ -254,19 +260,6 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		}
 	}
 
-	// Midjourney personal billing has no wallet mutation. The funding marker is
-	// still required so the durable operation can reach its terminal state.
-	operation, err = model.GetBillingOperation(key)
-	if err != nil {
-		return false
-	}
-	if !operation.RefundFundingApplied {
-		if err := model.MarkBillingOperationRefundComponent(key, model.BillingComponentFunding); err != nil {
-			logger.LogWarn(ctx, fmt.Sprintf("标记 Midjourney 资金退款完成失败 task %s: %v", task.MjId, err))
-			return false
-		}
-	}
-
 	// ApplyBillingOperationRefundToken performs the token update and its
 	// marker in one transaction. The operation row is the only source of truth
 	// for the reservation and final charge.
@@ -338,7 +331,7 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	}
 
 	operation, err = model.GetBillingOperation(key)
-	if err != nil || !operation.RefundFundingApplied || !operation.RefundTokenApplied ||
+	if err != nil || !operation.RefundTokenApplied ||
 		!operation.RefundStatsApplied || !operation.RefundLogApplied {
 		return false
 	}
@@ -383,7 +376,6 @@ func ensureMidjourneyBillingOperation(task *model.Midjourney) (*model.BillingOpe
 		UserID:           task.UserId,
 		TokenID:          task.TokenId,
 		ChannelID:        task.GetBillingChannelId(),
-		FundingSource:    BillingSourceUsage,
 		PreConsumedQuota: task.Quota,
 		ActualQuota:      task.Quota,
 		ActualQuotaSet:   true,

@@ -16,36 +16,31 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 // loadTaskBillingOperation loads the operation that was created before the
 // task row was submitted. New deployments always create this durable marker;
 // a missing marker is an accounting error, never a reason to fall back to
 // direct quota/statistics writes.
-func loadTaskBillingOperation(task *model.Task) (*model.BillingOperation, bool, error) {
+func loadTaskBillingOperation(task *model.Task) (*model.BillingOperation, error) {
 	if task == nil {
-		return nil, true, fmt.Errorf("task billing operation requires a task")
+		return nil, fmt.Errorf("task billing operation requires a task")
 	}
 	key := strings.TrimSpace(task.PrivateData.BillingOperationKey)
 	if key == "" {
-		operation, err := model.EnsureTaskBillingOperation(task)
-		return operation, true, err
+		return nil, fmt.Errorf("task %s is missing its billing operation key", task.TaskID)
 	}
 	operation, err := model.GetBillingOperation(key)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		operation, err = model.EnsureTaskBillingOperation(task)
-	}
 	if err != nil {
-		return nil, true, err
+		return nil, fmt.Errorf("load billing operation %s for task %s: %w", key, task.TaskID, err)
 	}
 	if operation == nil {
-		return nil, true, errors.New("billing operation is empty")
+		return nil, errors.New("billing operation is empty")
 	}
 	if operation.TaskID != "" && operation.TaskID != task.TaskID {
-		return nil, true, fmt.Errorf("billing operation %s belongs to task %s", operation.OperationKey, operation.TaskID)
+		return nil, fmt.Errorf("billing operation %s belongs to task %s", operation.OperationKey, operation.TaskID)
 	}
-	return operation, true, nil
+	return operation, nil
 }
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
@@ -115,7 +110,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		Group:     info.UsingGroup,
 		Other:     other,
 	}
-	operation, _, operationErr := loadTaskBillingOperation(task)
+	operation, operationErr := loadTaskBillingOperation(task)
 	if operationErr != nil {
 		logger.LogWarn(c, fmt.Sprintf("任务账单操作读取失败 task %s: %v", task.TaskID, operationErr))
 		return
@@ -147,7 +142,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		return
 	}
 	if operation, err := model.GetBillingOperation(operation.OperationKey); err == nil &&
-		operation.FundingApplied && operation.TokenApplied && operation.StatsApplied && operation.LogApplied &&
+		operation.TokenApplied && operation.StatsApplied && operation.LogApplied &&
 		operation.FinalUsageApplied {
 		_, _ = model.UpdateBillingOperationStatus(operation.OperationKey,
 			[]model.BillingOperationStatus{model.BillingOperationApplying, model.BillingOperationReserved},
@@ -168,30 +163,6 @@ func resolveTokenKey(ctx context.Context, tokenId int, taskID string) string {
 		return ""
 	}
 	return token.Key
-}
-
-// taskAdjustFunding 调整任务的资金来源，delta > 0 表示扣费，delta < 0 表示退还。
-// 个人版任务使用用量记账，不触碰用户钱包。显式的 wallet 来源仅供
-// 非个人模式调用方使用；空来源按 usage 处理。
-func taskAdjustFunding(task *model.Task, delta int) error {
-	if task == nil || delta == 0 {
-		return nil
-	}
-	source := strings.TrimSpace(task.PrivateData.BillingSource)
-	if source == "" {
-		source = BillingSourceUsage
-	}
-	switch source {
-	case BillingSourceUsage:
-		return nil
-	case BillingSourceWallet:
-		if delta > 0 {
-			return model.DecreaseUserQuota(task.UserId, delta, false)
-		}
-		return model.IncreaseUserQuota(task.UserId, -delta, false)
-	default:
-		return fmt.Errorf("unknown task billing source %q", source)
-	}
 }
 
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
@@ -272,8 +243,8 @@ func taskModelName(task *model.Task) string {
 }
 
 // RefundTaskQuota 统一的任务失败退款逻辑。
-// 当异步任务失败时，退还资金与令牌额度，并回减用户和渠道用量。
-// 返回资金来源是否已成功退还；失败时保留 quota，供显式重试或人工对账。
+// 当异步任务失败时，退还预扣的 Token 访问额度，并回减用户和渠道用量。
+// 返回账单组件是否已成功完成；失败时保留 quota，供显式重试或对账。
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool {
 	return refundTaskQuota(ctx, task, reason, false, "")
 }
@@ -307,9 +278,9 @@ func refundTaskQuota(ctx context.Context, task *model.Task, reason string, allow
 	unlock := lockTaskRefund(key)
 	defer unlock()
 
-	operation, err := model.EnsureTaskBillingOperation(task)
+	operation, err := loadTaskBillingOperation(task)
 	if err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("创建任务退款操作失败 task %s: %s", task.TaskID, err.Error()))
+		logger.LogWarn(ctx, fmt.Sprintf("读取任务退款操作失败 task %s: %s", task.TaskID, err.Error()))
 		return false
 	}
 	key = operation.OperationKey
@@ -326,7 +297,6 @@ func refundTaskQuota(ctx context.Context, task *model.Task, reason string, allow
 	if operation.Status == model.BillingOperationSettled && !allowSettled {
 		return false
 	}
-	wasSettled := operation.Status == model.BillingOperationSettled
 	// A request-bound operation may have reserved quota before the task row was
 	// created. Before settlement, task.Quota is only the provider's adjusted
 	// estimate and may be lower than the durable reservation (including zero).
@@ -387,23 +357,7 @@ func refundTaskQuota(ctx context.Context, task *model.Task, reason string, allow
 		return false
 	}
 
-	// 1. 退还管理员钱包额度
-	if !operation.RefundFundingApplied {
-		if !wasSettled || operation.FundingApplied {
-			if !billingOperationLeaseActive(key, workerID) {
-				return false
-			}
-			if err := taskAdjustFunding(task, -quota); err != nil {
-				logger.LogWarn(ctx, fmt.Sprintf("退还资金来源失败 task %s: %s", task.TaskID, err.Error()))
-				return false
-			}
-		}
-		if err := markRefundComponent(key, model.BillingComponentFunding, workerID); err != nil {
-			return false
-		}
-	}
-
-	// 2. 退还令牌额度
+	// 1. 退还令牌额度
 	operation, err = model.GetBillingOperation(key)
 	if err != nil {
 		return false
@@ -458,7 +412,7 @@ func refundTaskQuota(ctx context.Context, task *model.Task, reason string, allow
 		}
 	}
 
-	// 3. 回减预扣时累计的用户和渠道用量，请求次数保持不变
+	// 2. 回减预扣时累计的用户和渠道用量，请求次数保持不变
 	operation, err = model.GetBillingOperation(key)
 	if err != nil {
 		return false
@@ -481,7 +435,7 @@ func refundTaskQuota(ctx context.Context, task *model.Task, reason string, allow
 		}
 	}
 
-	// 4. 记录日志
+	// 3. 记录日志
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
@@ -513,7 +467,7 @@ func refundTaskQuota(ctx context.Context, task *model.Task, reason string, allow
 	}
 
 	operation, err = model.GetBillingOperation(key)
-	if err != nil || operation == nil || !operation.RefundFundingApplied || !operation.RefundTokenApplied ||
+	if err != nil || operation == nil || !operation.RefundTokenApplied ||
 		!operation.RefundStatsApplied || !operation.RefundLogApplied {
 		return false
 	}
@@ -581,7 +535,7 @@ func completeZeroQuotaRefund(key string, status model.BillingOperationStatus, al
 	if operation.PreConsumedQuota != 0 || operation.ActualQuota != 0 {
 		return false
 	}
-	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		if !billingOperationLeaseActive(key, workerID) {
 			return false
 		}
@@ -645,7 +599,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if taskBillingOperationTerminal(task) {
 		return
 	}
-	operation, _, operationErr := loadTaskBillingOperation(task)
+	operation, operationErr := loadTaskBillingOperation(task)
 	if operationErr != nil {
 		logger.LogError(ctx, fmt.Sprintf("加载任务账单操作失败 task %s: %v", task.TaskID, operationErr))
 		return
@@ -677,12 +631,6 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		logger.LogQuota(preConsumedQuota),
 		reason,
 	))
-
-	// 调整资金来源
-	if err := taskAdjustFunding(task, quotaDelta); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
-		return
-	}
 
 	// 调整令牌额度. Durable operations update the token row and their marker
 	// atomically.
@@ -777,7 +725,7 @@ func finalizeTaskBillingOperation(task *model.Task, actualQuota int) {
 		return
 	}
 	operation, err := model.GetBillingOperation(key)
-	if err != nil || operation == nil || !operation.FundingApplied || !operation.TokenApplied ||
+	if err != nil || operation == nil || !operation.TokenApplied ||
 		!operation.StatsApplied || !operation.LogApplied || !operation.FinalUsageApplied {
 		return
 	}

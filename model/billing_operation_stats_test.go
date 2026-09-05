@@ -13,7 +13,7 @@ func TestApplyBillingOperationStatsConcurrentIsIdempotent(t *testing.T) {
 	if err := ensureBillingOperationTable(); err != nil {
 		t.Fatal(err)
 	}
-	user := &User{Username: "billing_stats_concurrent", Quota: 0}
+	user := &User{Username: "billing_stats_concurrent"}
 	channel := &Channel{Key: "billing_stats_concurrent", Name: "billing stats concurrent"}
 	require.NoError(t, DB.Create(user).Error)
 	require.NoError(t, DB.Create(channel).Error)
@@ -156,7 +156,7 @@ func TestApplyBillingOperationStatsAdjustmentConcurrentTargetsFinalQuota(t *test
 	if err := ensureBillingOperationTable(); err != nil {
 		t.Fatal(err)
 	}
-	user := &User{Username: "billing_stats_adjustment", Quota: 0, UsedQuota: 100}
+	user := &User{Username: "billing_stats_adjustment", UsedQuota: 100}
 	channel := &Channel{Key: "billing_stats_adjustment", Name: "billing stats adjustment", UsedQuota: 100}
 	require.NoError(t, DB.Create(user).Error)
 	require.NoError(t, DB.Create(channel).Error)
@@ -205,7 +205,7 @@ func TestApplyBillingOperationRefundStatsDoesNotInferLegacyFromEmptyRequestID(t 
 	if err := ensureBillingOperationTable(); err != nil {
 		t.Fatal(err)
 	}
-	user := &User{Username: "billing_stats_empty_request", Quota: 0}
+	user := &User{Username: "billing_stats_empty_request"}
 	channel := &Channel{Key: "billing_stats_empty_request", Name: "billing stats empty request"}
 	require.NoError(t, DB.Create(user).Error)
 	require.NoError(t, DB.Create(channel).Error)
@@ -213,7 +213,6 @@ func TestApplyBillingOperationRefundStatsDoesNotInferLegacyFromEmptyRequestID(t 
 		OperationKey:     "request:stats-empty-request-id",
 		UserID:           user.Id,
 		ChannelID:        channel.Id,
-		FundingSource:    "usage",
 		PreConsumedQuota: 100,
 	})
 	require.NoError(t, err)

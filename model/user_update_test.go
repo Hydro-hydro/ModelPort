@@ -49,7 +49,6 @@ func TestUserUpdateDoesNotOverwriteConcurrentAccountingOrTokenChanges(t *testing
 		Password:     "password",
 		DisplayName:  "before",
 		Status:       common.UserStatusEnabled,
-		Quota:        1000,
 		UsedQuota:    20,
 		RequestCount: 3,
 	}
@@ -60,7 +59,6 @@ func TestUserUpdateDoesNotOverwriteConcurrentAccountingOrTokenChanges(t *testing
 	require.NoError(t, err)
 
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
-		"quota":         gorm.Expr("quota - ?", 400),
 		"used_quota":    gorm.Expr("used_quota + ?", 400),
 		"request_count": gorm.Expr("request_count + ?", 1),
 		"access_token":  "rotated-token",
@@ -72,7 +70,6 @@ func TestUserUpdateDoesNotOverwriteConcurrentAccountingOrTokenChanges(t *testing
 	var got User
 	require.NoError(t, DB.First(&got, user.Id).Error)
 	assert.Equal(t, "after", got.DisplayName)
-	assert.Equal(t, 600, got.Quota)
 	assert.Equal(t, 420, got.UsedQuota)
 	assert.Equal(t, 4, got.RequestCount)
 	assert.Equal(t, "rotated-token", got.GetAccessToken())
@@ -142,12 +139,10 @@ func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 		Password:    "password",
 		DisplayName: "before",
 		Status:      common.UserStatusEnabled,
-		Quota:       1000,
 	}
 	require.NoError(t, DB.Create(&user).Error)
 
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
-		"quota":        gorm.Expr("quota + ?", 500),
 		"display_name": "concurrent-update",
 	}).Error)
 
@@ -157,7 +152,6 @@ func TestUpdateUserAccessTokenOnlyUpdatesAccessToken(t *testing.T) {
 	require.NoError(t, DB.First(&got, user.Id).Error)
 	assert.Equal(t, "rotated-token", got.GetAccessToken())
 	assert.Equal(t, "concurrent-update", got.DisplayName)
-	assert.Equal(t, 1500, got.Quota)
 }
 
 func TestUpdateUserAccessTokenRejectsSoftDeletedUser(t *testing.T) {
@@ -189,14 +183,12 @@ func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 		Username:     "setting-user",
 		Password:     "password",
 		Status:       common.UserStatusEnabled,
-		Quota:        1000,
 		UsedQuota:    20,
 		RequestCount: 3,
 	}
 	require.NoError(t, DB.Create(&user).Error)
 
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
-		"quota":         gorm.Expr("quota - ?", 250),
 		"used_quota":    gorm.Expr("used_quota + ?", 250),
 		"request_count": gorm.Expr("request_count + ?", 1),
 	}).Error)
@@ -205,7 +197,6 @@ func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 
 	var got User
 	require.NoError(t, DB.First(&got, user.Id).Error)
-	assert.Equal(t, 750, got.Quota)
 	assert.Equal(t, 270, got.UsedQuota)
 	assert.Equal(t, 4, got.RequestCount)
 	assert.Equal(t, "zh", got.GetSetting().Language)

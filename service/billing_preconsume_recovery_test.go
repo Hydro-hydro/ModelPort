@@ -29,7 +29,6 @@ func TestPreConsumeFailureClosesDurableBillingOperation(t *testing.T) {
 	operation, err := model.GetBillingOperation(model.BillingOperationKeyForRequest(requestID))
 	require.NoError(t, err)
 	assert.Equal(t, model.BillingOperationRefunded, operation.Status)
-	assert.True(t, operation.RefundFundingApplied)
 	assert.True(t, operation.RefundTokenApplied)
 	assert.True(t, operation.RefundStatsApplied)
 	assert.True(t, operation.RefundLogApplied)

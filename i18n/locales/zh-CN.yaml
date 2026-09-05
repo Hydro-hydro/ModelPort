@@ -76,14 +76,11 @@ user.admin_cannot_promote: "普通管理员用户无法提升其他用户为管�
 user.original_password_error: "原密码错误"
 user.default_token_failed: "生成默认令牌失败"
 user.email_empty: "email 为空！"
-user.quota_change_zero: "额度变更量不能为0"
 
 # Quota messages
 quota.negative: "额度不能为负数！"
 quota.exceed_max: "额度值超出有效范围"
 quota.insufficient: "额度不足"
-quota.warning_invalid: "无效的预警类型"
-quota.threshold_gt_zero: "预警阈值必须大于0"
 
 
 

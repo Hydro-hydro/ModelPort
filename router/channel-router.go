@@ -14,6 +14,7 @@ type permissionRoute struct {
 	method     string
 	path       string
 	permission authz.Permission
+	feature    usage_mode.Feature
 	handler    gin.HandlerFunc
 }
 
@@ -30,10 +31,12 @@ func registerChannelRoutes(apiRouter *gin.RouterGroup) {
 	)
 
 	for _, route := range channelPermissionRoutes {
-		channelRoute.Handle(route.method, route.path,
-			middleware.RequirePermission(route.permission),
-			route.handler,
-		)
+		handlers := []gin.HandlerFunc{middleware.RequirePermission(route.permission)}
+		if route.feature != "" {
+			handlers = append(handlers, middleware.RequireFeature(route.feature))
+		}
+		handlers = append(handlers, route.handler)
+		channelRoute.Handle(route.method, route.path, handlers...)
 	}
 }
 
@@ -44,7 +47,7 @@ var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodGet, path: "/models_enabled", permission: authz.ChannelRead, handler: controller.EnabledListModels},
 	{method: http.MethodGet, path: "/ops", permission: authz.ChannelRead, handler: controller.GetChannelOps},
 	{method: http.MethodGet, path: "/:id", permission: authz.ChannelRead, handler: controller.GetChannel},
-	{method: http.MethodGet, path: "/test", permission: authz.ChannelOperate, handler: controller.TestAllChannels},
+	{method: http.MethodGet, path: "/test", permission: authz.ChannelOperate, feature: usage_mode.FeatureSystemTasks, handler: controller.TestAllChannels},
 	{method: http.MethodGet, path: "/test/:id", permission: authz.ChannelOperate, handler: controller.TestChannel},
 	{method: http.MethodGet, path: "/update_balance", permission: authz.ChannelOperate, handler: controller.UpdateAllChannelsBalance},
 	{method: http.MethodGet, path: "/update_balance/:id", permission: authz.ChannelOperate, handler: controller.UpdateChannelBalance},
@@ -76,5 +79,5 @@ var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodPost, path: "/upstream_updates/apply", permission: authz.ChannelWrite, handler: controller.ApplyChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/apply_all", permission: authz.ChannelWrite, handler: controller.ApplyAllChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/detect", permission: authz.ChannelOperate, handler: controller.DetectChannelUpstreamModelUpdates},
-	{method: http.MethodPost, path: "/upstream_updates/detect_all", permission: authz.ChannelOperate, handler: controller.DetectAllChannelUpstreamModelUpdates},
+	{method: http.MethodPost, path: "/upstream_updates/detect_all", permission: authz.ChannelOperate, feature: usage_mode.FeatureSystemTasks, handler: controller.DetectAllChannelUpstreamModelUpdates},
 }

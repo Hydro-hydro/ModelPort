@@ -49,13 +49,12 @@ func writeUserCache(user *UserBase, includeQuota bool) error {
 	if user == nil || user.Id <= 0 || !common.RedisEnabled {
 		return nil
 	}
+	// The boolean remains in the private helper signature for existing test
+	// fixtures; usage and user balance counters are not part of this cache.
+	_ = includeQuota
 	user.CacheSchema = userCacheSchemaVersion
 	if user.AuthVersion <= 0 {
 		return fmt.Errorf("invalid user auth version")
-	}
-	includeQuotaArg := "0"
-	if includeQuota {
-		includeQuotaArg = "1"
 	}
 	ttl := userCacheTTLSeconds()
 	const script = `
@@ -72,22 +71,16 @@ end
 if pending > 0 and pending <= incoming then
   redis.call('DEL', KEYS[2])
 end
-if ARGV[10] == '0' and redis.call('EXISTS', KEYS[1]) == 0 then
-  return 1
-end
-redis.call('HSET', KEYS[1],
+	redis.call('HSET', KEYS[1],
   'Id', ARGV[2], 'Group', ARGV[3], 'Email', ARGV[4],
   'Status', ARGV[5], 'Role', ARGV[6], 'Username', ARGV[7],
   'Setting', ARGV[8], 'AuthVersion', ARGV[1], 'CacheSchema', ARGV[9])
-if ARGV[10] == '1' and redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
-  redis.call('HSET', KEYS[1], 'Quota', ARGV[11])
-end
-redis.call('EXPIRE', KEYS[1], ARGV[12])
+redis.call('EXPIRE', KEYS[1], ARGV[10])
 return 1`
 	result, err := common.RDB.Eval(context.Background(), script,
 		[]string{getUserCacheKey(user.Id), getUserAuthFenceKey(user.Id), getUserAuthVersionKey(user.Id)},
 		user.AuthVersion, user.Id, user.Group, user.Email, user.Status, user.Role,
-		user.Username, user.Setting, user.CacheSchema, includeQuotaArg, user.Quota, ttl,
+		user.Username, user.Setting, user.CacheSchema, ttl,
 	).Int()
 	if err != nil {
 		return err
@@ -232,12 +225,6 @@ func PublishUserAuthCache(userId int) error {
 		return err
 	}
 	return updateUserCache(*user)
-}
-
-// InitializeUserAuthVersions must run after AutoMigrate when upgrading an
-// existing database. It is idempotent and portable across all supported DBs.
-func InitializeUserAuthVersions() error {
-	return DB.Model(&User{}).Where("auth_version IS NULL OR auth_version < ?", 1).Update("auth_version", 1).Error
 }
 
 func updateUserCacheFieldAtVersion(userId int, field string, value interface{}, authVersion int64) error {

@@ -5,14 +5,48 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+
+	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
 
 const billingOperationWorkerLease = 60
+
+const billingOperationRunnerInterval = 15 * time.Second
+
+var billingOperationRunnerOnce sync.Once
+
+// StartBillingOperationRunner starts the core usage-accounting compensator.
+// It deliberately runs independently of the optional SystemTask subsystem so
+// a fresh personal installation can keep durable Token/statistics/log recovery
+// without creating task tables or exposing maintenance-task routes.
+func StartBillingOperationRunner() {
+	billingOperationRunnerOnce.Do(func() {
+		if !common.IsMasterNode {
+			return
+		}
+		gopool.Go(func() {
+			common.SysLog("billing operation runner started")
+			run := func() {
+				summary := RunBillingOperationReconciliationOnce(context.Background())
+				if summary.Claimed > 0 && common.DebugEnabled {
+					common.SysLog(fmt.Sprintf("billing operation runner: claimed=%d settled=%d refunded=%d deferred=%d", summary.Claimed, summary.Settled, summary.Refunded, summary.Deferred))
+				}
+			}
+			run()
+			ticker := time.NewTicker(billingOperationRunnerInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				run()
+			}
+		})
+	})
+}
 
 // Requests without a task row have no independent lifecycle marker. After
 // this recovery window, an operation that still has no actual quota is treated
@@ -20,8 +54,9 @@ const billingOperationWorkerLease = 60
 // settling concurrently wins over the timeout path.
 const billingOperationRequestRecoveryTimeoutSeconds int64 = 30 * 60
 
-// BillingOperationPollSummary is persisted on the system task row for
-// operators. It intentionally reports only durable queue progress.
+// BillingOperationPollSummary reports durable queue progress to the caller.
+// When the optional SystemTask subsystem is enabled, the same summary is also
+// persisted on the corresponding system-task row.
 type BillingOperationPollSummary struct {
 	Claimed  int `json:"claimed"`
 	Settled  int `json:"settled"`
@@ -94,12 +129,9 @@ func reconcileBillingOperation(ctx context.Context, operation *model.BillingOper
 	if err != nil || !exists || task == nil {
 		if err == nil || errors.Is(err, gorm.ErrRecordNotFound) {
 			// The submit path binds TaskID before inserting the task row, so an
-			// insert failure can leave an orphaned operation. Usage-funded orphan
-			// operations have no wallet side effect and can be refunded safely.
-			if operation.FundingSource == BillingSourceUsage {
-				return reconcileOrphanedTaskOperation(operation, workerID)
-			}
-			return deferBillingOperation(operation, workerID, "task not found")
+			// insert failure can leave an orphaned operation. Personal operations
+			// have no user balance side effect and can be refunded safely.
+			return reconcileOrphanedTaskOperation(operation, workerID)
 		}
 		return deferBillingOperation(operation, workerID, err.Error())
 	}
@@ -161,7 +193,7 @@ func reconcileBillingOperation(ctx context.Context, operation *model.BillingOper
 		// otherwise a successful task would remain applying forever and could not
 		// be recovered by the worker.
 		if operation.Status != model.BillingOperationRefundPending &&
-			(!operation.FundingApplied || !operation.TokenApplied || !operation.StatsApplied || !operation.LogApplied) {
+			(!operation.TokenApplied || !operation.StatsApplied || !operation.LogApplied) {
 			if err := ensureTaskBillingLogPayload(operation, task); err != nil || !reconcileRequestComponents(operation, workerID) {
 				if err != nil {
 					return deferBillingOperation(operation, workerID, "task billing payload recovery failed: "+err.Error())
@@ -208,8 +240,7 @@ func reconcileBillingOperation(ctx context.Context, operation *model.BillingOper
 			// Internal task runners do not have a request session whose final
 			// usage marker can be written by the relay handler. A terminal task
 			// row is the final observation for these deterministic task keys.
-			if strings.HasPrefix(operation.OperationKey, "task:") &&
-				(operation.ActualQuotaSet || operation.FundingSource == BillingSourceWallet) {
+			if strings.HasPrefix(operation.OperationKey, "task:") && operation.ActualQuotaSet {
 				actualQuota := task.Quota
 				if operation.ActualQuotaSet {
 					actualQuota = operation.ActualQuota
@@ -235,7 +266,6 @@ func reconcileBillingOperation(ctx context.Context, operation *model.BillingOper
 			// a restart.
 			if strings.HasPrefix(operation.OperationKey, "request:") &&
 				operation.ActualQuotaSet && task.Quota == operation.ActualQuota &&
-				operation.FundingApplied &&
 				operation.TokenApplied && operation.StatsApplied && operation.LogApplied {
 				if err := model.MarkBillingOperationFinalUsageOwned(
 					operation.OperationKey, workerID, operation.ActualQuota, common.GetTimestamp(),
@@ -347,7 +377,7 @@ func reconcilePendingTaskSubmission(operation *model.BillingOperation, task *mod
 	if err != nil || current == nil || current.Status == model.BillingOperationRefundPending {
 		return false
 	}
-	return current.FundingApplied && current.TokenApplied && current.StatsApplied && current.LogApplied
+	return current.TokenApplied && current.StatsApplied && current.LogApplied
 }
 
 // ensureTaskBillingLogPayload supplies a recoverable log payload for the crash
@@ -425,7 +455,7 @@ func finalizeTaskBillingOperationOwned(operationKey, workerID string, actualQuot
 	if err != nil {
 		return false, err
 	}
-	if !operation.FundingApplied || !operation.TokenApplied || !operation.StatsApplied || !operation.LogApplied {
+	if !operation.TokenApplied || !operation.StatsApplied || !operation.LogApplied {
 		return false, nil
 	}
 	if err := model.MarkBillingOperationFinalUsageOwned(operationKey, workerID, actualQuota, now); err != nil {
@@ -458,7 +488,7 @@ func reconcileRequestOperation(operation *model.BillingOperation, workerID strin
 	// the no-actual-quota recovery timeout below would keep an already-complete
 	// refund pending indefinitely.
 	if operation.Status == model.BillingOperationRefundPending &&
-		operation.RefundFundingApplied && operation.RefundTokenApplied &&
+		operation.RefundTokenApplied &&
 		operation.RefundStatsApplied && operation.RefundLogApplied {
 		updated, err := model.UpdateBillingOperationStatusOwned(operation.OperationKey, workerID,
 			[]model.BillingOperationStatus{model.BillingOperationRefundPending, model.BillingOperationApplying},
@@ -536,8 +566,8 @@ func reconcileRequestOperation(operation *model.BillingOperation, workerID strin
 	if err != nil {
 		return deferBillingOperation(operation, workerID, "request billing reload failed: "+err.Error())
 	}
-	complete := operation.FundingApplied && operation.TokenApplied && operation.StatsApplied && operation.LogApplied
-	refundComplete := operation.RefundFundingApplied && operation.RefundTokenApplied && operation.RefundStatsApplied && operation.RefundLogApplied
+	complete := operation.TokenApplied && operation.StatsApplied && operation.LogApplied
+	refundComplete := operation.RefundTokenApplied && operation.RefundStatsApplied && operation.RefundLogApplied
 	if operation.Status == model.BillingOperationRefundPending && refundComplete {
 		return billingOperationResult{refunded: 1}
 	}
@@ -559,20 +589,6 @@ func reconcileRequestComponents(operation *model.BillingOperation, workerID stri
 		return false
 	}
 	key := operation.OperationKey
-	if !operation.FundingApplied {
-		// Wallet operations cannot be safely reconstructed here: the durable
-		// operation records only component completion, not the non-idempotent
-		// wallet reservation owner. Leave them pending for the owning request
-		// path instead of marking a missing wallet mutation as a no-op.
-		if operation.FundingSource == BillingSourceWallet ||
-			(operation.FundingSource != "" && operation.FundingSource != BillingSourceUsage) {
-			return false
-		}
-		// Personal mode has no wallet mutation; the marker is the durable no-op.
-		if err := model.MarkBillingOperationComponentOwned(key, model.BillingComponentFunding, workerID, common.GetTimestamp()); err != nil {
-			return false
-		}
-	}
 	if !operation.TokenApplied {
 		if !operation.ActualQuotaSet {
 			return false
@@ -629,19 +645,6 @@ func reconcileRequestRefund(operation *model.BillingOperation, workerID string) 
 		return false
 	}
 	key := operation.OperationKey
-	if !operation.RefundFundingApplied {
-		// A wallet refund is a non-idempotent mutation. The reconciliation
-		// worker cannot tell whether the original request already restored the
-		// wallet, so it must leave the operation pending for the owning request
-		// path instead of recording a potentially false completion marker.
-		if operation.FundingSource == BillingSourceWallet ||
-			(operation.FundingSource != "" && operation.FundingSource != BillingSourceUsage) {
-			return false
-		}
-		if err := model.MarkBillingOperationRefundComponentOwned(key, model.BillingComponentFunding, workerID, common.GetTimestamp()); err != nil {
-			return false
-		}
-	}
 	if !operation.RefundTokenApplied {
 		// Before settlement, reverse the reservation. After settlement, reverse
 		// the final actual charge. Both mutations and their marker are atomic and
@@ -735,27 +738,4 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
-}
-
-type billingOperationSystemTaskHandler struct{}
-
-func (billingOperationSystemTaskHandler) Type() string { return model.SystemTaskTypeBillingOperation }
-
-func (billingOperationSystemTaskHandler) Enabled() bool {
-	return model.HasDueBillingOperations(common.GetTimestamp())
-}
-
-func (billingOperationSystemTaskHandler) Interval() time.Duration { return 15 * time.Second }
-
-func (billingOperationSystemTaskHandler) NewPayload() any { return nil }
-
-func (billingOperationSystemTaskHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
-	summary := RunBillingOperationReconciliationOnce(ctx)
-	if err := model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, summary, ""); err != nil {
-		common.SysLog("billing operation system task finish failed: " + err.Error())
-	}
-}
-
-func init() {
-	RegisterSystemTaskHandler(billingOperationSystemTaskHandler{})
 }

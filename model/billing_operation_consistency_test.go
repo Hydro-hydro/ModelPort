@@ -2,11 +2,23 @@ package model
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestEnsureBillingOperationRequiresStartupSchema(t *testing.T) {
+	db := openMainSchemaTestDB(t)
+	useMainSchemaTestDB(t, db)
+
+	_, err := EnsureBillingOperation(BillingOperationAttrs{OperationKey: "request:missing-schema"})
+
+	require.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "billing operation table is missing"))
+	assert.False(t, db.Migrator().HasTable(&BillingOperation{}))
+}
 
 func TestEnsureBillingOperationRejectsImmutableAttributeConflict(t *testing.T) {
 	require.NoError(t, ensureBillingOperationTable())
@@ -20,18 +32,16 @@ func TestEnsureBillingOperationRejectsImmutableAttributeConflict(t *testing.T) {
 		UserID:           11,
 		TokenID:          22,
 		ChannelID:        33,
-		FundingSource:    "usage",
 		PreConsumedQuota: 100,
 	})
 	require.NoError(t, err)
 
 	_, err = EnsureBillingOperation(BillingOperationAttrs{
-		OperationKey:  key,
-		RequestID:     "request-b",
-		UserID:        11,
-		TokenID:       22,
-		ChannelID:     33,
-		FundingSource: "usage",
+		OperationKey: key,
+		RequestID:    "request-b",
+		UserID:       11,
+		TokenID:      22,
+		ChannelID:    33,
 	})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrBillingOperationQuotaConflict))

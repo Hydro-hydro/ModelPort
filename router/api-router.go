@@ -88,23 +88,25 @@ func SetApiRouter(router *gin.Engine) {
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
 		}
-		taskPluginRoute := apiRouter.Group("/plugin/task")
-		taskPluginRoute.Use(middleware.RootAuth(), middleware.RequireFeature(usage_mode.FeatureTaskPlugins))
-		{
-			taskPluginRoute.GET("", controller.ListTaskPlugins)
-			taskPluginRoute.POST("", controller.UploadTaskPlugin)
-			taskPluginRoute.PUT("", controller.UploadTaskPlugin)
-			taskPluginRoute.GET("/runtime/status", controller.GetTaskPluginRuntime)
-			taskPluginRoute.GET("/marketplace/sources", controller.GetTaskPluginMarketplaceSources)
-			taskPluginRoute.PUT("/marketplace/sources", controller.UpdateTaskPluginMarketplaceSources)
-			taskPluginRoute.GET("/:key", controller.GetTaskPlugin)
-			taskPluginRoute.GET("/:key/versions", controller.GetTaskPluginVersions)
-			taskPluginRoute.POST("/:key/activate", controller.ActivateTaskPlugin)
-			taskPluginRoute.POST("/:key/status", controller.SetTaskPluginStatus)
-			taskPluginRoute.POST("/:key/dryrun", controller.DryRunTaskPlugin)
-			taskPluginRoute.DELETE("/:key/versions/:version", controller.DeleteTaskPluginVersion)
+		if usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+			taskPluginRoute := apiRouter.Group("/plugin/task")
+			taskPluginRoute.Use(middleware.RootAuth(), middleware.RequireFeature(usage_mode.FeatureTaskPlugins))
+			{
+				taskPluginRoute.GET("", controller.ListTaskPlugins)
+				taskPluginRoute.POST("", controller.UploadTaskPlugin)
+				taskPluginRoute.PUT("", controller.UploadTaskPlugin)
+				taskPluginRoute.GET("/runtime/status", controller.GetTaskPluginRuntime)
+				taskPluginRoute.GET("/marketplace/sources", controller.GetTaskPluginMarketplaceSources)
+				taskPluginRoute.PUT("/marketplace/sources", controller.UpdateTaskPluginMarketplaceSources)
+				taskPluginRoute.GET("/:key", controller.GetTaskPlugin)
+				taskPluginRoute.GET("/:key/versions", controller.GetTaskPluginVersions)
+				taskPluginRoute.POST("/:key/activate", controller.ActivateTaskPlugin)
+				taskPluginRoute.POST("/:key/status", controller.SetTaskPluginStatus)
+				taskPluginRoute.POST("/:key/dryrun", controller.DryRunTaskPlugin)
+				taskPluginRoute.DELETE("/:key/versions/:version", controller.DeleteTaskPluginVersion)
+			}
+			apiRouter.GET("/task_plugin_options", middleware.AdminAuth(), middleware.RequireFeature(usage_mode.FeatureTaskPlugins), middleware.RequirePermission(authz.TaskPluginBind), controller.GetTaskPluginOptions)
 		}
-		apiRouter.GET("/task_plugin_options", middleware.AdminAuth(), middleware.RequireFeature(usage_mode.FeatureTaskPlugins), middleware.RequirePermission(authz.TaskPluginBind), controller.GetTaskPluginOptions)
 		registerChannelRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth(), middleware.RequireFeature(usage_mode.FeatureTokenManagement))
@@ -141,20 +143,24 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
 
-		systemTaskRoute := apiRouter.Group("/system-task")
-		systemTaskRoute.Use(middleware.RootAuth())
-		{
-			systemTaskRoute.POST("/log-cleanup", controller.CreateLogCleanupSystemTask)
-			systemTaskRoute.GET("/list", controller.ListSystemTasks)
-			systemTaskRoute.GET("/current", controller.GetCurrentSystemTask)
-			systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
+		if usage_mode.IsFeatureEnabled(usage_mode.FeatureSystemTasks) {
+			systemTaskRoute := apiRouter.Group("/system-task")
+			systemTaskRoute.Use(middleware.RootAuth(), middleware.RequireFeature(usage_mode.FeatureSystemTasks))
+			{
+				systemTaskRoute.POST("/log-cleanup", controller.CreateLogCleanupSystemTask)
+				systemTaskRoute.GET("/list", controller.ListSystemTasks)
+				systemTaskRoute.GET("/current", controller.GetCurrentSystemTask)
+				systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
+			}
 		}
-		systemInfoRoute := apiRouter.Group("/system-info")
-		systemInfoRoute.Use(middleware.RootAuth(), middleware.RequireFeature(usage_mode.FeatureMultiNode))
-		{
-			systemInfoRoute.GET("/instances", controller.ListSystemInstances)
-			systemInfoRoute.DELETE("/stale-instances", controller.DeleteStaleSystemInstances)
-			systemInfoRoute.DELETE("/instances/:node_name", controller.DeleteStaleSystemInstance)
+		if usage_mode.IsFeatureEnabled(usage_mode.FeatureMultiNode) {
+			systemInfoRoute := apiRouter.Group("/system-info")
+			systemInfoRoute.Use(middleware.RootAuth(), middleware.RequireFeature(usage_mode.FeatureMultiNode))
+			{
+				systemInfoRoute.GET("/instances", controller.ListSystemInstances)
+				systemInfoRoute.DELETE("/stale-instances", controller.DeleteStaleSystemInstances)
+				systemInfoRoute.DELETE("/instances/:node_name", controller.DeleteStaleSystemInstance)
+			}
 		}
 
 		dataRoute := apiRouter.Group("/data")
@@ -182,17 +188,22 @@ func SetApiRouter(router *gin.Engine) {
 			prefillGroupRoute.DELETE("/:id", controller.DeletePrefillGroup)
 		}
 
-		mjRoute := apiRouter.Group("/mj")
-		mjRoute.Use(middleware.RequireFeature(usage_mode.FeatureMediaTasks))
-		mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
-		mjRoute.GET("/", middleware.AdminAuth(), controller.GetAllMidjourney)
+		if usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) {
+			mjRoute := apiRouter.Group("/mj")
+			mjRoute.Use(middleware.RequireFeature(usage_mode.FeatureMediaTasks))
+			mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
+			mjRoute.GET("/", middleware.AdminAuth(), controller.GetAllMidjourney)
+		}
 
-		taskRoute := apiRouter.Group("/task")
-		taskRoute.Use(middleware.RequireFeature(usage_mode.FeatureMediaTasks))
-		{
-			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
-			taskRoute.GET("", middleware.AdminAuth(), controller.GetAllTask)
-			taskRoute.GET("/:task_id/artifacts", middleware.UserAuth(), controller.GetDashboardTaskArtifacts)
+		if usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) ||
+			usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+			taskRoute := apiRouter.Group("/task")
+			taskRoute.Use(middleware.RequireAnyFeature(usage_mode.FeatureMediaTasks, usage_mode.FeatureTaskPlugins))
+			{
+				taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
+				taskRoute.GET("", middleware.AdminAuth(), controller.GetAllTask)
+				taskRoute.GET("/:task_id/artifacts", middleware.UserAuth(), controller.GetDashboardTaskArtifacts)
+			}
 		}
 
 		vendorRoute := apiRouter.Group("/vendors")
@@ -221,29 +232,31 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		// Deployments (model deployment management)
-		deploymentsRoute := apiRouter.Group("/deployments")
-		deploymentsRoute.Use(middleware.AdminAuth(), middleware.RequireFeature(usage_mode.FeatureDeployments))
-		{
-			deploymentsRoute.GET("/settings", controller.GetModelDeploymentSettings)
-			deploymentsRoute.POST("/settings/test-connection", controller.TestIoNetConnection)
-			deploymentsRoute.GET("/", controller.GetAllDeployments)
-			deploymentsRoute.GET("/search", controller.SearchDeployments)
-			deploymentsRoute.POST("/test-connection", controller.TestIoNetConnection)
-			deploymentsRoute.GET("/hardware-types", controller.GetHardwareTypes)
-			deploymentsRoute.GET("/locations", controller.GetLocations)
-			deploymentsRoute.GET("/available-replicas", controller.GetAvailableReplicas)
-			deploymentsRoute.POST("/price-estimation", controller.GetPriceEstimation)
-			deploymentsRoute.GET("/check-name", controller.CheckClusterNameAvailability)
-			deploymentsRoute.POST("/", controller.CreateDeployment)
+		if usage_mode.IsFeatureEnabled(usage_mode.FeatureDeployments) {
+			deploymentsRoute := apiRouter.Group("/deployments")
+			deploymentsRoute.Use(middleware.AdminAuth(), middleware.RequireFeature(usage_mode.FeatureDeployments))
+			{
+				deploymentsRoute.GET("/settings", controller.GetModelDeploymentSettings)
+				deploymentsRoute.POST("/settings/test-connection", controller.TestIoNetConnection)
+				deploymentsRoute.GET("/", controller.GetAllDeployments)
+				deploymentsRoute.GET("/search", controller.SearchDeployments)
+				deploymentsRoute.POST("/test-connection", controller.TestIoNetConnection)
+				deploymentsRoute.GET("/hardware-types", controller.GetHardwareTypes)
+				deploymentsRoute.GET("/locations", controller.GetLocations)
+				deploymentsRoute.GET("/available-replicas", controller.GetAvailableReplicas)
+				deploymentsRoute.POST("/price-estimation", controller.GetPriceEstimation)
+				deploymentsRoute.GET("/check-name", controller.CheckClusterNameAvailability)
+				deploymentsRoute.POST("/", controller.CreateDeployment)
 
-			deploymentsRoute.GET("/:id", controller.GetDeployment)
-			deploymentsRoute.GET("/:id/logs", controller.GetDeploymentLogs)
-			deploymentsRoute.GET("/:id/containers", controller.ListDeploymentContainers)
-			deploymentsRoute.GET("/:id/containers/:container_id", controller.GetContainerDetails)
-			deploymentsRoute.PUT("/:id", controller.UpdateDeployment)
-			deploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
-			deploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
-			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
+				deploymentsRoute.GET("/:id", controller.GetDeployment)
+				deploymentsRoute.GET("/:id/logs", controller.GetDeploymentLogs)
+				deploymentsRoute.GET("/:id/containers", controller.ListDeploymentContainers)
+				deploymentsRoute.GET("/:id/containers/:container_id", controller.GetContainerDetails)
+				deploymentsRoute.PUT("/:id", controller.UpdateDeployment)
+				deploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
+				deploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
+				deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
+			}
 		}
 	}
 }

@@ -25,6 +25,51 @@ var ModelRequestRateLimitSuccessCount = 1000
 var ModelRequestRateLimitGroup = map[string][2]int{}
 var ModelRequestRateLimitMutex sync.RWMutex
 
+// ModelRequestRateLimitConfig is an immutable per-request snapshot of the
+// scalar rate-limit settings. Callers should use GetModelRequestRateLimitConfig
+// instead of reading the exported variables while options may be reloaded.
+type ModelRequestRateLimitConfig struct {
+	Enabled         bool
+	DurationMinutes int
+	Count           int
+	SuccessCount    int
+}
+
+func GetModelRequestRateLimitConfig() ModelRequestRateLimitConfig {
+	ModelRequestRateLimitMutex.RLock()
+	defer ModelRequestRateLimitMutex.RUnlock()
+	return ModelRequestRateLimitConfig{
+		Enabled:         ModelRequestRateLimitEnabled,
+		DurationMinutes: ModelRequestRateLimitDurationMinutes,
+		Count:           ModelRequestRateLimitCount,
+		SuccessCount:    ModelRequestRateLimitSuccessCount,
+	}
+}
+
+func SetModelRequestRateLimitEnabled(enabled bool) {
+	ModelRequestRateLimitMutex.Lock()
+	ModelRequestRateLimitEnabled = enabled
+	ModelRequestRateLimitMutex.Unlock()
+}
+
+func SetModelRequestRateLimitDurationMinutes(duration int) {
+	ModelRequestRateLimitMutex.Lock()
+	ModelRequestRateLimitDurationMinutes = duration
+	ModelRequestRateLimitMutex.Unlock()
+}
+
+func SetModelRequestRateLimitCount(count int) {
+	ModelRequestRateLimitMutex.Lock()
+	ModelRequestRateLimitCount = count
+	ModelRequestRateLimitMutex.Unlock()
+}
+
+func SetModelRequestRateLimitSuccessCount(count int) {
+	ModelRequestRateLimitMutex.Lock()
+	ModelRequestRateLimitSuccessCount = count
+	ModelRequestRateLimitMutex.Unlock()
+}
+
 func ModelRequestRateLimitGroup2JSONString() string {
 	ModelRequestRateLimitMutex.RLock()
 	defer ModelRequestRateLimitMutex.RUnlock()

@@ -21,6 +21,8 @@ import (
 
 func setupTaskPluginBindChannelTest(t *testing.T) {
 	t.Helper()
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+
 	wasMaster := common.IsMasterNode
 	common.IsMasterNode = true
 	previousRedisEnabled := common.RedisEnabled
