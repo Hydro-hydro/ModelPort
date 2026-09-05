@@ -53,121 +53,53 @@ func useLogSchemaTestDB(t *testing.T, db *gorm.DB) {
 	})
 }
 
-func installCurrentCoreSchema(t *testing.T, db *gorm.DB) {
-	t.Helper()
+func TestMigrateDBInitializesCurrentCoreSchemaIdempotently(t *testing.T) {
+	db := openMainSchemaTestDB(t)
 	useMainSchemaTestDB(t, db)
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	for _, feature := range usage_mode.OptionalFeatures() {
+		t.Setenv("MODELPORT_ENABLE_"+strings.ToUpper(string(feature)), "false")
+	}
+	t.Cleanup(func() {
+		usage_mode.SetPersistedOptionalFeatures(nil)
+	})
+
 	require.NoError(t, migrateDB())
-}
-
-func TestRejectLegacySchemaRejectsNonEmptyDatabaseWithoutCurrentIdentity(t *testing.T) {
-	db := openMainSchemaTestDB(t)
-	require.NoError(t, db.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY, quota INTEGER)").Error)
-	useMainSchemaTestDB(t, db)
-
-	err := rejectLegacySchema()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not a current ModelPort personal schema")
-	assert.False(t, db.Migrator().HasTable(&Setup{}))
-}
-
-func TestRejectLegacySchemaAllowsEmptyDatabase(t *testing.T) {
-	db := openMainSchemaTestDB(t)
-	useMainSchemaTestDB(t, db)
-
-	require.NoError(t, rejectLegacySchema())
-}
-
-func TestRejectLegacySchemaDoesNotAddCurrentIdentityToExistingSetupTable(t *testing.T) {
-	db := openMainSchemaTestDB(t)
-	require.NoError(t, db.Exec("CREATE TABLE setups (id INTEGER PRIMARY KEY, version TEXT, initialized_at INTEGER)").Error)
-	useMainSchemaTestDB(t, db)
-
-	err := rejectLegacySchema()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not a current ModelPort personal schema")
-	assert.False(t, db.Migrator().HasColumn(&Setup{}, "edition"))
-	assert.False(t, db.Migrator().HasColumn(&Setup{}, "schema_version"))
-}
-
-func TestRejectLegacySchemaAllowsCurrentUninitializedSchemaWithoutUsers(t *testing.T) {
-	db := openMainSchemaTestDB(t)
-	installCurrentCoreSchema(t, db)
-
-	require.NoError(t, rejectLegacySchema())
 	require.NoError(t, migrateDB())
+
+	for _, coreModel := range []interface{}{
+		&Channel{}, &Token{}, &User{}, &UserSession{}, &Option{},
+		&LoginEncryptionKey{}, &Ability{}, &Log{}, &QuotaData{},
+		&Model{}, &Vendor{}, &PrefillGroup{}, &Setup{}, &PerfMetric{},
+		&BillingOperation{}, &CasbinRule{}, &AuthzRole{},
+	} {
+		assert.True(t, db.Migrator().HasTable(coreModel))
+	}
+	for _, optionalModel := range []interface{}{
+		&Task{}, &TaskPlugin{}, &Midjourney{}, &SystemTask{},
+		&SystemTaskLock{}, &SystemInstance{},
+	} {
+		assert.False(t, db.Migrator().HasTable(optionalModel))
+	}
 }
 
-func TestRejectLegacySchemaAllowsCurrentInitializedSchema(t *testing.T) {
+func TestMigrateDBCreatesEnabledMediaTaskSchema(t *testing.T) {
 	db := openMainSchemaTestDB(t)
-	installCurrentCoreSchema(t, db)
-	require.NoError(t, db.Create(&Setup{
-		Version:       "test",
-		InitializedAt: 1,
-		Edition:       SetupEditionModelPort,
-		SchemaVersion: CurrentSchemaVersion,
-	}).Error)
+	useMainSchemaTestDB(t, db)
+	usage_mode.SetPersistedOptionalFeatures(map[usage_mode.Feature]bool{
+		usage_mode.FeatureMediaTasks: true,
+	})
+	t.Cleanup(func() {
+		usage_mode.SetPersistedOptionalFeatures(nil)
+	})
 
-	require.NoError(t, rejectLegacySchema())
-}
-
-func TestRejectLegacySchemaRejectsWrongSetupIdentity(t *testing.T) {
-	db := openMainSchemaTestDB(t)
-	installCurrentCoreSchema(t, db)
-	require.NoError(t, db.Create(&Setup{
-		Version:       "test",
-		InitializedAt: 1,
-		Edition:       "other-edition",
-		SchemaVersion: CurrentSchemaVersion,
-	}).Error)
-
-	err := rejectLegacySchema()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "does not identify the current ModelPort personal schema")
-}
-
-func TestRejectLegacySchemaRejectsUsersWithoutSetupRecord(t *testing.T) {
-	db := openMainSchemaTestDB(t)
-	installCurrentCoreSchema(t, db)
-	require.NoError(t, db.Create(&User{
-		Username: "root",
-		Password: "password",
-		Role:     common.RoleRootUser,
-		Status:   common.UserStatusEnabled,
-	}).Error)
-
-	err := rejectLegacySchema()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "contains users but no current setup record")
-}
-
-func TestMigrateLogDBRejectsMissingCurrentColumnWithoutMutatingIt(t *testing.T) {
-	db := openMainSchemaTestDB(t)
-	require.NoError(t, db.AutoMigrate(&Log{}))
-	require.NoError(t, db.Migrator().DropColumn(&Log{}, "billing_operation_key"))
-	useLogSchemaTestDB(t, db)
-
-	err := migrateLOGDB()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "logs.billing_operation_key")
-	assert.False(t, db.Migrator().HasColumn(&Log{}, "billing_operation_key"))
-}
-
-func TestMigrateLogDBRejectsMissingBillingOperationIndex(t *testing.T) {
-	db := openMainSchemaTestDB(t)
-	require.NoError(t, db.AutoMigrate(&Log{}))
-	require.NoError(t, db.Migrator().DropIndex(&Log{}, "idx_logs_billing_operation_key"))
-	useLogSchemaTestDB(t, db)
-
-	err := migrateLOGDB()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "billing operation index")
-	assert.False(t, db.Migrator().HasIndex(&Log{}, "idx_logs_billing_operation_key"))
+	require.NoError(t, migrateDB())
+	assert.True(t, db.Migrator().HasTable(&Task{}))
+	assert.True(t, db.Migrator().HasTable(&Midjourney{}))
+	assert.True(t, db.Migrator().HasTable(&SystemTask{}))
+	assert.True(t, db.Migrator().HasTable(&SystemTaskLock{}))
+	assert.False(t, db.Migrator().HasTable(&TaskPlugin{}))
+	assert.False(t, db.Migrator().HasTable(&SystemInstance{}))
 }
 
 func TestMigrateLogDBInitializesCurrentSchemaIdempotently(t *testing.T) {

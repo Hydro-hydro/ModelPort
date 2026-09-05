@@ -1,7 +1,6 @@
 package model
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -73,14 +72,7 @@ var LOG_DB *gorm.DB
 func CheckSetup() {
 	setup := GetSetup()
 	if setup == nil {
-		// A missing setup row is valid only for an empty database. Do not create
-		// one from an existing root account: that would silently repair a legacy
-		// database instead of enforcing the fresh-install contract.
-		if RootUserExists() {
-			common.SysLog("setup record is missing while a root user exists; a fresh data directory is required")
-		} else {
-			common.SysLog("system is not initialized and no root user exists")
-		}
+		common.SysLog("system is not initialized")
 		constant.Setup = false
 	} else {
 		// Setup record exists, system is initialized
@@ -271,12 +263,8 @@ func InitLogDB() (err error) {
 func migrateDB() error {
 	// The core schema is deliberately small for a fresh personal installation.
 	// Optional task/media/deployment tables are created only when their feature
-	// is explicitly enabled before startup. We do not run legacy upgrade or
-	// cleanup migrations here; an existing old New API database must be
-	// re-created for this edition.
-	if err := rejectLegacySchema(); err != nil {
-		return err
-	}
+	// is explicitly enabled before startup. This initializer only describes the
+	// current schema and does not inspect, transform, or clean historical data.
 	coreModels := []interface{}{
 		&Channel{},
 		&Token{},
@@ -327,92 +315,11 @@ func migrateDB() error {
 	return nil
 }
 
-func rejectLegacySchema() error {
-	if DB == nil {
-		return fmt.Errorf("database is nil")
-	}
-	tables, err := DB.Migrator().GetTables()
-	if err != nil {
-		return fmt.Errorf("list database tables: %w", err)
-	}
-	persistentTableCount := 0
-	for _, table := range tables {
-		if table != "sqlite_sequence" {
-			persistentTableCount++
-		}
-	}
-	if persistentTableCount == 0 {
-		return nil
-	}
-	if !DB.Migrator().HasTable(&Setup{}) ||
-		!DB.Migrator().HasColumn(&Setup{}, "edition") ||
-		!DB.Migrator().HasColumn(&Setup{}, "schema_version") {
-		return fmt.Errorf("database is not a current ModelPort personal schema; use a new data directory")
-	}
-	for _, currentModel := range []interface{}{
-		&Channel{}, &Token{}, &User{}, &UserSession{}, &Option{},
-		&LoginEncryptionKey{}, &Ability{}, &Log{}, &QuotaData{},
-		&Model{}, &Vendor{}, &PrefillGroup{}, &Setup{}, &PerfMetric{},
-		&BillingOperation{}, &CasbinRule{}, &AuthzRole{},
-	} {
-		if !DB.Migrator().HasTable(currentModel) {
-			return fmt.Errorf("database is missing a current core schema table; use a new data directory")
-		}
-	}
-	var setup Setup
-	err = DB.First(&setup).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		var userCount int64
-		if countErr := DB.Model(&User{}).Count(&userCount).Error; countErr != nil {
-			return fmt.Errorf("validate uninitialized database: %w", countErr)
-		}
-		if userCount == 0 {
-			return nil
-		}
-		return fmt.Errorf("database contains users but no current setup record; use a new data directory")
-	}
-	if err != nil {
-		return fmt.Errorf("read setup record: %w", err)
-	}
-	if !setup.IsCurrentSchema() {
-		return fmt.Errorf("database setup record does not identify the current ModelPort personal schema; use a new data directory")
-	}
-	return nil
-}
-
 func migrateLOGDB() error {
-	if err := rejectLegacyLogSchema(); err != nil {
-		return err
-	}
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
 	return LOG_DB.AutoMigrate(&Log{})
-}
-
-func rejectLegacyLogSchema() error {
-	if LOG_DB == nil {
-		return fmt.Errorf("log database is nil")
-	}
-	if !LOG_DB.Migrator().HasTable(&Log{}) {
-		return nil
-	}
-	for _, column := range []string{
-		"id", "user_id", "created_at", "type", "content", "username",
-		"token_name", "model_name", "quota", "prompt_tokens",
-		"completion_tokens", "use_time", "is_stream", "channel_id",
-		"token_id", "group", "ip", "request_id", "upstream_request_id",
-		"billing_operation_key", "other",
-	} {
-		if !LOG_DB.Migrator().HasColumn(&Log{}, column) {
-			return fmt.Errorf("log database is missing current logs.%s; use a new log database", column)
-		}
-	}
-	if !common.UsingLogDatabase(common.DatabaseTypeClickHouse) &&
-		!LOG_DB.Migrator().HasIndex(&Log{}, "idx_logs_billing_operation_key") {
-		return fmt.Errorf("log database is missing the current billing operation index; use a new log database")
-	}
-	return nil
 }
 
 func migrateClickHouseLogDB() error {
