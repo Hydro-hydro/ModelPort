@@ -80,7 +80,7 @@ func TestPendingUserAuthFenceRejectsStaleCacheWrite(t *testing.T) {
 
 	err := writeUserCache(&UserBase{
 		Id: userID, Group: "default", Username: "stale", AuthVersion: 1,
-	}, true)
+	})
 
 	assert.ErrorIs(t, err, ErrUserAuthCachePending)
 	assert.False(t, server.Exists(getUserCacheKey(userID)))
