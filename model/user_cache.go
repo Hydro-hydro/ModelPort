@@ -62,7 +62,7 @@ func populateUserCache(user User) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return writeUserCache(user.ToBaseUser(), true)
+	return writeUserCache(user.ToBaseUser())
 }
 
 // updateUserCache refreshes profile and authentication fields. Usage counters
@@ -72,7 +72,7 @@ func updateUserCache(user User) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return writeUserCache(user.ToBaseUser(), false)
+	return writeUserCache(user.ToBaseUser())
 }
 
 // GetUserCache gets complete user cache from hash

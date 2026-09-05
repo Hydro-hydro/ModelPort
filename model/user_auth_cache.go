@@ -45,13 +45,10 @@ func userAuthFenceTTLSeconds() int {
 	return cacheTTL + extra
 }
 
-func writeUserCache(user *UserBase, includeQuota bool) error {
+func writeUserCache(user *UserBase) error {
 	if user == nil || user.Id <= 0 || !common.RedisEnabled {
 		return nil
 	}
-	// The boolean remains in the private helper signature for existing test
-	// fixtures; usage and user balance counters are not part of this cache.
-	_ = includeQuota
 	user.CacheSchema = userCacheSchemaVersion
 	if user.AuthVersion <= 0 {
 		return fmt.Errorf("invalid user auth version")

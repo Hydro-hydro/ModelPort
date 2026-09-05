@@ -91,7 +91,7 @@ func TestUserAuthFieldUpdateRejectsVersionMismatch(t *testing.T) {
 	const userID = 4202
 	require.NoError(t, writeUserCache(&UserBase{
 		Id: userID, Group: "current", Username: "cached", AuthVersion: 3,
-	}, true))
+	}))
 
 	err := updateUserCacheFieldAtVersion(userID, "Group", "stale", 2)
 
@@ -179,7 +179,7 @@ func TestCommittedUserAuthVersionPermanentlyRejectsDelayedCacheFill(t *testing.T
 
 	server.FastForward(time.Duration(userAuthFenceTTLSeconds()+1) * time.Second)
 	require.NoError(t, common.RedisDelKey(getUserCacheKey(user.Id)))
-	err = writeUserCache(&stale, true)
+	err = writeUserCache(&stale)
 	assert.True(t, errors.Is(err, ErrUserAuthCachePending))
 	committed, err = common.RDB.Get(t.Context(), getUserAuthVersionKey(user.Id)).Result()
 	require.NoError(t, err)
