@@ -240,7 +240,7 @@ export function PrefillGroupFormDrawer({
                     <FormLabel>{t('Group Name')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder={t('Premium chat models')}
+                        placeholder={t('e.g., chat, vision, or fallback')}
                         {...field}
                       />
                     </FormControl>

@@ -648,7 +648,7 @@ function RouteGroupOverrideTable(props: OverrideTableProps) {
             <CardTitle>{t('Inter-group ratio overrides')}</CardTitle>
             <CardDescription>
               {t(
-                'Only configured combinations are overridden. All other calls keep the billing group base ratio.'
+                'Only configured combinations are overridden. All other calls keep the route group base ratio.'
               )}
             </CardDescription>
           </div>

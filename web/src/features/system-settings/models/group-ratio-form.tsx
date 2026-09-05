@@ -220,7 +220,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'Only configured combinations are overridden. All other calls keep the billing group base ratio.'
+                    'Only configured combinations are overridden. All other calls keep the route group base ratio.'
                   )}
                 </FormDescription>
                 <FormMessage />
