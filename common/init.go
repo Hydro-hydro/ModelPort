@@ -197,7 +197,6 @@ func initConstantEnv() {
 	if os.Getenv("TASK_PLUGIN_ENABLED") != "" {
 		SysLog("TASK_PLUGIN_ENABLED is ignored; use feature.task_plugins or MODELPORT_ENABLE_TASK_PLUGINS")
 	}
-	TaskEnabled = optionalTasksEnabled
 	constant.UpdateTask = GetEnvOrDefaultBool("UPDATE_TASK", optionalTasksEnabled)
 	constant.TaskPluginOverrideEnabled = usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) &&
 		GetEnvOrDefaultBool("TASK_PLUGIN_OVERRIDE_ENABLED", true)

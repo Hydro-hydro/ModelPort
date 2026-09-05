@@ -221,3 +221,29 @@ func TestLoadPersistedOptionalFeatureSettingsRejectsInvalidValue(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "feature.media_tasks")
 }
+
+func TestOptionalFeatureOptionAppliesAfterReload(t *testing.T) {
+	db := openMainSchemaTestDB(t)
+	require.NoError(t, db.AutoMigrate(&Option{}))
+
+	previousDB := DB
+	previousOptionMap := common.OptionMap
+	DB = db
+	common.OptionMap = make(map[string]string)
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "false")
+	t.Cleanup(func() {
+		DB = previousDB
+		common.OptionMap = previousOptionMap
+		usage_mode.SetPersistedOptionalFeatures(nil)
+	})
+
+	require.NoError(t, UpdateOption(
+		usage_mode.OptionalFeatureOptionKey(usage_mode.FeatureTaskPlugins),
+		"true",
+	))
+	assert.False(t, usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins))
+
+	require.NoError(t, loadPersistedOptionalFeatureSettings())
+	assert.True(t, usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins))
+}

@@ -27,10 +27,6 @@ var DisplayInCurrencyEnabled = true
 var DisplayTokenStatEnabled = true
 var DrawingEnabled = true
 
-// TaskEnabled controls the optional asynchronous task surface. A new personal
-// installation starts with the synchronous gateway only; task modules must be
-// explicitly enabled by configuration.
-var TaskEnabled = false
 var DataExportEnabled = true
 var DataExportInterval = 5         // unit: minute
 var DataExportDefaultTime = "hour" // unit: minute
