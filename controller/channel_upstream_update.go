@@ -28,6 +28,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	"gorm.io/gorm"
 )
 
 const (
@@ -498,13 +499,22 @@ func fetchAdvancedCustomUpstreamModelIDs(channel *model.Channel, baseURL string)
 
 func updateChannelUpstreamModelSettings(channel *model.Channel, settings dto.ChannelOtherSettings, updateModels bool) error {
 	channel.SetOtherSettings(settings)
-	updates := map[string]interface{}{
-		"settings": channel.OtherSettings,
-	}
-	if updateModels {
-		updates["models"] = channel.Models
-	}
-	return model.DB.Model(&model.Channel{}).Where("id = ?", channel.Id).Updates(updates).Error
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		updates := map[string]interface{}{
+			"settings": channel.OtherSettings,
+		}
+		if updateModels {
+			updates["models"] = channel.Models
+		}
+		if err := tx.Model(&model.Channel{}).Where("id = ?", channel.Id).Updates(updates).Error; err != nil {
+			return err
+		}
+		if updateModels {
+			return channel.UpdateAbilities(tx)
+		}
+		return nil
+	})
+	return err
 }
 
 func checkAndPersistChannelUpstreamModelUpdates(
@@ -547,11 +557,6 @@ func checkAndPersistChannelUpstreamModelUpdates(
 
 	if err = updateChannelUpstreamModelSettings(channel, *settings, modelsChanged); err != nil {
 		return false, autoAdded, err
-	}
-	if modelsChanged {
-		if err = channel.UpdateAbilities(nil); err != nil {
-			return true, autoAdded, err
-		}
 	}
 	return modelsChanged, autoAdded, nil
 }
@@ -994,11 +999,6 @@ func applyChannelUpstreamModelUpdates(
 		return nil, nil, nil, nil, false, err
 	}
 
-	if modelsChanged {
-		if err := channel.UpdateAbilities(nil); err != nil {
-			return addModels, removeModels, remainingModels, remainingRemoveModels, true, err
-		}
-	}
 	return addModels, removeModels, remainingModels, remainingRemoveModels, modelsChanged, nil
 }
 

@@ -154,6 +154,27 @@ func validateOptionValue(key string, value string) error {
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}
+	if key == "ModelRequestRateLimitGroup" {
+		return setting.CheckModelRequestRateLimitGroup(value)
+	}
+	if key == "AutomaticDisableStatusCodes" || key == "AutomaticRetryStatusCodes" {
+		_, err := operation_setting.ParseHTTPStatusCodeRanges(value)
+		return err
+	}
+	if separator := strings.IndexByte(key, '.'); separator > 0 {
+		configName, configKey := key[:separator], key[separator+1:]
+		if config.GlobalConfig.Get(configName) != nil {
+			return config.GlobalConfig.Validate(configName, map[string]string{configKey: value})
+		}
+	}
+	switch key {
+	case "ModelRatio", "ModelPrice", "CompletionRatio", "CacheRatio", "CreateCacheRatio", "ImageRatio", "AudioRatio", "AudioCompletionRatio":
+		return ratio_setting.ValidateFlatRatioJSON(value)
+	case "GroupRatio":
+		return ratio_setting.CheckGroupRatio(value)
+	case "GroupGroupRatio":
+		return ratio_setting.ValidateNestedRatioJSON(value)
+	}
 	return nil
 }
 
@@ -164,17 +185,19 @@ func UpdateOption(key string, value string) error {
 	if err := validateOptionValue(key, value); err != nil {
 		return err
 	}
-	// Save to database first
-	option := Option{
-		Key: key,
+	// Persist first, in one transaction. Runtime state is only published after
+	// this succeeds, so a failed write cannot leave a live-only setting.
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		option := Option{Key: key}
+		if err := tx.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+			return err
+		}
+		option.Value = value
+		return tx.Save(&option).Error
+	})
+	if err != nil {
+		return err
 	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
-	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
 	// Update OptionMap
 	return updateOptionMap(key, value)
 }
@@ -255,14 +278,24 @@ func updateOptionMap(key string, value string) (err error) {
 		common.OptionMapRWMutex.Unlock()
 		return nil
 	}
-	common.OptionMapRWMutex.Lock()
-	defer common.OptionMapRWMutex.Unlock()
-	common.OptionMap[key] = value
-
 	// 检查是否是模型配置 - 使用更规范的方式处理
-	if handleConfigUpdate(key, value) {
+	if handled, updateErr := handleConfigUpdate(key, value); handled {
+		if updateErr != nil {
+			return updateErr
+		}
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[key] = value
+		common.OptionMapRWMutex.Unlock()
+		if isPricingOptionKey(key) {
+			InvalidatePricingCache()
+		}
 		return nil // 已由配置系统处理
 	}
+
+	common.OptionMapRWMutex.Lock()
+	defer common.OptionMapRWMutex.Unlock()
+	previousValue, hadPreviousValue := common.OptionMap[key]
+	common.OptionMap[key] = value
 
 	// 处理传统配置项...
 	if strings.HasSuffix(key, "Permission") {
@@ -433,19 +466,45 @@ func updateOptionMap(key string, value string) (err error) {
 	case "StreamCacheQueueLength":
 		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
 	}
-	return err
+	if err != nil {
+		if hadPreviousValue {
+			common.OptionMap[key] = previousValue
+		} else {
+			delete(common.OptionMap, key)
+		}
+		return err
+	}
+	if isPricingOptionKey(key) {
+		// Pricing responses include model and group multipliers. Invalidate the
+		// derived display snapshot immediately after a successful replacement so
+		// the one-minute pricing refresh window cannot expose stale values.
+		InvalidatePricingCache()
+	}
+	return nil
+}
+
+func isPricingOptionKey(key string) bool {
+	if strings.HasPrefix(key, "billing_setting.") || strings.HasPrefix(key, "group_ratio_setting.") {
+		return true
+	}
+	switch key {
+	case "ModelRatio", "ModelPrice", "CompletionRatio", "CacheRatio", "CreateCacheRatio", "ImageRatio", "AudioRatio", "AudioCompletionRatio", "GroupRatio", "GroupGroupRatio":
+		return true
+	default:
+		return false
+	}
 }
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理
-func handleConfigUpdate(key, value string) bool {
+func handleConfigUpdate(key, value string) (bool, error) {
 	if key == operation_setting.ToolPriceOptionKey {
 		operation_setting.LoadToolPricesFromJSONString(value)
-		return true
+		return true, nil
 	}
 
 	parts := strings.SplitN(key, ".", 2)
 	if len(parts) != 2 {
-		return false // 不是分层配置
+		return false, nil // 不是分层配置
 	}
 
 	configName := parts[0]
@@ -454,14 +513,16 @@ func handleConfigUpdate(key, value string) bool {
 	// 获取配置对象
 	cfg := config.GlobalConfig.Get(configName)
 	if cfg == nil {
-		return false // 未注册的配置
+		return false, nil // 未注册的配置
 	}
 
 	// 更新配置
 	configMap := map[string]string{
 		configKey: value,
 	}
-	config.UpdateConfigFromMap(cfg, configMap)
+	if err := config.GlobalConfig.Update(configName, configMap); err != nil {
+		return true, err
+	}
 
 	// 特定配置的后处理
 	if configName == "performance_setting" {
@@ -471,5 +532,5 @@ func handleConfigUpdate(key, value string) bool {
 		ratio_setting.InvalidateExposedDataCache()
 	}
 
-	return true // 已处理
+	return true, nil // 已处理
 }

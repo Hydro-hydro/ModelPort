@@ -173,6 +173,180 @@ func TestExecuteTaskSubmissionSettlementFailureStaysDurableAndWritesNothing(t *t
 	assert.False(t, c.Writer.Written())
 }
 
+func TestExecuteTaskSubmissionSettlementFailureReconcilesPendingOperation(t *testing.T) {
+	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousRedisEnabled, previousBatchUpdate, previousLogConsumeEnabled := common.RedisEnabled, common.BatchUpdateEnabled, common.LogConsumeEnabled
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, database.AutoMigrate(&model.Task{}, &model.BillingOperation{}, &model.User{}, &model.Token{}, &model.Channel{}, &model.Log{}))
+	model.DB = database
+	model.LOG_DB = database
+	common.RedisEnabled = false
+	common.BatchUpdateEnabled = false
+	common.LogConsumeEnabled = true
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.LOG_DB = previousLogDB
+		common.RedisEnabled = previousRedisEnabled
+		common.BatchUpdateEnabled = previousBatchUpdate
+		common.LogConsumeEnabled = previousLogConsumeEnabled
+	})
+
+	const (
+		userID    = 975
+		tokenID   = 975
+		channelID = 975
+		quota     = 300
+	)
+	require.NoError(t, database.Create(&model.User{Id: userID, Username: "pending-settlement-user", Quota: 10_000}).Error)
+	require.NoError(t, database.Create(&model.Token{Id: tokenID, UserId: userID, Key: "sk-pending-settlement", Name: "test", Status: common.TokenStatusEnabled, RemainQuota: 10_000}).Error)
+	require.NoError(t, database.Create(&model.Channel{Id: channelID, Name: "pending-settlement", Status: common.ChannelStatusEnabled}).Error)
+
+	c := taskSubmissionTestContext()
+	c.Set(common.RequestIdKey, "pending-settlement-request")
+	info := taskSubmissionRelayInfo(nil)
+	info.UserId = userID
+	info.TokenId = tokenID
+	info.TokenKey = "sk-pending-settlement"
+	info.ChannelMeta.ChannelId = channelID
+	info.TaskRelayInfo.LockedChannel = &model.Channel{Id: channelID, Type: constant.ChannelTypeTaskPlugin, Name: "pending-settlement"}
+	require.Nil(t, service.PreConsumeBilling(c, quota, info))
+
+	require.NoError(t, database.Exec(`
+		CREATE TRIGGER fail_pending_settlement_token_marker
+		BEFORE UPDATE OF token_applied ON billing_operations
+		WHEN NEW.token_applied = 1
+		BEGIN
+			SELECT RAISE(ABORT, 'forced pending settlement token marker failure');
+		END;
+	`).Error)
+
+	outcome, taskErr := executeTaskSubmissionWith(c, info, func(*gin.Context, *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+		return &relay.TaskSubmitResult{
+			UpstreamTaskID: "upstream-pending-settlement",
+			Platform:       constant.TaskPlatform("plugin"),
+			Quota:          quota,
+		}, nil
+	})
+
+	require.Nil(t, outcome)
+	require.NotNil(t, taskErr)
+	assert.Equal(t, "task_billing_settlement_failed", taskErr.Code)
+	var persisted model.Task
+	require.NoError(t, database.Where("task_id = ?", "task_public").First(&persisted).Error)
+	assert.Equal(t, model.TaskStatusNotStart, persisted.Status)
+	assert.Equal(t, quota, persisted.Quota)
+
+	operation, err := model.GetBillingOperation(info.Billing.(*service.BillingSession).OperationKey())
+	require.NoError(t, err)
+	assert.Equal(t, model.BillingOperationApplying, operation.Status)
+	assert.True(t, operation.ActualQuotaSet)
+	assert.True(t, operation.FundingApplied)
+	assert.False(t, operation.TokenApplied)
+	assert.False(t, operation.StatsApplied)
+	assert.False(t, operation.LogApplied)
+	assert.Equal(t, 10_000-quota, getControllerTokenRemainQuota(t, tokenID))
+
+	require.NoError(t, database.Exec("DROP TRIGGER IF EXISTS fail_pending_settlement_token_marker").Error)
+	summary := service.RunBillingOperationReconciliationOnce(context.Background())
+	assert.Equal(t, 1, summary.Claimed)
+	assert.Zero(t, summary.Settled)
+	assert.Equal(t, 1, summary.Deferred)
+
+	operation, err = model.GetBillingOperation(operation.OperationKey)
+	require.NoError(t, err)
+	assert.Equal(t, model.BillingOperationApplying, operation.Status)
+	assert.True(t, operation.TokenApplied)
+	assert.True(t, operation.StatsApplied)
+	assert.True(t, operation.LogApplied)
+	assert.True(t, operation.LogPayloadSet)
+
+	var completed model.Task
+	require.NoError(t, database.Where("task_id = ?", "task_public").First(&completed).Error)
+	completed.Status = model.TaskStatusSuccess
+	completed.Progress = "100%"
+	won, err := completed.UpdateWithStatus(model.TaskStatusNotStart)
+	require.NoError(t, err)
+	require.True(t, won)
+	require.NoError(t, database.Model(&model.BillingOperation{}).
+		Where("operation_key = ?", operation.OperationKey).
+		Update("next_retry_at", 0).Error)
+
+	// The durable worker can recover the final usage boundary from a successful
+	// task whose quota and billing components are already consistent.
+	summary = service.RunBillingOperationReconciliationOnce(context.Background())
+	assert.Equal(t, 1, summary.Claimed)
+	assert.Equal(t, 1, summary.Settled)
+	assert.Zero(t, summary.Deferred)
+	assert.Equal(t, quota, getControllerTokenUsedQuota(t, tokenID))
+	var user model.User
+	require.NoError(t, database.First(&user, userID).Error)
+	assert.Equal(t, quota, user.UsedQuota)
+	var logCount int64
+	require.NoError(t, database.Model(&model.Log{}).Where("billing_operation_key = ?", operation.OperationKey).Count(&logCount).Error)
+	assert.Equal(t, int64(1), logCount)
+}
+
+func TestExecuteTaskSubmissionImmediateFailureRefundsDurableOperation(t *testing.T) {
+	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousRedisEnabled, previousBatchUpdate := common.RedisEnabled, common.BatchUpdateEnabled
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, database.AutoMigrate(&model.Task{}, &model.BillingOperation{}, &model.User{}, &model.Token{}, &model.Channel{}, &model.Log{}))
+	model.DB = database
+	model.LOG_DB = database
+	common.RedisEnabled = false
+	common.BatchUpdateEnabled = false
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.LOG_DB = previousLogDB
+		common.RedisEnabled = previousRedisEnabled
+		common.BatchUpdateEnabled = previousBatchUpdate
+	})
+	require.NoError(t, database.Create(&model.User{Id: 1, Username: "immediate-failure-user", Quota: 10_000}).Error)
+	require.NoError(t, database.Create(&model.Token{Id: 1, UserId: 1, Key: "sk-immediate-failure", Name: "test", Status: common.TokenStatusEnabled, RemainQuota: 10_000}).Error)
+	require.NoError(t, database.Create(&model.Channel{Id: 1, Name: "immediate-failure", Status: common.ChannelStatusEnabled}).Error)
+
+	c := taskSubmissionTestContext()
+	info := taskSubmissionRelayInfo(nil)
+	info.TokenId = 1
+	info.TokenKey = "sk-immediate-failure"
+	require.Nil(t, service.PreConsumeBilling(c, 3_000, info))
+
+	outcome, taskErr := executeTaskSubmissionWith(c, info, func(*gin.Context, *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+		return &relay.TaskSubmitResult{
+			UpstreamTaskID: "upstream_private",
+			Platform:       constant.TaskPlatform("plugin"),
+			Quota:          0,
+			Immediate:      &relaycommon.TaskInfo{Status: model.TaskStatusFailure, Reason: "provider rejected task"},
+		}, nil
+	})
+
+	require.Nil(t, taskErr)
+	require.NotNil(t, outcome)
+	assert.Equal(t, string(model.TaskStatusFailure), string(outcome.Task.Status))
+
+	session := info.Billing.(*service.BillingSession)
+	operation, err := model.GetBillingOperation(session.OperationKey())
+	require.NoError(t, err)
+	assert.Equal(t, model.BillingOperationRefunded, operation.Status)
+	assert.True(t, operation.RefundTokenApplied)
+	assert.True(t, operation.RefundStatsApplied)
+	assert.True(t, operation.RefundLogApplied)
+	assert.Zero(t, outcome.Task.Quota)
+	var persisted model.Task
+	require.NoError(t, database.First(&persisted, outcome.Task.ID).Error)
+	assert.Zero(t, persisted.Quota)
+
+	var user model.User
+	require.NoError(t, database.First(&user, 1).Error)
+	assert.Zero(t, user.UsedQuota)
+	var token model.Token
+	require.NoError(t, database.First(&token, 1).Error)
+	assert.Equal(t, 10_000, token.RemainQuota)
+	assert.Zero(t, token.UsedQuota)
+}
+
 func TestExecuteTaskSubmissionPersistsPinnedPluginProvenance(t *testing.T) {
 	events := make([]string, 0, 3)
 	database := setupTaskSubmissionDatabase(t, true, &events)
@@ -356,8 +530,10 @@ func setupTaskSubmissionDatabase(t *testing.T, migrate bool, events *[]string) *
 	previousDB := model.DB
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, database.Callback().Create().Before("gorm:create").Register("test:task-submit-order", func(*gorm.DB) {
-		*events = append(*events, "insert")
+	require.NoError(t, database.Callback().Create().Before("gorm:create").Register("test:task-submit-order", func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "tasks" {
+			*events = append(*events, "insert")
+		}
 	}))
 	if migrate {
 		require.NoError(t, database.AutoMigrate(&model.Task{}))
@@ -365,6 +541,20 @@ func setupTaskSubmissionDatabase(t *testing.T, migrate bool, events *[]string) *
 	model.DB = database
 	t.Cleanup(func() { model.DB = previousDB })
 	return database
+}
+
+func getControllerTokenRemainQuota(t *testing.T, tokenID int) int {
+	t.Helper()
+	var token model.Token
+	require.NoError(t, model.DB.First(&token, tokenID).Error)
+	return token.RemainQuota
+}
+
+func getControllerTokenUsedQuota(t *testing.T, tokenID int) int {
+	t.Helper()
+	var token model.Token
+	require.NoError(t, model.DB.First(&token, tokenID).Error)
+	return token.UsedQuota
 }
 
 func taskSubmissionTestContext() *gin.Context {

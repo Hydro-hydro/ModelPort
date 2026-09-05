@@ -28,6 +28,7 @@ const maxLogCount = 1000000
 
 var logCount int
 var setupLogLock sync.Mutex
+var logStateMu sync.Mutex
 var setupLogWorking bool
 var currentLogPath string
 var currentLogPathMu sync.RWMutex
@@ -41,7 +42,9 @@ func GetCurrentLogPath() string {
 
 func SetupLogger() {
 	defer func() {
+		logStateMu.Lock()
 		setupLogWorking = false
+		logStateMu.Unlock()
 	}()
 	if *common.LogDir != "" {
 		ok := setupLogLock.TryLock()
@@ -112,10 +115,15 @@ func logHelper(ctx context.Context, level string, msg string) {
 	}
 	_, _ = fmt.Fprintf(writer, "[%s] %v | %s | %s \n", level, now.Format("2006/01/02 - 15:04:05"), id, msg)
 	common.LogWriterMu.RUnlock()
-	logCount++ // we don't need accurate count, so no lock here
-	if logCount > maxLogCount && !setupLogWorking {
+	logStateMu.Lock()
+	logCount++
+	rotate := logCount > maxLogCount && !setupLogWorking
+	if rotate {
 		logCount = 0
 		setupLogWorking = true
+	}
+	logStateMu.Unlock()
+	if rotate {
 		gopool.Go(func() {
 			SetupLogger()
 		})

@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"gorm.io/gorm"
 )
 
 type TaskStatus string
@@ -42,10 +43,6 @@ const (
 	TaskStatusSuccess               = "SUCCESS"
 	TaskStatusUnknown               = "UNKNOWN"
 )
-
-// TaskRefundLegacyCutoff separates tasks created before timeout refunds were
-// introduced. Those legacy tasks are failed without an automatic refund.
-const TaskRefundLegacyCutoff int64 = 1771718400 // 2026-02-22 00:00:00 UTC
 
 type Task struct {
 	ID         int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
@@ -111,7 +108,11 @@ func (m Properties) Value() (driver.Value, error) {
 type TaskPrivateData struct {
 	Key            string `json:"key,omitempty"`
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
-	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
+	// BillingOperationKey links task terminal transitions to the durable
+	// accounting outbox. It is persisted with the task so a restarted poller
+	// can reconstruct the operation without relying on process memory.
+	BillingOperationKey string `json:"billing_operation_key,omitempty"`
+	ResultURL           string `json:"result_url,omitempty"` // 任务成功后的结果 URL（视频地址等）
 	// Execution records safe, immutable request provenance. It lives next to
 	// other private task state so public task DTOs cannot expose it by accident.
 	Execution *TaskExecutionSnapshot `json:"execution,omitempty"`
@@ -125,6 +126,10 @@ type TaskPrivateData struct {
 	// disconnect regardless; this only echoes the protocol-level request
 	// attribute back on retrieval snapshots.
 	ResponsesBackground bool `json:"responses_background,omitempty"`
+	// ImmediateTask records that the provider returned a task result during
+	// submission. The billing worker uses it to recover the final-usage marker
+	// if the submitter exits before finalization.
+	ImmediateTask bool `json:"immediate_task,omitempty"`
 }
 
 type TaskExecutionSnapshot struct {
@@ -253,6 +258,8 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 		Properties:  properties,
 		PrivateData: privateData,
 	}
+	privateData.BillingOperationKey = BillingOperationKeyForTask(taskID)
+	t.PrivateData = privateData
 	return t
 }
 
@@ -339,8 +346,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 
 func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
-	err := DB.Where("progress != ?", "100%").
-		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
+	err := DB.Where("status IS NULL OR status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
 		Limit(limit).
@@ -354,8 +360,10 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
-	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
+	// Status is the authoritative terminal marker. Providers may report 100%
+	// before the final SUCCESS/FAILURE state is persisted, and such rows still
+	// need another polling pass.
+	err = DB.Where("status IS NULL OR status NOT IN ?", []TaskStatus{TaskStatusFailure, TaskStatusSuccess}).Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -369,9 +377,7 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 func HasUnfinishedSyncTasks() bool {
 	var id int64
 	err := DB.Model(&Task{}).
-		Where("progress != ?", "100%").
-		Where("status != ?", TaskStatusFailure).
-		Where("status != ?", TaskStatusSuccess).
+		Where("status IS NULL OR status NOT IN ?", []TaskStatus{TaskStatusFailure, TaskStatusSuccess}).
 		Limit(1).
 		Pluck("id", &id).Error
 	return err == nil && id != 0
@@ -464,6 +470,18 @@ func (Task *Task) InsertWithContext(ctx context.Context) error {
 	return DB.WithContext(ctx).Create(Task).Error
 }
 
+// GetTaskByTaskID reloads a task for billing reconciliation.
+func GetTaskByTaskID(taskID string) (*Task, error) {
+	if taskID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var task Task
+	if err := DB.Where("task_id = ?", taskID).First(&task).Error; err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
 type taskSnapshot struct {
 	Status     TaskStatus
 	Progress   string
@@ -516,7 +534,16 @@ func (t *Task) UpdateQuota() error {
 // falls back to INSERT ON CONFLICT when the WHERE-guarded UPDATE matches
 // zero rows, which silently bypasses the CAS guard.
 func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
-	result := DB.Model(t).Where("status = ?", fromStatus).Select("*").Updates(t)
+	if t == nil {
+		return false, gorm.ErrInvalidData
+	}
+	// GORM may scan custom JSON fields back into the value passed to Updates.
+	// Use a detached snapshot so concurrent readers of the caller-owned Task do
+	// not race with those callbacks while this CAS is persisted.
+	snapshot := *t
+	result := DB.Model(&Task{}).
+		Where("id = ? AND status = ?", t.ID, fromStatus).
+		Select("*").Updates(&snapshot)
 	if result.Error != nil {
 		return false, result.Error
 	}

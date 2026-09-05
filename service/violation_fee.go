@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -82,20 +83,26 @@ func shouldChargeViolationFee(err *types.NewAPIError) bool {
 }
 
 func calcViolationFeeQuota(amount, groupRatio float64) int {
+	quota, _ := calcViolationFeeQuotaChecked(amount, groupRatio)
+	return quota
+}
+
+func calcViolationFeeQuotaChecked(amount, groupRatio float64) (int, *common.QuotaClamp) {
 	if amount <= 0 {
-		return 0
+		return 0, nil
 	}
 	if groupRatio <= 0 {
-		return 0
+		return 0, nil
 	}
-	quota := common.QuotaFromDecimal(decimal.NewFromFloat(amount).
+	if math.IsNaN(amount) || math.IsNaN(groupRatio) {
+		return common.QuotaFromFloatChecked(math.NaN())
+	}
+	if math.IsInf(amount, 1) || math.IsInf(groupRatio, 1) {
+		return common.QuotaFromFloatChecked(math.Inf(1))
+	}
+	return common.QuotaFromDecimalChecked(decimal.NewFromFloat(amount).
 		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
-		Mul(decimal.NewFromFloat(groupRatio)).
-		Round(0))
-	if quota <= 0 {
-		return 0
-	}
-	return quota
+		Mul(decimal.NewFromFloat(groupRatio)))
 }
 
 // ChargeViolationFeeIfNeeded charges an additional fee after the normal flow finishes (including refund).
@@ -120,18 +127,11 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 	}
 
 	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
-	feeQuota := calcViolationFeeQuota(settings.ViolationDeductionAmount, groupRatio)
+	feeQuota, clamp := calcViolationFeeQuotaChecked(settings.ViolationDeductionAmount, groupRatio)
+	noteQuotaClamp(relayInfo, clamp)
 	if feeQuota <= 0 {
 		return false
 	}
-
-	if err := PostConsumeQuota(relayInfo, feeQuota, 0, true); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("failed to charge violation fee: %s", err.Error()))
-		return false
-	}
-
-	model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, feeQuota)
-	model.UpdateChannelUsedQuota(relayInfo.ChannelId, feeQuota)
 
 	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
 	tokenName := ctx.GetString("token_name")
@@ -149,7 +149,7 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		"violation_fee_marker": CSAMViolationMarker,
 	}
 
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+	params := model.RecordConsumeLogParams{
 		ChannelId:      relayInfo.ChannelId,
 		ModelName:      relayInfo.OriginModelName,
 		TokenName:      tokenName,
@@ -160,7 +160,117 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		IsStream:       relayInfo.IsStream,
 		Group:          relayInfo.UsingGroup,
 		Other:          other,
+	}
+	operationKey := violationFeeOperationKey(ctx, relayInfo)
+	operation, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
+		OperationKey:     operationKey,
+		RequestID:        relayInfo.RequestId,
+		UserID:           relayInfo.UserId,
+		TokenID:          relayInfo.TokenId,
+		ChannelID:        relayInfo.ChannelId,
+		FundingSource:    BillingSourceUsage,
+		PreConsumedQuota: 0,
+		ActualQuota:      feeQuota,
+		ActualQuotaSet:   true,
 	})
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("failed to create violation fee billing operation: %s", err.Error()))
+		return false
+	}
+	if operation.Status == model.BillingOperationSettled {
+		return true
+	}
+	if operation.Status == model.BillingOperationRefunded || operation.Status == model.BillingOperationRefundPending || operation.Status == model.BillingOperationFailed {
+		logger.LogError(ctx, fmt.Sprintf("violation fee operation %s is already %s", operationKey, operation.Status))
+		return false
+	}
+	if err := model.SetBillingOperationLogPayload(operationKey, params); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("failed to prepare violation fee log: %s", err.Error()))
+		return false
+	}
 
-	return true
+	// FundingSource=usage deliberately has no wallet mutation. Persist its
+	// no-op marker before touching token/stat/log components so a retry can
+	// resume from a durable operation row.
+	if !operation.FundingApplied {
+		if err := model.MarkBillingOperationComponent(operationKey, model.BillingComponentFunding); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("failed to mark violation fee funding: %s", err.Error()))
+			return false
+		}
+	}
+	operation, err = model.GetBillingOperation(operationKey)
+	if err != nil {
+		return false
+	}
+	if !operation.TokenApplied {
+		if relayInfo.IsPlayground || relayInfo.TokenId <= 0 {
+			err = model.MarkBillingOperationComponent(operationKey, model.BillingComponentToken)
+		} else {
+			var token *model.Token
+			token, err = model.GetTokenById(relayInfo.TokenId)
+			if err == nil {
+				err = model.ApplyBillingOperationTokenAdjustment(
+					operationKey, token.Id, token.Key, feeQuota, token.UnlimitedQuota,
+				)
+			}
+		}
+		if err != nil {
+			logger.LogError(ctx, fmt.Sprintf("failed to apply violation fee token quota: %s", err.Error()))
+			return false
+		}
+	}
+	operation, err = model.GetBillingOperation(operationKey)
+	if err != nil {
+		return false
+	}
+	if !operation.StatsApplied {
+		if err := model.ApplyBillingOperationStats(operationKey, relayInfo.UserId, relayInfo.ChannelId, feeQuota, true); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("failed to apply violation fee usage stats: %s", err.Error()))
+			return false
+		}
+	}
+	operation, err = model.GetBillingOperation(operationKey)
+	if err != nil {
+		return false
+	}
+	if !operation.LogApplied {
+		params.BillingOperationKey = operationKey
+		if err := model.RecordConsumeLogChecked(ctx, relayInfo.UserId, params); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("failed to record violation fee log: %s", err.Error()))
+			return false
+		}
+		if err := model.MarkBillingOperationComponent(operationKey, model.BillingComponentLog); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("failed to mark violation fee log: %s", err.Error()))
+			return false
+		}
+	}
+	updated, err := model.UpdateBillingOperationStatus(operationKey,
+		[]model.BillingOperationStatus{model.BillingOperationReserved, model.BillingOperationApplying},
+		model.BillingOperationSettled, "", common.GetTimestamp())
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("failed to settle violation fee operation: %s", err.Error()))
+		return false
+	}
+	if updated {
+		return true
+	}
+	operation, err = model.GetBillingOperation(operationKey)
+	return err == nil && operation != nil && operation.Status == model.BillingOperationSettled
+}
+
+func violationFeeOperationKey(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) string {
+	requestID := ""
+	if relayInfo != nil {
+		requestID = strings.TrimSpace(relayInfo.RequestId)
+	}
+	if requestID == "" && ctx != nil {
+		requestID = strings.TrimSpace(ctx.GetString(common.RequestIdKey))
+	}
+	if requestID == "" {
+		requestID = common.NewRequestId()
+		if relayInfo != nil {
+			relayInfo.RequestId = requestID
+		}
+	}
+	return model.BillingOperationKeyForRequest(requestID + ":violation_fee")
 }

@@ -1,7 +1,6 @@
 package model
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"net/url"
@@ -18,7 +17,6 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var commonGroupCol string
@@ -180,9 +178,6 @@ func InitDB() (err error) {
 				panic(err)
 			}
 		}
-		if err := ensureUserQuotaColumns(DB, common.MainDatabaseType()); err != nil {
-			return err
-		}
 		sqlDB, err := DB.DB()
 		if err != nil {
 			return err
@@ -247,310 +242,6 @@ func InitLogDB() (err error) {
 	return err
 }
 
-var userQuotaColumns = []string{"quota", "used_quota"}
-
-// ensureUserQuotaColumns rejects a legacy 32-bit wallet schema before any
-// migrations run. The 64-bit-only build intentionally does not auto-upgrade
-// an existing wallet; operators must migrate it explicitly before starting.
-func ensureUserQuotaColumns(db *gorm.DB, dbType common.DatabaseType) error {
-	if common.GetEnvOrDefaultBool("SKIP_64BIT_QUOTA_SCHEMA_CHECK", false) {
-		common.SysLog("SKIP_64BIT_QUOTA_SCHEMA_CHECK=true; skipping user quota schema check")
-		return nil
-	}
-	if db == nil || dbType == common.DatabaseTypeSQLite {
-		return nil
-	}
-	if !db.Migrator().HasTable(&User{}) {
-		return nil
-	}
-	columnTypes, err := db.Migrator().ColumnTypes(&User{})
-	if err != nil {
-		return fmt.Errorf("failed to inspect users schema: %w", err)
-	}
-	for _, expected := range userQuotaColumns {
-		for _, actual := range columnTypes {
-			if !strings.EqualFold(actual.Name(), expected) {
-				continue
-			}
-			dataType := actual.DatabaseTypeName()
-			if !is64BitIntegerType(dbType, dataType) {
-				return fmt.Errorf("users.%s uses %s; 32-bit is not supported", expected, dataType)
-			}
-		}
-	}
-	return nil
-}
-
-func is64BitIntegerType(dbType common.DatabaseType, dataType string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(dataType))
-	switch dbType {
-	case common.DatabaseTypeMySQL:
-		return normalized == "bigint" || normalized == "unsigned bigint" || normalized == "bigint unsigned"
-	case common.DatabaseTypePostgreSQL:
-		return normalized == "bigint" || normalized == "int8"
-	default:
-		return false
-	}
-}
-
-var removedPersonalTables = []string{
-	"subscription_pre_consume_records",
-	"user_subscriptions",
-	"subscription_orders",
-	"subscription_plans",
-	"top_ups",
-	"redemptions",
-	"checkins",
-	// 用户身份扩展表。删除顺序必须先清理绑定和配置，再清理基础认证状态。
-	"user_oauth_bindings",
-	"custom_oauth_providers",
-	"two_fa_backup_codes",
-	"two_fas",
-	"passkey_credentials",
-	"external_identity_claims",
-	"auth_flows",
-}
-
-var removedPersonalUserColumns = []string{
-	"aff_code",
-	"aff_count",
-	"aff_quota",
-	"aff_history",
-	"inviter_id",
-	"stripe_customer",
-	"github_id",
-	"discord_id",
-	"oidc_id",
-	"wechat_id",
-	"telegram_id",
-	"linux_do_id",
-}
-
-var removedPersonalOptionKeys = []string{
-	"PayAddress",
-	"CustomCallbackAddress",
-	"EpayId",
-	"EpayKey",
-	"Price",
-	"USDExchangeRate",
-	"MinTopUp",
-	"StripeMinTopUp",
-	"StripeApiSecret",
-	"StripeWebhookSecret",
-	"StripePriceId",
-	"StripeUnitPrice",
-	"StripePromotionCodesEnabled",
-	"CreemApiKey",
-	"CreemProducts",
-	"CreemTestMode",
-	"CreemWebhookSecret",
-	"WaffoEnabled",
-	"WaffoApiKey",
-	"WaffoPrivateKey",
-	"WaffoPublicCert",
-	"WaffoSandboxPublicCert",
-	"WaffoSandboxApiKey",
-	"WaffoSandboxPrivateKey",
-	"WaffoSandbox",
-	"WaffoMerchantId",
-	"WaffoNotifyUrl",
-	"WaffoReturnUrl",
-	"WaffoSubscriptionReturnUrl",
-	"WaffoCurrency",
-	"WaffoUnitPrice",
-	"WaffoMinTopUp",
-	"WaffoPayMethods",
-	"WaffoPancakeMerchantID",
-	"WaffoPancakePrivateKey",
-	"WaffoPancakeReturnURL",
-	"WaffoPancakeUnitPrice",
-	"WaffoPancakeMinTopUp",
-	"WaffoPancakeStoreID",
-	"WaffoPancakeProductID",
-	"TopupGroupRatio",
-	"PayMethods",
-	"QuotaForInviter",
-	"QuotaForInvitee",
-	"PasswordRegisterEnabled",
-	"EmailVerificationEnabled",
-	"RegisterEnabled",
-	"GitHubOAuthEnabled",
-	"GitHubClientId",
-	"GitHubClientSecret",
-	"LinuxDOOAuthEnabled",
-	"LinuxDOClientId",
-	"LinuxDOClientSecret",
-	"LinuxDOMinimumTrustLevel",
-	"WeChatAuthEnabled",
-	"WeChatServerAddress",
-	"WeChatServerToken",
-	"WeChatAccountQRCodeImageURL",
-	"TelegramOAuthEnabled",
-	"TelegramBotToken",
-	"TelegramBotName",
-	"EmailDomainRestrictionEnabled",
-	"EmailAliasRestrictionEnabled",
-	"EmailDomainWhitelist",
-	"DemoSiteEnabled",
-	"SelfUseModeEnabled",
-	"QuotaForNewUser",
-	"DefaultCollapseSidebar",
-	"UserUsableGroups",
-	"group_ratio_setting.group_special_usable_group",
-	"HeaderNavModules",
-	// 公共运营内容配置已移除，旧库中的相关键仅做幂等清理。
-	"Notice",
-	"About",
-	"HomePageContent",
-	"Footer",
-	"Announcements",
-	"console_setting.announcements",
-	"console_setting.announcements_enabled",
-	"legal.user_agreement",
-	"legal.privacy_policy",
-}
-
-func cleanupRemovedPersonalSchema(db *gorm.DB) error {
-	if db == nil {
-		return fmt.Errorf("database is nil")
-	}
-
-	for _, table := range removedPersonalTables {
-		if !db.Migrator().HasTable(table) {
-			continue
-		}
-		if err := db.Exec("DROP TABLE IF EXISTS ?", clause.Table{Name: table}).Error; err != nil {
-			return fmt.Errorf("drop removed personal table %s: %w", table, err)
-		}
-	}
-
-	if db.Migrator().HasTable("users") {
-		usedFallback := false
-		for _, column := range removedPersonalUserColumns {
-			if !db.Migrator().HasColumn("users", column) {
-				continue
-			}
-			fallback, err := dropRemovedPersonalColumn(db, "users", column)
-			if err != nil {
-				return fmt.Errorf("drop removed personal column users.%s: %w", column, err)
-			}
-			usedFallback = usedFallback || fallback
-		}
-		if usedFallback {
-			// Older SQLite versions may use GORM's table-rebuild fallback. Re-run
-			// AutoMigrate to restore indexes declared by the current User model.
-			if err := db.AutoMigrate(&User{}); err != nil {
-				return fmt.Errorf("restore users schema after legacy column cleanup: %w", err)
-			}
-		}
-	}
-
-	optionKeyColumn := "`key`"
-	if strings.EqualFold(db.Dialector.Name(), string(common.DatabaseTypePostgreSQL)) {
-		optionKeyColumn = `"key"`
-	}
-	query := db.Where(optionKeyColumn+" IN ?", removedPersonalOptionKeys).
-		Or(optionKeyColumn+" LIKE ?", "payment_setting.%").
-		Or(optionKeyColumn+" LIKE ?", "checkin_setting.%").
-		Or(optionKeyColumn+" LIKE ?", "discord.%").
-		Or(optionKeyColumn+" LIKE ?", "oidc.%").
-		Or(optionKeyColumn+" LIKE ?", "passkey.%").
-		Or(optionKeyColumn+" = ?", "group_ratio_setting.group_special_usable_group")
-	if err := query.Delete(&Option{}).Error; err != nil {
-		return fmt.Errorf("delete removed personal options: %w", err)
-	}
-	return nil
-}
-
-func dropRemovedPersonalColumn(db *gorm.DB, table, column string) (bool, error) {
-	if strings.EqualFold(db.Dialector.Name(), string(common.DatabaseTypeSQLite)) {
-		if err := dropSQLiteIndexesForColumn(db, table, column); err != nil {
-			return false, err
-		}
-	}
-
-	err := db.Exec("ALTER TABLE ? DROP COLUMN ?", clause.Table{Name: table}, clause.Column{Name: column}).Error
-	if err == nil {
-		return false, nil
-	}
-	if !strings.EqualFold(db.Dialector.Name(), string(common.DatabaseTypeSQLite)) {
-		return false, err
-	}
-	// SQLite before 3.35 has no native DROP COLUMN. The driver fallback
-	// rebuilds the table; migrateDB restores the current User indexes after
-	// all legacy columns have been removed.
-	if fallbackErr := db.Migrator().DropColumn(table, column); fallbackErr != nil {
-		return true, fmt.Errorf("native drop failed: %v; rebuild failed: %w", err, fallbackErr)
-	}
-	return true, nil
-}
-
-func dropSQLiteIndexesForColumn(db *gorm.DB, table, column string) error {
-	rows, err := db.Raw("PRAGMA index_list(" + quoteSQLiteIdentifier(table) + ")").Rows()
-	if err != nil {
-		return err
-	}
-
-	var indexNames []string
-	for rows.Next() {
-		var seq, unique, partial int
-		var name, origin string
-		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		indexNames = append(indexNames, name)
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return err
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-
-	var indexesToDrop []string
-	for _, name := range indexNames {
-		indexRows, err := db.Raw("PRAGMA index_info(" + quoteSQLiteIdentifier(name) + ")").Rows()
-		if err != nil {
-			return err
-		}
-		containsColumn := false
-		for indexRows.Next() {
-			var indexSeq, columnID int
-			var indexedColumn sql.NullString
-			if err := indexRows.Scan(&indexSeq, &columnID, &indexedColumn); err != nil {
-				_ = indexRows.Close()
-				return err
-			}
-			if indexedColumn.Valid && strings.EqualFold(indexedColumn.String, column) {
-				containsColumn = true
-			}
-		}
-		if err := indexRows.Err(); err != nil {
-			_ = indexRows.Close()
-			return err
-		}
-		if err := indexRows.Close(); err != nil {
-			return err
-		}
-		if containsColumn {
-			indexesToDrop = append(indexesToDrop, name)
-		}
-	}
-
-	for _, name := range indexesToDrop {
-		if err := db.Migrator().DropIndex(table, name); err != nil {
-			return fmt.Errorf("drop SQLite index %s: %w", name, err)
-		}
-	}
-	return nil
-}
-
-func quoteSQLiteIdentifier(identifier string) string {
-	return "`" + strings.ReplaceAll(identifier, "`", "``") + "`"
-}
-
 func migrateDB() error {
 	if err := migrateTokenKeyUniqueness(DB); err != nil {
 		return err
@@ -584,13 +275,11 @@ func migrateDB() error {
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
+		&BillingOperation{},
 		&CasbinRule{},
 		&AuthzRole{},
 	)
 	if err != nil {
-		return err
-	}
-	if err := cleanupRemovedPersonalSchema(DB); err != nil {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
@@ -659,6 +348,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	ip String DEFAULT '',
 	request_id String DEFAULT '',
 	upstream_request_id String DEFAULT '',
+	billing_operation_key Nullable(String) DEFAULT NULL,
 	other String DEFAULT ''
 )
 ENGINE = MergeTree()

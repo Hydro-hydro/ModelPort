@@ -53,6 +53,7 @@ func TestMain(m *testing.M) {
 		&model.Midjourney{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
+		&model.BillingOperation{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -75,6 +76,7 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM midjourneys")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
+		model.DB.Exec("DELETE FROM billing_operations")
 	})
 }
 
@@ -734,42 +736,6 @@ func TestSettleMidjourneyTaskBillingTokenFailureKeepsFundingRefundable(t *testin
 	assert.Zero(t, log.TokenId)
 }
 
-func TestRefundMidjourneyQuotaUsesLegacyChannelFallbackWithoutTokenAdjustment(t *testing.T) {
-	truncate(t)
-	ctx := context.Background()
-
-	const userID, tokenID, channelID = 54, 54, 54
-	const walletAfterCharge, tokenQuota, chargedQuota = 7000, 5000, 3000
-	seedUser(t, userID, walletAfterCharge)
-	seedToken(t, tokenID, userID, "sk-midjourney-legacy", tokenQuota)
-	seedChannel(t, channelID)
-	seedChargedAccounting(t, userID, channelID, 0, chargedQuota, 1)
-	task := &model.Midjourney{
-		UserId:    userID,
-		MjId:      "mj-legacy-fallback",
-		Action:    "IMAGINE",
-		ChannelId: channelID,
-		Quota:     chargedQuota,
-		TokenId:   0,
-		Progress:  "0%",
-	}
-	require.NoError(t, task.Insert())
-
-	assert.True(t, RefundMidjourneyQuota(ctx, task, "legacy failure"))
-
-	assert.Equal(t, walletAfterCharge, getUserQuota(t, userID))
-	assert.Equal(t, tokenQuota, getTokenRemainQuota(t, tokenID))
-	assert.Zero(t, getTokenUsedQuota(t, tokenID))
-	usedQuota, requestCount := getUserUsageAccounting(t, userID)
-	assert.Zero(t, usedQuota)
-	assert.Equal(t, 1, requestCount)
-	assert.Zero(t, getChannelUsedQuota(t, channelID))
-	log := getLastLog(t)
-	require.NotNil(t, log)
-	assert.Equal(t, channelID, log.ChannelId)
-	assert.Zero(t, log.TokenId)
-}
-
 // ===========================================================================
 // RefundTaskQuota tests
 // ===========================================================================
@@ -884,6 +850,119 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 	assert.Zero(t, getTaskQuota(t, task.ID))
+}
+
+func TestRefundTaskQuota_ImmediateRequestFailureUsesDurableReservation(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const (
+		userID       = 5
+		tokenID      = 5
+		channelID    = 5
+		initialUser  = 10_000
+		initialToken = 5_000
+		reserved     = 3_000
+	)
+	seedUser(t, userID, initialUser)
+	seedToken(t, tokenID, userID, "sk-immediate-failure", initialToken)
+	seedChannel(t, channelID)
+
+	// The request has already reserved the full estimate, but the provider's
+	// immediate failure reports an adjusted task quota of zero. The operation
+	// is the only durable source for the amount that must be returned.
+	operation, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
+		OperationKey:     "request:immediate-failure",
+		RequestID:        "immediate-failure",
+		TaskID:           "",
+		UserID:           userID,
+		TokenID:          tokenID,
+		ChannelID:        channelID,
+		PreConsumedQuota: reserved,
+		ActualQuota:      reserved,
+	})
+	require.NoError(t, err)
+
+	task := makeTask(userID, channelID, 0, tokenID, BillingSourceUsage)
+	task.TaskID = "immediate-failure-task"
+	task.Status = model.TaskStatusFailure
+	task.FailReason = "provider rejected task"
+	task.PrivateData.BillingOperationKey = operation.OperationKey
+	require.NoError(t, model.DB.Create(task).Error)
+
+	assert.True(t, RefundTaskQuota(ctx, task, task.FailReason))
+	assert.Equal(t, initialUser, getUserQuota(t, userID))
+	assert.Equal(t, initialToken+reserved, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
+	usedQuota, requestCount := getUserUsageAccounting(t, userID)
+	assert.Zero(t, usedQuota)
+	assert.Zero(t, requestCount)
+	assert.Zero(t, getChannelUsedQuota(t, channelID))
+	assert.Zero(t, getTaskQuota(t, task.ID))
+
+	updated, err := model.GetBillingOperation(operation.OperationKey)
+	require.NoError(t, err)
+	assert.Equal(t, model.BillingOperationRefunded, updated.Status)
+	assert.True(t, updated.RefundFundingApplied)
+	assert.True(t, updated.RefundTokenApplied)
+	assert.True(t, updated.RefundStatsApplied)
+	assert.True(t, updated.RefundLogApplied)
+}
+
+func TestRefundTaskQuotaAfterTerminalReversesSettledRequest(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const (
+		userID       = 6
+		tokenID      = 6
+		channelID    = 6
+		chargedQuota = 3_000
+	)
+	seedUser(t, userID, 10_000)
+	seedToken(t, tokenID, userID, "sk-settled-task-failure", 2_000)
+	seedChannel(t, channelID)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Update("used_quota", chargedQuota).Error)
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", tokenID).Update("used_quota", chargedQuota).Error)
+	require.NoError(t, model.DB.Model(&model.Channel{}).Where("id = ?", channelID).Update("used_quota", chargedQuota).Error)
+
+	operation, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
+		OperationKey:     "request:settled-task-failure",
+		RequestID:        "settled-task-failure",
+		UserID:           userID,
+		TokenID:          tokenID,
+		ChannelID:        channelID,
+		PreConsumedQuota: chargedQuota,
+		ActualQuota:      chargedQuota,
+	})
+	require.NoError(t, err)
+	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+		require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, component))
+	}
+	updated, err := model.UpdateBillingOperationStatus(operation.OperationKey,
+		[]model.BillingOperationStatus{model.BillingOperationReserved},
+		model.BillingOperationSettled, "", common.GetTimestamp())
+	require.NoError(t, err)
+	require.True(t, updated)
+
+	task := makeTask(userID, channelID, chargedQuota, tokenID, BillingSourceUsage)
+	task.TaskID = "settled-task-failure"
+	task.Status = model.TaskStatusFailure
+	task.PrivateData.BillingOperationKey = operation.OperationKey
+	require.NoError(t, model.DB.Create(task).Error)
+
+	assert.False(t, RefundTaskQuota(ctx, task, "stale direct caller"))
+	assert.True(t, RefundTaskQuotaAfterTerminal(ctx, task, "upstream failed after submit"))
+	assert.Equal(t, 2_000+chargedQuota, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
+	usedQuota, _ := getUserUsageAccounting(t, userID)
+	assert.Zero(t, usedQuota)
+	assert.Zero(t, getChannelUsedQuota(t, channelID))
+	assert.Zero(t, getTaskQuota(t, task.ID))
+
+	updatedOperation, err := model.GetBillingOperation(operation.OperationKey)
+	require.NoError(t, err)
+	assert.Equal(t, model.BillingOperationRefunded, updatedOperation.Status)
 }
 
 func TestRecalculate_PositiveDelta(t *testing.T) {

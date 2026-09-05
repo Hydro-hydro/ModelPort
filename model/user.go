@@ -318,21 +318,17 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	}
 	if !db && common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
-		gopool.Go(func() {
-			if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-				common.SysLog("failed to increase user quota: " + err.Error())
-			}
-		})
+		if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
+			common.SysLog("failed to increase user quota: " + err.Error())
+		}
 		return nil
 	}
 	if err := increaseUserQuota(id, quota); err != nil {
 		return err
 	}
-	gopool.Go(func() {
-		if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-			common.SysLog("failed to increase user quota: " + err.Error())
-		}
-	})
+	if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
+		common.SysLog("failed to increase user quota: " + err.Error())
+	}
 	return nil
 }
 
@@ -360,17 +356,20 @@ func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to decrease user quota: " + err.Error())
-		}
-	})
 	if !db && common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
+		if err := cacheDecrUserQuota(id, int64(quota)); err != nil {
+			common.SysLog("failed to decrease user quota: " + err.Error())
+		}
 		return nil
 	}
-	return decreaseUserQuota(id, quota)
+	if err := decreaseUserQuota(id, quota); err != nil {
+		return err
+	}
+	if err := cacheDecrUserQuota(id, int64(quota)); err != nil {
+		common.SysLog("failed to decrease user quota: " + err.Error())
+	}
+	return nil
 }
 
 func decreaseUserQuota(id int, quota int) (err error) {
@@ -417,15 +416,55 @@ func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
 	updateUserUsedQuotaAndRequestCount(id, quota, 1)
 }
 
+// UpdateUserUsedQuotaAndRequestCountImmediate applies the request accounting
+// synchronously for a durable billing operation. It deliberately bypasses the
+// process-local batch queue.
+func UpdateUserUsedQuotaAndRequestCountImmediate(id int, quota int) error {
+	result := DB.Model(&User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"used_quota":    gorm.Expr("used_quota + ?", quota),
+		"request_count": gorm.Expr("request_count + ?", 1),
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // UpdateUserUsedQuota adjusts accumulated usage without changing request count.
 func UpdateUserUsedQuota(id int, quota int) {
 	if common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeUsedQuota, id, quota)
 		return
 	}
-	if err := DB.Model(&User{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error; err != nil {
+	if err := UpdateUserUsedQuotaImmediate(id, quota); err != nil {
 		common.SysLog("failed to update user used quota: " + err.Error())
 	}
+}
+
+// UpdateUserUsedQuotaImmediate applies a usage adjustment synchronously. It is
+// used by durable billing operations, where a process-local batch queue would
+// make a successful component impossible to recover after a restart.
+func UpdateUserUsedQuotaImmediate(id int, quota int) error {
+	if id <= 0 {
+		return gorm.ErrRecordNotFound
+	}
+	query := DB.Model(&User{}).Where("id = ?", id)
+	update := gorm.Expr("used_quota + ?", quota)
+	if quota < 0 {
+		amount := -quota
+		update = gorm.Expr("CASE WHEN used_quota >= ? THEN used_quota - ? ELSE 0 END", amount, amount)
+	}
+	result := query.Update("used_quota", update)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {

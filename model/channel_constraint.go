@@ -49,7 +49,10 @@ func filterCandidateIDs(ids []int, modelName string, filters []dto.ChannelFilter
 		next := make([]int, 0, len(kept))
 		for _, id := range kept {
 			channel, exists := channelsIDM[id]
-			if candidatePassesKindFilters(channel, exists, modelName, kind, kindFilters) {
+			// Filter helpers parse channel settings and may normalize malformed
+			// values. Evaluate a private snapshot so those reads never mutate a
+			// channel published in the shared cache.
+			if candidatePassesKindFilters(cloneChannel(channel), exists, modelName, kind, kindFilters) {
 				next = append(next, id)
 			}
 		}

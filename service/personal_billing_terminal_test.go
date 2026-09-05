@@ -4,11 +4,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type countingBillingFunding struct {
+	refunds int
+}
+
+func (*countingBillingFunding) Source() string       { return BillingSourceWallet }
+func (*countingBillingFunding) PreConsume(int) error { return nil }
+func (*countingBillingFunding) Settle(int) error     { return nil }
+func (f *countingBillingFunding) Refund() error {
+	f.refunds++
+	return nil
+}
 
 func TestPersonalBillingTerminalRefundsPreConsumedQuotaExactlyOnce(t *testing.T) {
 	truncate(t)
@@ -90,6 +103,10 @@ func TestPersonalBillingTerminalSettlementIsIdempotentAndKeepsQuotasInSync(t *te
 			assert.Equal(t, initialQuota, getUserQuota(t, test.userID))
 			assert.Equal(t, initialTokenQuota-test.actualQuota, getTokenRemainQuota(t, test.tokenID))
 			assert.Equal(t, test.actualQuota, getTokenUsedQuota(t, test.tokenID))
+			operation, err := model.GetBillingOperation(accounting.(*BillingSession).OperationKey())
+			require.NoError(t, err)
+			assert.Equal(t, test.actualQuota, operation.ActualQuota,
+				"a repeated Settle must keep the first durable actual quota")
 			assert.False(t, relayInfo.Billing.NeedsRefund())
 		})
 	}
@@ -124,6 +141,28 @@ func TestPersonalBillingTerminalZeroUsageSettlesOnlyOnce(t *testing.T) {
 	assert.False(t, relayInfo.Billing.NeedsRefund())
 }
 
+func TestPersonalBillingTerminalRejectsNegativeActualQuota(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 909, 909
+	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
+	const tokenKey = "sk-personal-terminal-negative-usage"
+
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
+	require.Error(t, relayInfo.Billing.Settle(-1))
+	assert.Equal(t, initialTokenQuota-preConsumedQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
+
+	// Rejecting invalid input must not poison the session's terminal state.
+	require.NoError(t, relayInfo.Billing.Settle(0))
+	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
+}
+
 func TestPersonalBillingTerminalCommittedFundingIsNotRefunded(t *testing.T) {
 	truncate(t)
 
@@ -153,4 +192,198 @@ func TestPersonalBillingTerminalCommittedFundingIsNotRefunded(t *testing.T) {
 	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
+}
+
+func TestPersonalBillingTerminalRefundStopsWhenDurableSettlementWon(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 911, 911
+	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
+	const tokenKey = "sk-personal-terminal-refund-settled-race"
+
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
+	session := relayInfo.Billing.(*BillingSession)
+	operationKey := session.OperationKey()
+	updated, err := model.UpdateBillingOperationStatus(operationKey,
+		[]model.BillingOperationStatus{model.BillingOperationReserved},
+		model.BillingOperationSettled, "", 0)
+	require.NoError(t, err)
+	require.True(t, updated)
+
+	session.Refund(newPersonalBillingTestContext())
+	assert.Equal(t, initialTokenQuota-preConsumedQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
+	session.mu.Lock()
+	assert.True(t, session.settled)
+	assert.False(t, session.refundInFlight)
+	session.mu.Unlock()
+}
+
+func TestPersonalBillingTerminalRefundHonorsDurableFundingMarker(t *testing.T) {
+	truncate(t)
+
+	funding := &countingBillingFunding{}
+	operation, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
+		OperationKey:     "request:durable-funding-refund-marker",
+		RequestID:        "durable-funding-refund-marker",
+		FundingSource:    BillingSourceWallet,
+		PreConsumedQuota: 100,
+	})
+	require.NoError(t, err)
+	for _, component := range []string{model.BillingComponentFunding, model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+		require.NoError(t, model.MarkBillingOperationRefundComponent(operation.OperationKey, component))
+	}
+	_, err = model.UpdateBillingOperationStatus(operation.OperationKey,
+		[]model.BillingOperationStatus{model.BillingOperationReserved},
+		model.BillingOperationRefundPending, "runner refund complete", common.GetTimestamp())
+	require.NoError(t, err)
+
+	session := &BillingSession{
+		relayInfo:    personalBillingRelayInfo(912, 0, ""),
+		funding:      funding,
+		operationKey: operation.OperationKey,
+	}
+	session.Refund(newPersonalBillingTestContext())
+	require.Eventually(t, func() bool {
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		return !session.refundInFlight
+	}, time.Second, 10*time.Millisecond)
+
+	assert.Zero(t, funding.refunds)
+	current, err := model.GetBillingOperation(operation.OperationKey)
+	require.NoError(t, err)
+	assert.Equal(t, model.BillingOperationRefunded, current.Status)
+}
+
+func TestPersonalBillingTerminalSettlementRetriesTokenFailure(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 907, 907
+	const initialQuota, initialTokenQuota, preConsumedQuota, actualQuota = 1_000, 1_000, 200, 300
+	const tokenKey = "sk-personal-terminal-settle-retry"
+
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
+	require.NoError(t, model.DB.Exec(`
+		CREATE TRIGGER fail_token_settlement_once
+		BEFORE UPDATE ON tokens
+		WHEN OLD.id = 907
+		BEGIN
+			SELECT RAISE(ABORT, 'forced token settlement failure');
+		END;
+	`).Error)
+	t.Cleanup(func() { model.DB.Exec("DROP TRIGGER IF EXISTS fail_token_settlement_once") })
+
+	settlementErr := relayInfo.Billing.Settle(actualQuota)
+	require.Error(t, settlementErr)
+	assert.Equal(t, initialTokenQuota-preConsumedQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
+	assert.False(t, relayInfo.Billing.(*BillingSession).settled)
+
+	require.NoError(t, model.DB.Exec("DROP TRIGGER IF EXISTS fail_token_settlement_once").Error)
+	require.NoError(t, relayInfo.Billing.Settle(actualQuota))
+	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
+	assert.False(t, relayInfo.Billing.NeedsRefund())
+
+	// A successful session is terminal even if a later caller supplies a
+	// different usage value.
+	require.NoError(t, relayInfo.Billing.Settle(actualQuota+100))
+	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
+}
+
+func TestPersonalBillingTerminalRefundRetriesFailedTokenAndRemainsIdempotent(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 908, 908
+	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
+	const tokenKey = "sk-personal-terminal-refund-retry"
+
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
+	require.NoError(t, model.DB.Exec(`
+		CREATE TRIGGER fail_token_refund_once
+		BEFORE UPDATE ON tokens
+		WHEN OLD.id = 908
+		BEGIN
+			SELECT RAISE(ABORT, 'forced token refund failure');
+		END;
+	`).Error)
+	t.Cleanup(func() { model.DB.Exec("DROP TRIGGER IF EXISTS fail_token_refund_once") })
+
+	relayInfo.Billing.Refund(newPersonalBillingTestContext())
+	require.Eventually(t, func() bool {
+		session := relayInfo.Billing.(*BillingSession)
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		return !session.refundInFlight
+	}, time.Second, 10*time.Millisecond)
+	assert.True(t, relayInfo.Billing.NeedsRefund())
+	assert.Equal(t, initialTokenQuota-preConsumedQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
+
+	require.NoError(t, model.DB.Exec("DROP TRIGGER IF EXISTS fail_token_refund_once").Error)
+	relayInfo.Billing.Refund(newPersonalBillingTestContext())
+	require.Eventually(t, func() bool {
+		return !relayInfo.Billing.NeedsRefund()
+	}, time.Second, 10*time.Millisecond)
+	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
+
+	// Duplicate cleanup calls must not add the reservation twice.
+	relayInfo.Billing.Refund(newPersonalBillingTestContext())
+	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
+}
+
+func TestPersonalBillingTerminalRetriesRefundMarkerWithoutRepeatingTokenRefund(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 910, 910
+	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
+	const tokenKey = "sk-personal-terminal-refund-marker-retry"
+
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
+	require.NoError(t, model.DB.Exec(`
+		CREATE TRIGGER fail_billing_refund_token_marker
+		BEFORE UPDATE OF refund_token_applied ON billing_operations
+		WHEN NEW.refund_token_applied = 1
+		BEGIN
+			SELECT RAISE(ABORT, 'forced refund marker failure');
+		END;
+	`).Error)
+	t.Cleanup(func() { model.DB.Exec("DROP TRIGGER IF EXISTS fail_billing_refund_token_marker") })
+
+	relayInfo.Billing.Refund(newPersonalBillingTestContext())
+	require.Eventually(t, func() bool {
+		session := relayInfo.Billing.(*BillingSession)
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		return !session.refundInFlight
+	}, time.Second, 10*time.Millisecond)
+	assert.True(t, relayInfo.Billing.NeedsRefund())
+	// Token refund and its durable marker are one transaction. If the marker
+	// write fails, the token update rolls back and the operation remains
+	// retryable.
+	assert.Equal(t, initialTokenQuota-preConsumedQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
+
+	require.NoError(t, model.DB.Exec("DROP TRIGGER IF EXISTS fail_billing_refund_token_marker").Error)
+	relayInfo.Billing.Refund(newPersonalBillingTestContext())
+	require.Eventually(t, func() bool { return !relayInfo.Billing.NeedsRefund() }, time.Second, 10*time.Millisecond)
+	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
 }

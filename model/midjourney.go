@@ -24,8 +24,9 @@ type Midjourney struct {
 	Buttons     string `json:"buttons"`
 	Properties  string `json:"properties"`
 
-	TokenId          int `json:"-" gorm:"default:0"`
-	BillingChannelId int `json:"-" gorm:"default:0"`
+	TokenId             int    `json:"-" gorm:"default:0"`
+	BillingChannelId    int    `json:"-" gorm:"default:0"`
+	BillingOperationKey string `json:"-" gorm:"type:varchar(191);index"`
 }
 
 // TaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
@@ -96,8 +97,9 @@ func GetAllTasks(startIdx int, num int, queryParams TaskQueryParams) []*Midjourn
 func GetAllUnFinishTasks() []*Midjourney {
 	var tasks []*Midjourney
 	var err error
-	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Find(&tasks).Error
+	// Status is authoritative; an upstream may report 100% before the terminal
+	// status has been persisted, so progress must not hide the row from polling.
+	err = DB.Where("status IS NULL OR status NOT IN ?", []string{"FAILURE", "SUCCESS"}).Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -111,7 +113,7 @@ func GetAllUnFinishTasks() []*Midjourney {
 func HasUnfinishedMidjourneyTasks() bool {
 	var id int
 	err := DB.Model(&Midjourney{}).
-		Where("progress != ?", "100%").
+		Where("status IS NULL OR status NOT IN ?", []string{"FAILURE", "SUCCESS"}).
 		Limit(1).
 		Pluck("id", &id).Error
 	return err == nil && id != 0
@@ -175,7 +177,7 @@ func (midjourney *Midjourney) Update() error {
 
 func (midjourney *Midjourney) UpdateBillingState() error {
 	return DB.Model(midjourney).
-		Select("quota", "token_id", "billing_channel_id").
+		Select("quota", "token_id", "billing_channel_id", "billing_operation_key").
 		Updates(midjourney).Error
 }
 

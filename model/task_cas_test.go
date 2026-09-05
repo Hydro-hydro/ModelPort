@@ -115,6 +115,50 @@ func TestGetTaskForProtocolObservationScopesOwnerAndPlatform(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestUnfinishedTaskQueriesUseTerminalStatusInsteadOfProgress(t *testing.T) {
+	truncateTables(t)
+	insertTask(t, &Task{
+		TaskID:     "task-progress-complete-but-running",
+		Status:     TaskStatusInProgress,
+		Progress:   "100%",
+		SubmitTime: 1,
+	})
+	insertTask(t, &Task{
+		TaskID:     "task-progress-incomplete-success",
+		Status:     TaskStatusSuccess,
+		Progress:   "50%",
+		SubmitTime: 2,
+	})
+	insertTask(t, &Task{
+		TaskID:     "task-progress-complete-failure",
+		Status:     TaskStatusFailure,
+		Progress:   "100%",
+		SubmitTime: 3,
+	})
+	insertTask(t, &Task{
+		TaskID:     "task-progress-incomplete-queued",
+		Status:     TaskStatusQueued,
+		Progress:   "10%",
+		SubmitTime: 4,
+	})
+
+	unfinished := GetAllUnFinishSyncTasks(10)
+	require.Len(t, unfinished, 2)
+	assert.Equal(t, "task-progress-complete-but-running", unfinished[0].TaskID)
+	assert.Equal(t, "task-progress-incomplete-queued", unfinished[1].TaskID)
+	assert.True(t, HasUnfinishedSyncTasks())
+
+	timedOut := GetTimedOutUnfinishedTasks(10, 10)
+	require.Len(t, timedOut, 2)
+	assert.Equal(t, "task-progress-complete-but-running", timedOut[0].TaskID)
+	assert.Equal(t, "task-progress-incomplete-queued", timedOut[1].TaskID)
+
+	require.NoError(t, DB.Model(&Task{}).
+		Where("status NOT IN ?", []TaskStatus{TaskStatusFailure, TaskStatusSuccess}).
+		Update("status", TaskStatusSuccess).Error)
+	assert.False(t, HasUnfinishedSyncTasks())
+}
+
 // ---------------------------------------------------------------------------
 // Snapshot / Equal — pure logic tests (no DB)
 // ---------------------------------------------------------------------------

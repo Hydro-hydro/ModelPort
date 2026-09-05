@@ -10,6 +10,11 @@ type testConfigWithMap struct {
 	Name  string            `json:"name"`
 }
 
+type testConfigWithScalar struct {
+	Enabled bool `json:"enabled"`
+	Count   int  `json:"count"`
+}
+
 func TestUpdateConfigFromMap_MapReplacement(t *testing.T) {
 	cfg := &testConfigWithMap{
 		Modes: map[string]string{
@@ -92,5 +97,43 @@ func TestUpdateConfigFromMap_ScalarFieldsUnchanged(t *testing.T) {
 	// modes was not in configMap, should remain unchanged
 	if cfg.Modes["m"] != "v" {
 		t.Errorf("Modes should be unchanged, got %v", cfg.Modes)
+	}
+}
+
+func TestUpdateConfigFromMap_InvalidValueIsAtomic(t *testing.T) {
+	cfg := &testConfigWithScalar{Enabled: true, Count: 7}
+
+	err := UpdateConfigFromMap(cfg, map[string]string{
+		"enabled": "false",
+		"count":   "not-a-number",
+	})
+	if err == nil {
+		t.Fatal("UpdateConfigFromMap should reject malformed scalar values")
+	}
+	if !cfg.Enabled || cfg.Count != 7 {
+		t.Fatalf("invalid update partially changed config: %+v", cfg)
+	}
+}
+
+func TestConfigManagerValidateDoesNotPublish(t *testing.T) {
+	manager := NewConfigManager()
+	cfg := &testConfigWithMap{
+		Modes: map[string]string{"model-a": "tiered_expr"},
+		Name:  "billing",
+	}
+	manager.Register("billing", cfg)
+
+	if err := manager.Validate("billing", map[string]string{"modes": `{"model-b":"tiered_expr"}`}); err != nil {
+		t.Fatalf("Validate returned unexpected error: %v", err)
+	}
+	if _, ok := cfg.Modes["model-b"]; ok {
+		t.Fatalf("Validate published a value to the live config: %v", cfg.Modes)
+	}
+
+	if err := manager.Validate("billing", map[string]string{"modes": `{`}); err == nil {
+		t.Fatal("Validate should reject malformed JSON")
+	}
+	if _, ok := cfg.Modes["model-a"]; !ok {
+		t.Fatalf("invalid Validate changed the live config: %v", cfg.Modes)
 	}
 }

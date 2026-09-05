@@ -34,29 +34,43 @@ func GetAllEnableAbilityWithChannels() ([]AbilityWithChannel, error) {
 	var abilities []AbilityWithChannel
 	err := DB.Table("abilities").
 		Select("abilities.*, channels.type as channel_type").
+		// Keep orphaned ability rows visible to pricing/model metadata callers;
+		// the in-memory routing index still rejects them because it requires an
+		// enabled channel snapshot. Disabled channels are excluded at the source.
 		Joins("left join channels on abilities.channel_id = channels.id").
-		Where("abilities.enabled = ?", true).
+		Where("abilities.enabled = ? and (channels.status = ? or channels.id IS NULL)", true, common.ChannelStatusEnabled).
 		Scan(&abilities).Error
 	return abilities, err
 }
 
 func GetGroupEnabledModels(group string) []string {
 	var models []string
-	// Find distinct models
-	DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
+	// Model metadata may contain orphaned ability rows while a channel is being
+	// provisioned or migrated. Keep those rows visible to model-list callers,
+	// but exclude abilities backed by an explicitly disabled channel. The route
+	// selector itself still requires an enabled backing channel.
+	DB.Table("abilities").
+		Joins("LEFT JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities."+commonGroupCol+" = ? AND abilities.enabled = ? AND (channels.status = ? OR channels.id IS NULL)", group, true, common.ChannelStatusEnabled).
+		Distinct("abilities.model").Pluck("abilities.model", &models)
 	return models
 }
 
 func GetEnabledModels() []string {
 	var models []string
-	// Find distinct models
-	DB.Table("abilities").Where("enabled = ?", true).Distinct("model").Pluck("model", &models)
+	DB.Table("abilities").
+		Joins("LEFT JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities.enabled = ? AND (channels.status = ? OR channels.id IS NULL)", true, common.ChannelStatusEnabled).
+		Distinct("abilities.model").Pluck("abilities.model", &models)
 	return models
 }
 
 func GetAllEnableAbilities() []Ability {
 	var abilities []Ability
-	DB.Find(&abilities, "enabled = ?", true)
+	DB.Model(&Ability{}).
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities.enabled = ? AND channels.status = ?", true, common.ChannelStatusEnabled).
+		Find(&abilities)
 	return abilities
 }
 
@@ -112,7 +126,10 @@ func GetChannel(
 	filters []dto.ChannelFilter,
 ) (*Channel, error) {
 	var abilities []Ability
-	err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).Order("priority DESC, weight DESC").Find(&abilities).Error
+	err := DB.Model(&Ability{}).
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities."+commonGroupCol+" = ? and abilities.model = ? and abilities.enabled = ? and channels.status = ?", group, model, true, common.ChannelStatusEnabled).
+		Order("abilities.priority DESC, abilities.weight DESC").Find(&abilities).Error
 	if err != nil {
 		return nil, err
 	}
@@ -324,18 +341,31 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 
 	// 如果是新创建的事务，需要提交
 	if isNewTx {
-		return tx.Commit().Error
+		if err := tx.Commit().Error; err != nil {
+			return err
+		}
+		InitChannelCache()
 	}
 
 	return nil
 }
 
 func UpdateAbilityStatus(channelId int, status bool) error {
-	return DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
+	err := DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
+	if err == nil {
+		// Ability.Enabled is part of the routing contract. Publish the new
+		// snapshot only after the database update has committed.
+		InitChannelCache()
+	}
+	return err
 }
 
 func UpdateAbilityStatusByTag(tag string, status bool) error {
-	return DB.Model(&Ability{}).Where("tag = ?", tag).Select("enabled").Update("enabled", status).Error
+	err := DB.Model(&Ability{}).Where("tag = ?", tag).Select("enabled").Update("enabled", status).Error
+	if err == nil {
+		InitChannelCache()
+	}
+	return err
 }
 
 func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uint) error {
@@ -349,7 +379,11 @@ func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uin
 	if weight != nil {
 		ability.Weight = *weight
 	}
-	return DB.Model(&Ability{}).Where("tag = ?", tag).Updates(ability).Error
+	err := DB.Model(&Ability{}).Where("tag = ?", tag).Updates(ability).Error
+	if err == nil {
+		InitChannelCache()
+	}
+	return err
 }
 
 var fixLock = sync.Mutex{}

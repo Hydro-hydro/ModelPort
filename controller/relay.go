@@ -306,12 +306,16 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		if !autoBan {
 			autoBanInt = 0
 		}
-		return &model.Channel{
+		channel := &model.Channel{
 			Id:      c.GetInt("channel_id"),
 			Type:    c.GetInt("channel_type"),
 			Name:    c.GetString("channel_name"),
 			AutoBan: &autoBanInt,
-		}, nil
+		}
+		if billingErr := bindBillingOperationChannel(info, channel.Id); billingErr != nil {
+			return nil, billingErr
+		}
+		return channel, nil
 	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 	if err != nil {
@@ -327,7 +331,24 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
+	if billingErr := bindBillingOperationChannel(info, channel.Id); billingErr != nil {
+		return nil, billingErr
+	}
 	return channel, nil
+}
+
+func bindBillingOperationChannel(info *relaycommon.RelayInfo, channelID int) *types.NewAPIError {
+	if info == nil || channelID <= 0 {
+		return nil
+	}
+	session, ok := info.Billing.(*service.BillingSession)
+	if !ok || session.OperationKey() == "" {
+		return nil
+	}
+	if err := model.UpdateBillingOperationChannelID(session.OperationKey(), channelID); err != nil {
+		return types.NewError(fmt.Errorf("bind billing operation channel: %w", err), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+	}
+	return nil
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
@@ -716,6 +737,9 @@ func executeTaskSubmissionWith(
 	task := model.InitTask(result.Platform, relayInfo)
 	task.PrivateData.Execution = service.TaskExecutionSnapshotFromContext(c)
 	task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
+	if session, ok := relayInfo.Billing.(*service.BillingSession); ok {
+		task.PrivateData.BillingOperationKey = session.OperationKey()
+	}
 	task.PrivateData.BillingSource = relayInfo.BillingSource
 	task.PrivateData.TokenId = relayInfo.TokenId
 	task.PrivateData.NodeName = common.NodeName
@@ -732,6 +756,7 @@ func executeTaskSubmissionWith(
 	task.Data = result.TaskData
 	task.Action = relayInfo.Action
 	if immediate := result.Immediate; immediate != nil {
+		task.PrivateData.ImmediateTask = true
 		task.Status = model.TaskStatus(immediate.Status)
 		task.Progress = immediate.Progress
 		if immediate.Status == model.TaskStatusSuccess || immediate.Status == model.TaskStatusFailure {
@@ -746,6 +771,15 @@ func executeTaskSubmissionWith(
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		}
 	}
+	// Persist the task's terminal shape only after copying the immediate result.
+	// A restart must be able to distinguish an immediate success from an
+	// asynchronous task that is still waiting for provider usage.
+	if _, operationErr := model.EnsureTaskBillingOperation(task); operationErr != nil {
+		common.SysError("create task billing operation error: " + operationErr.Error())
+		taskErr = service.TaskErrorWrapperLocal(errors.New("failed to persist task billing operation"), "task_billing_operation_failed", http.StatusInternalServerError)
+		diagnostics.failed("billing_operation", "database_error", taskErr, false)
+		return nil, taskErr
+	}
 	diagnostics.insertStart(task)
 	if insertErr := task.InsertWithContext(c.Request.Context()); insertErr != nil {
 		common.SysError("insert task error: " + insertErr.Error())
@@ -754,17 +788,33 @@ func executeTaskSubmissionWith(
 		return nil, taskErr
 	}
 	durable = true
-	stage = "settle"
 	diagnostics.durable(task)
-	diagnostics.settleStart(task, result.Quota)
-
-	if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
-		common.SysError("settle task billing error: " + settleErr.Error())
-		taskErr = service.TaskErrorWrapperLocal(errors.New("failed to settle task billing"), "task_billing_settlement_failed", http.StatusInternalServerError)
-		diagnostics.failed("settle", "billing_error", taskErr, true)
-		return nil, taskErr
+	if task.Status == model.TaskStatusFailure {
+		// Immediate provider failures never become settled charges. Refund the
+		// task operation directly; settling first would lose the reservation.
+		if !service.RefundTaskQuota(c, task, task.FailReason) {
+			common.SysLog(fmt.Sprintf("immediate failed task billing refund deferred: task=%s", task.TaskID))
+		}
+	} else {
+		stage = "settle"
+		diagnostics.settleStart(task, result.Quota)
+		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+			common.SysError("settle task billing error: " + settleErr.Error())
+			taskErr = service.TaskErrorWrapperLocal(errors.New("failed to settle task billing"), "task_billing_settlement_failed", http.StatusInternalServerError)
+			diagnostics.failed("settle", "billing_error", taskErr, true)
+			return nil, taskErr
+		}
+		if task.Status == model.TaskStatusSuccess {
+			// Write this boundary before the independent log database write. If
+			// the process exits after logging, recovery can replay missing
+			// components and close the operation instead of waiting forever.
+			service.MarkTaskBillingFinalUsage(task, result.Quota)
+		}
+		service.LogTaskConsumption(c, relayInfo, task)
+		if task.Status == model.TaskStatusSuccess {
+			service.FinalizeTaskBillingOperation(task, result.Quota)
+		}
 	}
-	service.LogTaskConsumption(c, relayInfo, task)
 	diagnostics.complete(task, result.Quota)
 
 	return &taskSubmissionOutcome{Result: result, Task: task, RelayInfo: relayInfo}, nil

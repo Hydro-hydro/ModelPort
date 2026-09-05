@@ -32,6 +32,27 @@ type taskPollingFetchAdaptor struct {
 	blockOnce    sync.Once
 }
 
+type taskPollingResultAdaptor struct {
+	response *http.Response
+	fetchErr error
+	result   *relaycommon.TaskInfo
+	parseErr error
+}
+
+func (a *taskPollingResultAdaptor) Init(_ *relaycommon.RelayInfo) {}
+
+func (a *taskPollingResultAdaptor) FetchTask(_ string, _ string, _ map[string]any, _ string) (*http.Response, error) {
+	return a.response, a.fetchErr
+}
+
+func (a *taskPollingResultAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
+	return a.result, a.parseErr
+}
+
+func (a *taskPollingResultAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
+	return 0
+}
+
 type batchPollingAdaptor struct {
 	taskPollingFetchAdaptor
 	batchCalls int
@@ -187,6 +208,79 @@ func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID st
 	}
 	require.NoError(t, model.DB.Create(task).Error)
 	return task
+}
+
+func TestUpdateVideoSingleTaskKeepsPendingOnHTTPError(t *testing.T) {
+	truncate(t)
+	const channelID = 105
+	seedTaskPollingChannel(t, channelID, true)
+	task := seedPollingTask(t, channelID, "task_http_error", "upstream_http_error")
+	channel, err := model.GetChannelById(channelID, true)
+	require.NoError(t, err)
+
+	adaptor := &taskPollingResultAdaptor{
+		response: &http.Response{
+			StatusCode: http.StatusServiceUnavailable,
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"temporarily unavailable"}}`)),
+		},
+	}
+	err = updateVideoSingleTask(context.Background(), adaptor, channel, task.GetUpstreamTaskID(), map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP status 503")
+	var persisted model.Task
+	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusInProgress, persisted.Status)
+	assert.Equal(t, "30%", persisted.Progress)
+}
+
+func TestUpdateVideoSingleTaskKeepsPendingOnEmptyStatus(t *testing.T) {
+	truncate(t)
+	const channelID = 106
+	seedTaskPollingChannel(t, channelID, true)
+	task := seedPollingTask(t, channelID, "task_empty_status", "upstream_empty_status")
+	channel, err := model.GetChannelById(channelID, true)
+	require.NoError(t, err)
+
+	adaptor := &taskPollingResultAdaptor{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"temporary provider error"}}`)),
+		},
+		result: &relaycommon.TaskInfo{},
+	}
+	err = updateVideoSingleTask(context.Background(), adaptor, channel, task.GetUpstreamTaskID(), map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "upstream returned error")
+	var persisted model.Task
+	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusInProgress, persisted.Status)
+	assert.Equal(t, "30%", persisted.Progress)
+}
+
+func TestUpdateVideoSingleTaskHandlesNilPollingResponse(t *testing.T) {
+	truncate(t)
+	const channelID = 107
+	seedTaskPollingChannel(t, channelID, true)
+	task := seedPollingTask(t, channelID, "task_nil_response", "upstream_nil_response")
+	channel, err := model.GetChannelById(channelID, true)
+	require.NoError(t, err)
+
+	adaptor := &taskPollingResultAdaptor{}
+	err = updateVideoSingleTask(context.Background(), adaptor, channel, task.GetUpstreamTaskID(), map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil response")
+	var persisted model.Task
+	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusInProgress, persisted.Status)
 }
 
 func TestUpdateVideoTasksDefaultSleepWaitsBetweenTasks(t *testing.T) {
@@ -651,73 +745,26 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	assert.Equal(t, int64(1), countLogs(t))
 }
 
-func TestRunTaskPollingOnceDoesNotRefundHistoricalFailedTask(t *testing.T) {
+func TestFailTaskWithoutUpstreamIDTreatsZeroSubmitTimeAsRefundable(t *testing.T) {
 	truncate(t)
 
-	const userID, initialQuota, taskQuota = 402, 10_000, 1_200
-	seedUser(t, userID, initialQuota)
-
-	task := makeTask(userID, 0, taskQuota, 0, BillingSourceWallet)
-	task.TaskID = "historical_failed_already_refunded"
-	task.Status = model.TaskStatusFailure
-	task.Progress = "100%"
-	task.SubmitTime = time.Now().Add(-90 * 24 * time.Hour).Unix()
-	task.UpdatedAt = time.Now().Add(-time.Minute).Unix()
+	const userID, channelID, taskQuota = 404, 404, 1_200
+	seedUser(t, userID, 10_000)
+	seedChannel(t, channelID)
+	seedChargedAccounting(t, userID, channelID, 0, taskQuota, 1)
+	task := makeTask(userID, channelID, taskQuota, 0, BillingSourceUsage)
+	task.TaskID = "zero-submit-missing-upstream"
+	task.SubmitTime = 0
+	task.PrivateData.UpstreamTaskID = ""
 	require.NoError(t, model.DB.Create(task).Error)
 
-	previousFactory := GetTaskAdaptorFunc
-	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor {
-		return &taskPollingFetchAdaptor{}
-	}
-	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
-
-	summary := RunTaskPollingOnce(context.Background(), nil)
-
-	assert.Zero(t, summary.UnfinishedTasks)
-	assert.Equal(t, initialQuota, getUserQuota(t, userID))
-	assert.Equal(t, taskQuota, getTaskQuota(t, task.ID))
-	assert.Equal(t, int64(0), countLogs(t))
-}
-
-func TestSweepTimedOutTasksHonorsRefundRolloutBoundary(t *testing.T) {
-	truncate(t)
-
-	const (
-		userID          = 403
-		initialQuota    = 10_000
-		legacyTaskQuota = 1_800
-		modernTaskQuota = 1_200
-	)
-	seedUser(t, userID, initialQuota)
-
-	legacyTask := makeTask(userID, 0, legacyTaskQuota, 0, BillingSourceWallet)
-	legacyTask.TaskID = "legacy_timeout_without_refund"
-	legacyTask.Progress = "50%"
-	legacyTask.SubmitTime = 1771718399 // 2026-02-21 23:59:59 UTC
-	require.NoError(t, model.DB.Create(legacyTask).Error)
-
-	modernTask := makeTask(userID, 0, modernTaskQuota, 0, BillingSourceWallet)
-	modernTask.TaskID = "modern_timeout_with_refund"
-	modernTask.Progress = "50%"
-	modernTask.SubmitTime = 1771718400 // 2026-02-22 00:00:00 UTC
-	require.NoError(t, model.DB.Create(modernTask).Error)
-
-	previousTimeout := constant.TaskTimeoutMinutes
-	constant.TaskTimeoutMinutes = 1
-	t.Cleanup(func() { constant.TaskTimeoutMinutes = previousTimeout })
-
-	sweepTimedOutTasks(context.Background())
-
-	var reloadedLegacy model.Task
-	var reloadedModern model.Task
-	require.NoError(t, model.DB.First(&reloadedLegacy, legacyTask.ID).Error)
-	require.NoError(t, model.DB.First(&reloadedModern, modernTask.ID).Error)
-	assert.EqualValues(t, model.TaskStatusFailure, reloadedLegacy.Status)
-	assert.EqualValues(t, model.TaskStatusFailure, reloadedModern.Status)
-	assert.Zero(t, reloadedLegacy.Quota)
-	assert.Zero(t, reloadedModern.Quota)
-	assert.Contains(t, reloadedLegacy.FailReason, "旧系统遗留任务")
-	assert.Contains(t, reloadedModern.FailReason, "任务超时")
-	assert.Equal(t, initialQuota+modernTaskQuota, getUserQuota(t, userID))
+	assert.True(t, failTaskWithoutUpstreamID(context.Background(), task))
+	var persisted model.Task
+	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusFailure, persisted.Status)
+	assert.Zero(t, persisted.Quota)
+	usedQuota, _ := getUserUsageAccounting(t, userID)
+	assert.Zero(t, usedQuota)
+	assert.Zero(t, getChannelUsedQuota(t, channelID))
 	assert.Equal(t, int64(1), countLogs(t))
 }

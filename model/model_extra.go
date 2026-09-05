@@ -1,5 +1,7 @@
 package model
 
+import "slices"
+
 func GetModelEnableGroups(modelName string) []string {
 	// 确保缓存最新
 	GetPricing()
@@ -14,7 +16,7 @@ func GetModelEnableGroups(modelName string) []string {
 	if !ok {
 		return make([]string, 0)
 	}
-	return groups
+	return slices.Clone(groups)
 }
 
 // GetModelQuotaTypes 返回指定模型的计费类型集合（来自缓存）

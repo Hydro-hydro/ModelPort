@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
@@ -77,7 +78,11 @@ type Log struct {
 	Ip                string `json:"ip" gorm:"index;default:''"`
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
-	Other             string `json:"other"`
+	// BillingOperationKey links a consume/refund log to the durable accounting
+	// operation. A pointer allows non-billing log types to omit the marker while
+	// enforcing one retryable log per operation.
+	BillingOperationKey *string `json:"-" gorm:"type:varchar(191);uniqueIndex:idx_logs_billing_operation_key"`
+	Other               string  `json:"other"`
 }
 
 // don't use iota, avoid change log type value
@@ -102,7 +107,167 @@ func ensureLogRequestId(log *Log) {
 
 func createLog(log *Log) error {
 	ensureLogRequestId(log)
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		// The main-database lock makes billing-keyed writes mutually exclusive.
+		// Force synchronous visibility as well so a retry cannot query before an
+		// enabled ClickHouse async-insert buffer has been flushed.
+		ctx := clickhouse.Context(context.Background(), clickhouse.WithSettings(clickhouse.Settings{
+			"async_insert":          0,
+			"wait_for_async_insert": 1,
+		}))
+		return LOG_DB.WithContext(ctx).Create(log).Error
+	}
 	return LOG_DB.Create(log).Error
+}
+
+const clickHouseBillingLogLeaseSeconds = 120
+
+// billingLogOperationKey returns the durable operation row that serializes a
+// billing log write. Consume logs use the operation key itself; refund and
+// task-adjustment logs append a suffix because they are separate log entries
+// but still belong to the same durable operation. Keeping the operation row
+// as the lock owner means ClickHouse does not need a unique index (which it
+// cannot enforce on a MergeTree table).
+func billingLogOperationKey(key string) string {
+	key = strings.TrimSpace(key)
+	if strings.HasSuffix(key, ":refund") {
+		return strings.TrimSuffix(key, ":refund")
+	}
+	if adjustment := strings.LastIndex(key, ":adjustment:"); adjustment > 0 {
+		return key[:adjustment]
+	}
+	return key
+}
+
+// recordClickHouseBillingLog serializes an idempotent billing log through the
+// main database's BillingOperation row. ClickHouse inserts are independent of
+// the main transaction, so the row lock is intentionally held while the
+// ClickHouse query/insert runs. A retry after a process crash observes the
+// already-inserted billing key and only repairs the main-database marker.
+//
+// owner is supplied by the reconciliation worker when it already owns the
+// operation lease. An empty owner claims a short lease for this synchronous
+// write and releases it before committing. The claim is a write even on
+// SQLite, which obtains its single-writer lock and prevents two processes from
+// both entering the ClickHouse section.
+func recordClickHouseBillingLog(log *Log, operationKey, owner string, markLogComponent bool) (bool, error) {
+	if log == nil || strings.TrimSpace(operationKey) == "" {
+		return false, errors.New("clickhouse billing log and operation key are required")
+	}
+	if DB == nil {
+		return false, errors.New("main database is not initialized")
+	}
+	if LOG_DB == nil {
+		return false, errors.New("log database is not initialized")
+	}
+
+	operationKey = strings.TrimSpace(operationKey)
+	baseOperationKey := billingLogOperationKey(operationKey)
+	if baseOperationKey == "" {
+		return false, errors.New("billing operation key is required")
+	}
+	workerID := strings.TrimSpace(owner)
+	claimLease := workerID == ""
+	if claimLease {
+		workerID = "log-" + common.GetRandomString(16)
+	}
+	now := common.GetTimestamp()
+	inserted := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var operation BillingOperation
+		// Prefer an exact operation key. The fallback to the base key is for
+		// refund/adjustment log keys, which intentionally have no separate
+		// BillingOperation row.
+		operationQuery := lockForUpdate(tx).Where("operation_key = ?", operationKey)
+		operationErr := operationQuery.First(&operation).Error
+		if errors.Is(operationErr, gorm.ErrRecordNotFound) && baseOperationKey != operationKey {
+			operationErr = lockForUpdate(tx).Where("operation_key = ?", baseOperationKey).First(&operation).Error
+		}
+		if operationErr != nil {
+			return operationErr
+		}
+		// A consume log whose marker is already durable does not need another
+		// ClickHouse read. Derived refund/adjustment logs deliberately skip this
+		// check because their marker lives on the parent operation.
+		if markLogComponent && operation.LogApplied {
+			return nil
+		}
+		if markLogComponent {
+			// A refund CAS may win while the originating request is still
+			// unwinding. Do not allow a late positive consume log to be written
+			// after that durable refund intent is visible.
+			if operation.Status == BillingOperationRefundPending ||
+				operation.Status == BillingOperationRefunded ||
+				operation.Status == BillingOperationFailed {
+				return fmt.Errorf("billing operation %s does not accept a positive log in state %s", operation.OperationKey, operation.Status)
+			}
+		} else if strings.HasSuffix(operationKey, ":refund") &&
+			(operation.Status != BillingOperationRefundPending && operation.Status != BillingOperationApplying) {
+			return fmt.Errorf("billing operation %s does not accept a refund log in state %s", operation.OperationKey, operation.Status)
+		}
+
+		leaseQuery := tx.Model(&BillingOperation{}).Where("operation_key = ?", operation.OperationKey)
+		if claimLease {
+			leaseQuery = leaseQuery.Where("(locked_by = '' OR locked_by IS NULL OR lease_until <= ?)", now)
+		} else {
+			leaseQuery = leaseQuery.Where("locked_by = ? AND lease_until > ?", workerID, now)
+		}
+		leaseResult := leaseQuery.Updates(map[string]interface{}{
+			"locked_by":   workerID,
+			"lease_until": now + clickHouseBillingLogLeaseSeconds,
+			"updated_at":  now,
+		})
+		if leaseResult.Error != nil {
+			return leaseResult.Error
+		}
+		if leaseResult.RowsAffected != 1 {
+			return fmt.Errorf("billing operation %s log lease is owned by another worker", operation.OperationKey)
+		}
+
+		var existing Log
+		existingErr := LOG_DB.Where("billing_operation_key = ?", operationKey).First(&existing).Error
+		switch {
+		case existingErr == nil:
+			// The first writer may have crashed after the ClickHouse insert but
+			// before committing the main transaction. Treat the row as success
+			// and repair the marker below.
+		case errors.Is(existingErr, gorm.ErrRecordNotFound):
+			if err := createLog(log); err != nil {
+				return err
+			}
+			inserted = true
+		default:
+			return existingErr
+		}
+
+		if markLogComponent {
+			markerResult := tx.Model(&BillingOperation{}).
+				Where("operation_key = ? AND log_applied = ?", operation.OperationKey, false).
+				Updates(map[string]interface{}{"log_applied": true, "updated_at": common.GetTimestamp()})
+			if markerResult.Error != nil {
+				return markerResult.Error
+			}
+			if markerResult.RowsAffected != 1 {
+				var current BillingOperation
+				if err := tx.Where("operation_key = ?", operation.OperationKey).First(&current).Error; err != nil {
+					return err
+				}
+				if !current.LogApplied {
+					return errors.New("billing operation log marker was not persisted")
+				}
+			}
+		}
+
+		if claimLease {
+			if err := tx.Model(&BillingOperation{}).
+				Where("operation_key = ? AND locked_by = ?", operation.OperationKey, workerID).
+				Updates(map[string]interface{}{"locked_by": "", "lease_until": 0, "updated_at": common.GetTimestamp()}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return inserted, err
 }
 
 func clickHouseLogOrder(prefix string) string {
@@ -315,28 +480,66 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 }
 
 type RecordConsumeLogParams struct {
-	ChannelId        int                    `json:"channel_id"`
-	PromptTokens     int                    `json:"prompt_tokens"`
-	CompletionTokens int                    `json:"completion_tokens"`
-	ModelName        string                 `json:"model_name"`
-	TokenName        string                 `json:"token_name"`
-	Quota            int                    `json:"quota"`
-	Content          string                 `json:"content"`
-	TokenId          int                    `json:"token_id"`
-	UseTimeSeconds   int                    `json:"use_time_seconds"`
-	IsStream         bool                   `json:"is_stream"`
-	Group            string                 `json:"group"`
-	Other            map[string]interface{} `json:"other"`
+	ChannelId           int                    `json:"channel_id"`
+	PromptTokens        int                    `json:"prompt_tokens"`
+	CompletionTokens    int                    `json:"completion_tokens"`
+	ModelName           string                 `json:"model_name"`
+	TokenName           string                 `json:"token_name"`
+	Quota               int                    `json:"quota"`
+	Content             string                 `json:"content"`
+	TokenId             int                    `json:"token_id"`
+	UseTimeSeconds      int                    `json:"use_time_seconds"`
+	IsStream            bool                   `json:"is_stream"`
+	Group               string                 `json:"group"`
+	Other               map[string]interface{} `json:"other"`
+	BillingOperationKey string                 `json:"-"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
 	if !common.LogConsumeEnabled {
 		return
 	}
-	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
-	username := c.GetString("username")
-	requestId := c.GetString(common.RequestIdKey)
-	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
+	if err := RecordConsumeLogChecked(c, userId, params); err != nil {
+		logger.LogError(c, "failed to record log: "+err.Error())
+	}
+}
+
+// RecordConsumeLogChecked is the synchronous form used by durable billing
+// paths. It reports a log database failure to the caller instead of silently
+// allowing the outbox component to be marked complete.
+func RecordConsumeLogChecked(c *gin.Context, userId int, params RecordConsumeLogParams) error {
+	return recordConsumeLogCheckedOwned(c, userId, params, "")
+}
+
+// RecordConsumeLogCheckedOwned is used by the billing reconciliation worker
+// after it has claimed the operation lease. Keeping the owner explicit lets a
+// ClickHouse write reuse that lease instead of racing a second worker.
+func RecordConsumeLogCheckedOwned(c *gin.Context, userId int, params RecordConsumeLogParams, workerID string) error {
+	return recordConsumeLogCheckedOwned(c, userId, params, workerID)
+}
+
+func recordConsumeLogCheckedOwned(c *gin.Context, userId int, params RecordConsumeLogParams, workerID string) error {
+	if !common.LogConsumeEnabled {
+		return nil
+	}
+	var logContext context.Context = c
+	if c == nil {
+		// Billing-operation reconciliation runs after the originating request
+		// context is gone. A nil *gin.Context in a context.Context interface is
+		// non-nil and would panic in gin.Context.Value, so use a plain context for
+		// the system-level replay log.
+		logContext = context.Background()
+	}
+	logger.LogInfo(logContext, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
+	username := ""
+	requestId := ""
+	upstreamRequestId := ""
+	clientIP := ""
+	if c != nil {
+		username = c.GetString("username")
+		requestId = c.GetString(common.RequestIdKey)
+		upstreamRequestId = c.GetString(common.UpstreamRequestIdKey)
+	}
 	createdAt := common.GetTimestamp()
 	otherStr := common.MapToJsonStr(params.Other)
 	// 判断是否需要记录 IP
@@ -347,34 +550,67 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		}
 	}
 	log := &Log{
-		UserId:           userId,
-		Username:         username,
-		CreatedAt:        createdAt,
-		Type:             LogTypeConsume,
-		Content:          params.Content,
-		PromptTokens:     params.PromptTokens,
-		CompletionTokens: params.CompletionTokens,
-		TokenName:        params.TokenName,
-		ModelName:        params.ModelName,
-		Quota:            params.Quota,
-		ChannelId:        params.ChannelId,
-		TokenId:          params.TokenId,
-		UseTime:          params.UseTimeSeconds,
-		IsStream:         params.IsStream,
-		Group:            params.Group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
+		UserId:            userId,
+		Username:          username,
+		CreatedAt:         createdAt,
+		Type:              LogTypeConsume,
+		Content:           params.Content,
+		PromptTokens:      params.PromptTokens,
+		CompletionTokens:  params.CompletionTokens,
+		TokenName:         params.TokenName,
+		ModelName:         params.ModelName,
+		Quota:             params.Quota,
+		ChannelId:         params.ChannelId,
+		TokenId:           params.TokenId,
+		UseTime:           params.UseTimeSeconds,
+		IsStream:          params.IsStream,
+		Group:             params.Group,
+		Ip:                clientIP,
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
 	}
-	err := createLog(log)
-	if err != nil {
-		logger.LogError(c, "failed to record log: "+err.Error())
+	if params.BillingOperationKey != "" {
+		operationKey := params.BillingOperationKey
+		log.BillingOperationKey = &operationKey
+		if !common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+			var existing Log
+			if err := LOG_DB.Where("billing_operation_key = ?", operationKey).First(&existing).Error; err == nil {
+				return nil
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+	}
+	if needRecordIp && c != nil {
+		log.Ip = c.ClientIP()
+	}
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) && params.BillingOperationKey != "" {
+		inserted, err := recordClickHouseBillingLog(log, params.BillingOperationKey, workerID, true)
+		if err != nil {
+			return err
+		}
+		if !inserted {
+			return nil
+		}
+		if common.DataExportEnabled {
+			LogQuotaData(QuotaDataLogParams{
+				UserID:    userId,
+				Username:  username,
+				ModelName: params.ModelName,
+				Quota:     params.Quota,
+				CreatedAt: createdAt,
+				TokenUsed: params.PromptTokens + params.CompletionTokens,
+				UseGroup:  params.Group,
+				TokenID:   params.TokenId,
+				ChannelID: params.ChannelId,
+				NodeName:  common.NodeName,
+			})
+		}
+		return nil
+	}
+	if err := createLog(log); err != nil {
+		return err
 	}
 	if common.DataExportEnabled {
 		LogQuotaData(QuotaDataLogParams{
@@ -390,24 +626,46 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			NodeName:  common.NodeName,
 		})
 	}
+	return nil
 }
 
 type RecordTaskBillingLogParams struct {
-	UserId    int
-	LogType   int
-	Content   string
-	ChannelId int
-	ModelName string
-	Quota     int
-	TokenId   int
-	Group     string
-	Other     map[string]interface{}
-	NodeName  string // 任务发起节点；为空时回退当前节点
+	UserId              int
+	LogType             int
+	Content             string
+	ChannelId           int
+	ModelName           string
+	Quota               int
+	TokenId             int
+	Group               string
+	Other               map[string]interface{}
+	NodeName            string // 任务发起节点；为空时回退当前节点
+	BillingOperationKey string // optional durable idempotency key for this log entry
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
+	if err := RecordTaskBillingLogChecked(params); err != nil {
+		common.SysLog("failed to record task billing log: " + err.Error())
+	}
+}
+
+// RecordTaskBillingLogChecked is the durable variant used by billing
+// operations. Callers must only mark their outbox log component after this
+// returns nil; a database failure therefore remains retryable.
+func RecordTaskBillingLogChecked(params RecordTaskBillingLogParams) error {
+	return recordTaskBillingLogCheckedOwned(params, "")
+}
+
+// RecordTaskBillingLogCheckedOwned is the lease-aware form used by task
+// refund reconciliation. Refund/adjustment log keys are derived from the
+// parent operation key, so the parent lease must be reused while writing.
+func RecordTaskBillingLogCheckedOwned(params RecordTaskBillingLogParams, workerID string) error {
+	return recordTaskBillingLogCheckedOwned(params, workerID)
+}
+
+func recordTaskBillingLogCheckedOwned(params RecordTaskBillingLogParams, workerID string) error {
 	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
-		return
+		return nil
 	}
 	username, _ := GetUsernameById(params.UserId, false)
 	tokenName := ""
@@ -431,9 +689,46 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		Group:     params.Group,
 		Other:     common.MapToJsonStr(params.Other),
 	}
+	if params.BillingOperationKey != "" {
+		operationKey := params.BillingOperationKey
+		log.BillingOperationKey = &operationKey
+		if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+			inserted, err := recordClickHouseBillingLog(log, operationKey, workerID, false)
+			if err != nil {
+				return err
+			}
+			if !inserted {
+				return nil
+			}
+			if params.LogType == LogTypeConsume && common.DataExportEnabled {
+				nodeName := params.NodeName
+				if nodeName == "" {
+					nodeName = common.NodeName
+				}
+				LogQuotaData(QuotaDataLogParams{
+					UserID:    params.UserId,
+					Username:  username,
+					ModelName: params.ModelName,
+					Quota:     params.Quota,
+					CreatedAt: createdAt,
+					UseGroup:  params.Group,
+					TokenID:   params.TokenId,
+					ChannelID: params.ChannelId,
+					NodeName:  nodeName,
+				})
+			}
+			return nil
+		}
+		var existing Log
+		if err := LOG_DB.Where("billing_operation_key = ?", operationKey).First(&existing).Error; err == nil {
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
 	err := createLog(log)
 	if err != nil {
-		common.SysLog("failed to record task billing log: " + err.Error())
+		return err
 	}
 	if params.LogType == LogTypeConsume && common.DataExportEnabled {
 		nodeName := params.NodeName
@@ -452,6 +747,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			NodeName:  nodeName,
 		})
 	}
+	return nil
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {

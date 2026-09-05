@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -31,6 +32,50 @@ func personalBillingRelayInfo(userID, tokenID int, tokenKey string) *relaycommon
 	}
 }
 
+type failingPersonalFunding struct{}
+
+func (*failingPersonalFunding) Source() string       { return BillingSourceUsage }
+func (*failingPersonalFunding) PreConsume(int) error { return errors.New("forced funding failure") }
+func (*failingPersonalFunding) Settle(int) error     { return nil }
+func (*failingPersonalFunding) Refund() error        { return nil }
+
+func TestPersonalBillingPreConsumeFailureDoesNotDoubleRefundToken(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 810, 810
+	const initialTokenQuota, preConsumedQuota = 1_000, 200
+	const tokenKey = "sk-personal-funding-failure"
+	seedUser(t, userID, 0)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+
+	operation, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
+		OperationKey:     "request:personal-funding-failure",
+		RequestID:        "personal-funding-failure",
+		UserID:           userID,
+		TokenID:          tokenID,
+		FundingSource:    BillingSourceUsage,
+		PreConsumedQuota: 0,
+	})
+	require.NoError(t, err)
+
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+	session := &BillingSession{
+		relayInfo:    relayInfo,
+		funding:      &failingPersonalFunding{},
+		operationKey: operation.OperationKey,
+	}
+	apiErr := session.preConsume(newPersonalBillingTestContext(), preConsumedQuota)
+	require.NotNil(t, apiErr)
+	session.abortPreConsume(apiErr)
+
+	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
+	updated, err := model.GetBillingOperation(operation.OperationKey)
+	require.NoError(t, err)
+	assert.Equal(t, model.BillingOperationRefunded, updated.Status)
+	assert.True(t, updated.RefundTokenApplied)
+}
+
 func TestPersonalBillingSessionUsesUsageFunding(t *testing.T) {
 	truncate(t)
 
@@ -57,6 +102,29 @@ func TestPersonalBillingSessionUsesUsageFunding(t *testing.T) {
 	assert.Equal(t, preConsumedQuota, getTokenUsedQuota(t, tokenID))
 
 	require.NoError(t, session.Settle(preConsumedQuota))
+}
+
+func TestPersonalBillingSessionCanReserveAfterZeroInitialEstimate(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 806, 806
+	const initialTokenQuota, reservedQuota = 1_000, 200
+	const tokenKey = "sk-personal-zero-estimate-reserve"
+	seedUser(t, userID, 0)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+	session, apiErr := NewBillingSession(newPersonalBillingTestContext(), relayInfo, 0)
+	require.Nil(t, apiErr)
+	require.NoError(t, session.Reserve(reservedQuota))
+
+	assert.Equal(t, initialTokenQuota-reservedQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, reservedQuota, getTokenUsedQuota(t, tokenID))
+	operation, err := model.GetBillingOperation(session.OperationKey())
+	require.NoError(t, err)
+	assert.True(t, operation.TokenReserved)
+	assert.False(t, operation.TokenReservationSkipped)
+	assert.Equal(t, reservedQuota, operation.TokenReservedQuota)
 }
 
 func TestPersonalBillingSessionSettlesUsageAndTokenDelta(t *testing.T) {
@@ -149,7 +217,7 @@ func TestPersonalBillingSessionRefundsUsageAndTokenOnce(t *testing.T) {
 			token.UsedQuota == 0
 	}, time.Second, 10*time.Millisecond)
 
-	assert.False(t, session.NeedsRefund())
+	require.Eventually(t, func() bool { return !session.NeedsRefund() }, time.Second, 10*time.Millisecond)
 }
 
 func TestPersonalBillingSessionAllowsInsufficientWalletBalance(t *testing.T) {
@@ -177,6 +245,27 @@ func TestPersonalBillingSessionAllowsInsufficientWalletBalance(t *testing.T) {
 
 	require.NoError(t, session.Settle(actualQuota))
 	assert.Equal(t, initialQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
+}
+
+func TestPersonalBillingSessionChargesActualUsageAfterZeroPreConsume(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 809, 809
+	const initialWallet, initialTokenQuota, actualQuota = 0, 1_000, 300
+	const tokenKey = "sk-personal-zero-preconsume"
+
+	seedUser(t, userID, initialWallet)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+
+	session, apiErr := NewBillingSession(newPersonalBillingTestContext(), relayInfo, 0)
+	require.Nil(t, apiErr)
+	require.NotNil(t, session)
+	require.NoError(t, session.Settle(actualQuota))
+
+	assert.Equal(t, initialWallet, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
 }
@@ -228,4 +317,31 @@ func TestPersonalBillingSessionRejectsTokenQuotaWithoutWalletDeduction(t *testin
 	assert.Equal(t, initialQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, 0, getTokenUsedQuota(t, tokenID))
+}
+
+func TestPersonalBillingSessionRollsBackTokenWhenReservationCannotPersist(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 809, 809
+	const initialQuota, initialTokenQuota, preConsumedQuota = 1_000, 1_000, 200
+	const tokenKey = "sk-personal-reservation-persist-failure"
+
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+	require.NoError(t, model.DB.Exec(`
+		CREATE TRIGGER fail_billing_operation_reservation
+		BEFORE UPDATE OF pre_consumed_quota ON billing_operations
+		BEGIN
+			SELECT RAISE(ABORT, 'forced billing reservation persistence failure');
+		END;
+	`).Error)
+	t.Cleanup(func() { model.DB.Exec("DROP TRIGGER IF EXISTS fail_billing_operation_reservation") })
+
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+	session, apiErr := NewBillingSession(newPersonalBillingTestContext(), relayInfo, preConsumedQuota)
+	require.Nil(t, session)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
 }

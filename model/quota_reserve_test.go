@@ -102,6 +102,42 @@ func TestTryReserveQuotaWithoutRedis(t *testing.T) {
 	assert.Equal(t, 55, getTokenFromDB(t, token.Id).RemainQuota)
 }
 
+func TestTokenQuotaAdjustmentsNeverUnderflow(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+
+	token := createReserveTestToken(t, 10)
+	assert.ErrorIs(t, DecreaseTokenQuota(token.Id, token.Key, 11), ErrTokenQuotaInsufficient)
+	reloaded := getTokenFromDB(t, token.Id)
+	assert.Equal(t, 10, reloaded.RemainQuota)
+	assert.Zero(t, reloaded.UsedQuota)
+
+	require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 7))
+	reloaded = getTokenFromDB(t, token.Id)
+	assert.Equal(t, 3, reloaded.RemainQuota)
+	assert.Equal(t, 7, reloaded.UsedQuota)
+
+	// A task can have a missing used_quota snapshot. Refund still
+	// restores remain_quota, while the accounting counter is clamped at zero.
+	require.NoError(t, DB.Model(&Token{}).Where("id = ?", token.Id).Update("used_quota", 0).Error)
+	require.NoError(t, IncreaseTokenQuota(token.Id, token.Key, 7))
+	reloaded = getTokenFromDB(t, token.Id)
+	assert.Equal(t, 10, reloaded.RemainQuota)
+	assert.Zero(t, reloaded.UsedQuota)
+}
+
+func TestUnlimitedTokenCanRecordUsageWithoutRemainQuota(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+
+	token := createReserveTestToken(t, 0)
+	require.NoError(t, DB.Model(&Token{}).Where("id = ?", token.Id).Update("unlimited_quota", true).Error)
+	require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 25))
+	reloaded := getTokenFromDB(t, token.Id)
+	assert.Equal(t, -25, reloaded.RemainQuota)
+	assert.Equal(t, 25, reloaded.UsedQuota)
+}
+
 func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
 	truncateTables(t)
 	resetBatchUpdateTestState(t)
@@ -128,7 +164,9 @@ func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
 	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 3, false)
 	require.NoError(t, err)
 	assert.False(t, reserved)
-	assert.Equal(t, 9, getTokenFromDB(t, token.Id).RemainQuota)
+	// Token quota is part of the durable billing operation and is persisted
+	// synchronously even when the optional user batch queue is enabled.
+	assert.Equal(t, 2, getTokenFromDB(t, token.Id).RemainQuota)
 
 	batchUpdate()
 	assert.Equal(t, 2, getUserQuotaFromDB(t, user.Id))
@@ -240,6 +278,15 @@ func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.
 	cached, err := cacheGetTokenByKey(token.Key)
 	require.NoError(t, err)
 	assert.Equal(t, 30, cached.RemainQuota)
+	assert.Equal(t, 70, cached.UsedQuota, "a cached charge must increase used_quota")
+
+	result, err = cacheApplyTokenQuotaDelta(token.Id, token.Key, 20)
+	require.NoError(t, err)
+	require.Equal(t, cacheQuotaOK, result)
+	cached, err = cacheGetTokenByKey(token.Key)
+	require.NoError(t, err)
+	assert.Equal(t, 50, cached.RemainQuota)
+	assert.Equal(t, 50, cached.UsedQuota, "a refund must decrease used_quota")
 
 	// 变更期间：fence 删除缓存并拦截并发读者手中的过期快照。
 	require.NoError(t, invalidateTokenCacheForMutation(token.Key))

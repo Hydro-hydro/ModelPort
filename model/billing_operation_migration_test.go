@@ -15,12 +15,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type billingOperationMigrationLegacy struct {
-	ID           int64  `gorm:"primaryKey"`
-	OperationKey string `gorm:"type:varchar(191);uniqueIndex"`
-	CreatedAt    int64
-}
-
 func testBillingOperationMigration(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
@@ -52,23 +46,6 @@ func testBillingOperationMigration(t *testing.T, db *gorm.DB) {
 	duplicate := &BillingOperation{OperationKey: operation.OperationKey}
 	assert.Error(t, tableDB.Create(duplicate).Error)
 
-	legacyTableName := fmt.Sprintf("billing_operation_legacy_%d", time.Now().UnixNano())
-	legacyDB := db.Table(legacyTableName)
-	t.Cleanup(func() { _ = db.Migrator().DropTable(legacyTableName) })
-	require.NoError(t, legacyDB.AutoMigrate(&billingOperationMigrationLegacy{}))
-	require.NoError(t, legacyDB.Create(&billingOperationMigrationLegacy{
-		OperationKey: "legacy-operation",
-		CreatedAt:    time.Now().Unix(),
-	}).Error)
-	require.NoError(t, legacyDB.AutoMigrate(&BillingOperation{}))
-	require.NoError(t, legacyDB.AutoMigrate(&BillingOperation{}))
-
-	var migrated BillingOperation
-	require.NoError(t, legacyDB.Where("operation_key = ?", "legacy-operation").First(&migrated).Error)
-	assert.Equal(t, "legacy-operation", migrated.OperationKey)
-	assert.False(t, migrated.TokenApplied)
-	require.True(t, db.Migrator().HasIndex(legacyTableName,
-		db.NamingStrategy.IndexName(legacyTableName, "operation_key")))
 }
 
 func TestBillingOperationMigrationSQLite(t *testing.T) {

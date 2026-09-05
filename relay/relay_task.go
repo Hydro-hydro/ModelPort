@@ -2,12 +2,14 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -524,6 +526,9 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	if err != nil || resp == nil {
 		return nil
 	}
+	if resp.Body == nil || resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil
+	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -535,27 +540,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		return nil
 	}
 
-	snap := task.Snapshot()
-
-	// 将上游最新状态更新到 task
-	if ti.Status != "" {
-		task.Status = model.TaskStatus(ti.Status)
-	}
-	if ti.Progress != "" {
-		task.Progress = ti.Progress
-	}
-	if strings.HasPrefix(ti.Url, "data:") {
-		// data: URI — kept in Data, not ResultURL
-	} else if ti.Url != "" {
-		task.PrivateData.ResultURL = ti.Url
-	} else if task.Status == model.TaskStatusSuccess {
-		// No URL from adaptor — construct proxy URL using public task ID
-		task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
-	}
-
-	if !snap.Equal(task.Snapshot()) {
-		_, _ = task.UpdateWithStatus(snap.Status)
-	}
+	applyRealtimeTaskResult(context.Background(), task, adaptor, ti)
 
 	// OpenAI Video API 由调用者的 ConvertToOpenAIVideo 分支处理
 	if isOpenAIVideoAPI {
@@ -577,6 +562,58 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		Data: out,
 	})
 	return respBody
+}
+
+// applyRealtimeTaskResult persists an upstream observation with the same CAS
+// and terminal billing rules as the background polling worker. A stale reader
+// may still observe the provider result, but it cannot overwrite a newer task
+// state or trigger a second settlement/refund.
+func applyRealtimeTaskResult(ctx context.Context, task *model.Task, adaptor service.TaskPollingAdaptor, ti *relaycommon.TaskInfo) bool {
+	if task == nil || ti == nil {
+		return false
+	}
+	if ti.Status == "" && ti.Progress == "" && ti.Url == "" && ti.Reason == "" {
+		return false
+	}
+
+	snap := task.Snapshot()
+	if ti.Status != "" {
+		task.Status = model.TaskStatus(ti.Status)
+	}
+	if ti.Progress != "" {
+		task.Progress = ti.Progress
+	}
+	if ti.Reason != "" {
+		task.FailReason = ti.Reason
+	}
+	isTerminal := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure
+	terminalTransition := isTerminal && snap.Status != task.Status
+	if isTerminal {
+		task.Progress = "100%"
+		if task.FinishTime == 0 {
+			task.FinishTime = time.Now().Unix()
+		}
+	}
+	if strings.HasPrefix(ti.Url, "data:") {
+		// data: URI — kept in Data, not ResultURL
+	} else if ti.Url != "" {
+		task.PrivateData.ResultURL = ti.Url
+	} else if task.Status == model.TaskStatusSuccess {
+		// No URL from adaptor — construct proxy URL using public task ID
+		task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
+	}
+
+	if snap.Equal(task.Snapshot()) {
+		return false
+	}
+	won, err := task.UpdateWithStatus(snap.Status)
+	if err != nil || !won {
+		return false
+	}
+	if terminalTransition {
+		service.FinalizeTaskBillingOnTerminal(ctx, adaptor, task, ti)
+	}
+	return true
 }
 
 // detectVideoFormat 从 Gemini/Vertex 原始响应中探测视频格式

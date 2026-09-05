@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -46,26 +47,24 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 	logger.LogInfo(ctx, fmt.Sprintf("检测到未完成的任务数有: %v", len(tasks)))
 	taskChannelM := make(map[int][]string)
 	taskM := make(map[string]*model.Midjourney)
-	nullTaskIds := make([]int, 0)
+	nullTasks := make([]*model.Midjourney, 0)
 	for _, task := range tasks {
 		if task.MjId == "" {
-			// 统计失败的未完成任务
-			nullTaskIds = append(nullTaskIds, task.Id)
+			// A task without an upstream ID cannot be polled. Finalize it one
+			// row at a time so a concurrent poller cannot overwrite its state,
+			// then refund only if this process won the CAS transition.
+			nullTasks = append(nullTasks, task)
 			continue
 		}
 		taskM[task.MjId] = task
 		taskChannelM[task.ChannelId] = append(taskChannelM[task.ChannelId], task.MjId)
 	}
-	if len(nullTaskIds) > 0 {
-		summary.NullTasksFailed = len(nullTaskIds)
-		err := model.MjBulkUpdateByTaskIds(nullTaskIds, map[string]any{
-			"status":   "FAILURE",
-			"progress": "100%",
-		})
-		if err != nil {
-			logger.LogError(ctx, fmt.Sprintf("Fix null mj_id task error: %v", err))
-		} else {
-			logger.LogInfo(ctx, fmt.Sprintf("Fix null mj_id task success: %v", nullTaskIds))
+	for _, task := range nullTasks {
+		if ctx.Err() != nil {
+			break
+		}
+		if failMidjourneyTaskWithoutUpstreamID(ctx, task) {
+			summary.NullTasksFailed++
 		}
 	}
 	if len(taskChannelM) == 0 {
@@ -90,17 +89,20 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 		midjourneyChannel, err := model.CacheGetChannel(channelId)
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("CacheGetChannel: %v", err))
-			err := model.MjBulkUpdate(taskIds, map[string]any{
-				"fail_reason": fmt.Sprintf("获取渠道信息失败，请联系管理员，渠道ID：%d", channelId),
-				"status":      "FAILURE",
-				"progress":    "100%",
-			})
-			if err != nil {
-				logger.LogInfo(ctx, fmt.Sprintf("UpdateMidjourneyTask error: %v", err))
-			}
+			// A cache miss/database error is a transient polling failure. Keep
+			// every task unfinished so a later leased pass can recover the
+			// channel and query the upstream instead of refunding prematurely.
 			continue
 		}
-		requestUrl := fmt.Sprintf("%s/mj/task/list-by-condition", *midjourneyChannel.BaseURL)
+		baseURL := strings.TrimRight(midjourneyChannel.GetBaseURL(), "/")
+		if baseURL == "" {
+			// A channel without a usable base URL cannot be queried yet. Keep
+			// the task pending so configuration repair or the timeout handler
+			// can handle it explicitly instead of panicking the poller.
+			logger.LogError(ctx, fmt.Sprintf("Midjourney channel #%d has no base URL", channelId))
+			continue
+		}
+		requestUrl := fmt.Sprintf("%s/mj/task/list-by-condition", baseURL)
 
 		body, err := common.Marshal(map[string]any{
 			"ids": taskIds,
@@ -202,7 +204,13 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 			}
 
 			shouldReturnQuota := false
-			if (task.Progress != "100%" && responseItem.FailReason != "") || (task.Progress == "100%" && task.Status == "FAILURE") {
+			if task.Status == "FAILURE" {
+				// Some upstreams return a terminal failure without a progress or
+				// reason field. Status is authoritative; always close the task and
+				// let the CAS winner perform the durable refund.
+				task.Progress = "100%"
+				shouldReturnQuota = task.Quota != 0
+			} else if task.Progress != "100%" && responseItem.FailReason != "" {
 				logger.LogInfo(ctx, task.MjId+" 构建失败，"+task.FailReason)
 				task.Progress = "100%"
 				if task.Quota != 0 {
@@ -221,6 +229,30 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 		report(totalChannels, totalChannels)
 	}
 	return summary
+}
+
+func failMidjourneyTaskWithoutUpstreamID(ctx context.Context, task *model.Midjourney) bool {
+	if task == nil || task.Id == 0 {
+		return false
+	}
+	oldStatus := task.Status
+	task.Status = "FAILURE"
+	task.Progress = "100%"
+	task.FinishTime = time.Now().UnixNano() / int64(time.Millisecond)
+	task.FailReason = "上游任务 ID 缺失，无法继续轮询"
+	won, err := task.UpdateWithStatus(oldStatus)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("failed to finalize Midjourney task %d without upstream id: %v", task.Id, err))
+		return false
+	}
+	if !won {
+		logger.LogInfo(ctx, fmt.Sprintf("Midjourney task %d already transitioned, skip", task.Id))
+		return false
+	}
+	if task.Quota > 0 && !service.RefundMidjourneyQuota(ctx, task, task.FailReason) {
+		logger.LogWarn(ctx, fmt.Sprintf("Midjourney task %d waits for refund after missing upstream id", task.Id))
+	}
+	return true
 }
 
 func checkMjTaskNeedUpdate(oldTask *model.Midjourney, newTask dto.MidjourneyDto) bool {

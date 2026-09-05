@@ -1,14 +1,19 @@
 package model
 
 import (
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/glebarez/sqlite"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestIsClickHouseDSN(t *testing.T) {
@@ -83,6 +88,7 @@ func TestClickHouseLogCreateTableSQL(t *testing.T) {
 	assert.Contains(t, withoutTTL, "ENGINE = MergeTree()")
 	assert.Contains(t, withoutTTL, "PARTITION BY toYYYYMM(toDateTime(created_at))")
 	assert.Contains(t, withoutTTL, "ORDER BY (created_at, request_id)")
+	assert.Contains(t, withoutTTL, "billing_operation_key Nullable(String) DEFAULT NULL")
 	assert.NotContains(t, withoutTTL, "TTL ")
 
 	withTTL := clickHouseLogCreateTableSQL(30)
@@ -99,6 +105,101 @@ func TestClickHouseCreateTableHasTTL(t *testing.T) {
 func TestClickHouseLogOrder(t *testing.T) {
 	assert.Equal(t, "created_at desc, request_id desc", clickHouseLogOrder(""))
 	assert.Equal(t, "logs.created_at desc, logs.request_id desc", clickHouseLogOrder("logs."))
+}
+
+func TestBillingLogOperationKey(t *testing.T) {
+	assert.Equal(t, "request:abc", billingLogOperationKey("request:abc"))
+	assert.Equal(t, "task:abc", billingLogOperationKey("task:abc:refund"))
+	assert.Equal(t, "task:abc", billingLogOperationKey("task:abc:adjustment:1234"))
+	assert.Equal(t, "", billingLogOperationKey("  "))
+}
+
+func TestClickHouseBillingLogIsIdempotentThroughMainOperation(t *testing.T) {
+	mainDB, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:billing-log-main-%d?mode=memory&cache=shared", time.Now().UnixNano())), &gorm.Config{})
+	require.NoError(t, err)
+	logDB, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:billing-log-log-%d?mode=memory&cache=shared", time.Now().UnixNano())), &gorm.Config{})
+	require.NoError(t, err)
+	mainSQL, err := mainDB.DB()
+	require.NoError(t, err)
+	mainSQL.SetMaxOpenConns(1)
+	logSQL, err := logDB.DB()
+	require.NoError(t, err)
+	logSQL.SetMaxOpenConns(1)
+	require.NoError(t, mainDB.AutoMigrate(&BillingOperation{}))
+	require.NoError(t, logDB.AutoMigrate(&Log{}))
+
+	originalDB, originalLogDB := DB, LOG_DB
+	originalMainType, originalLogType := common.MainDatabaseType(), common.LogDatabaseType()
+	DB, LOG_DB = mainDB, logDB
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeClickHouse)
+	initCol()
+	t.Cleanup(func() {
+		DB, LOG_DB = originalDB, originalLogDB
+		common.SetDatabaseTypes(originalMainType, originalLogType)
+		initCol()
+		_ = mainSQL.Close()
+		_ = logSQL.Close()
+	})
+
+	const operationKey = "request:clickhouse-idempotent"
+	_, err = EnsureBillingOperation(BillingOperationAttrs{
+		OperationKey: operationKey,
+		Status:       BillingOperationApplying,
+	})
+	require.NoError(t, err)
+	newLog := func(key string) *Log {
+		return &Log{Type: LogTypeConsume, BillingOperationKey: &key, Content: "billing"}
+	}
+	inserted, err := recordClickHouseBillingLog(newLog(operationKey), operationKey, "", true)
+	require.NoError(t, err)
+	assert.True(t, inserted)
+	inserted, err = recordClickHouseBillingLog(newLog(operationKey), operationKey, "", true)
+	require.NoError(t, err)
+	assert.False(t, inserted)
+
+	var count int64
+	require.NoError(t, logDB.Model(&Log{}).Where("billing_operation_key = ?", operationKey).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+	operation, err := GetBillingOperation(operationKey)
+	require.NoError(t, err)
+	assert.True(t, operation.LogApplied)
+
+	// Concurrent retries are serialized by the main-database operation row;
+	// exactly one worker should reach the ClickHouse INSERT.
+	concurrentKey := "request:clickhouse-concurrent"
+	_, err = EnsureBillingOperation(BillingOperationAttrs{
+		OperationKey: concurrentKey,
+		Status:       BillingOperationApplying,
+	})
+	require.NoError(t, err)
+	const workers = 8
+	results := make(chan error, workers)
+	var group sync.WaitGroup
+	group.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer group.Done()
+			_, writeErr := recordClickHouseBillingLog(newLog(concurrentKey), concurrentKey, "", true)
+			results <- writeErr
+		}()
+	}
+	group.Wait()
+	close(results)
+	for writeErr := range results {
+		require.NoError(t, writeErr)
+	}
+	require.NoError(t, logDB.Model(&Log{}).Where("billing_operation_key = ?", concurrentKey).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+
+	refundKey := operationKey + ":refund"
+	inserted, err = recordClickHouseBillingLog(newLog(refundKey), refundKey, "", false)
+	require.NoError(t, err)
+	assert.True(t, inserted)
+	inserted, err = recordClickHouseBillingLog(newLog(refundKey), refundKey, "", false)
+	require.NoError(t, err)
+	assert.False(t, inserted)
+	require.NoError(t, logDB.Model(&Log{}).Where("billing_operation_key = ?", refundKey).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
 }
 
 func TestBuildLogLikeConditionUsesStandardEscape(t *testing.T) {

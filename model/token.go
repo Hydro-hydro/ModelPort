@@ -7,7 +7,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
 
@@ -31,6 +30,10 @@ type Token struct {
 	AutoGroups         string         `json:"-" gorm:"type:text"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
+
+// ErrTokenQuotaInsufficient indicates that an atomic quota adjustment could
+// not be applied without making remain_quota or used_quota negative.
+var ErrTokenQuotaInsufficient = errors.New("token quota insufficient")
 
 func (token *Token) GetAutoGroups() ([]string, error) {
 	if token.AutoGroups == "" {
@@ -378,14 +381,37 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
+	if quota == 0 {
+		return nil
+	}
+
+	// Keep the cache and database adjustment in one logical operation.  A
+	// refund is only valid when the matching used quota exists; this prevents a
+	// retried refund from driving used_quota below zero.
 	if common.RedisEnabled {
-		gopool.Go(func() {
-			// 守卫式增量：哈希不存在时跳过，由下次读取从数据库水合，
-			// 绝不创建只有配额字段的残缺哈希。
-			if _, err := cacheApplyTokenQuotaDelta(tokenId, key, int64(quota)); err != nil {
-				common.SysLog("failed to increase token quota: " + err.Error())
+		result, cacheErr := cacheApplyTokenQuotaDelta(tokenId, key, int64(quota))
+		if cacheErr == nil && result == cacheQuotaMiss {
+			if _, hydrateErr := GetTokenByKey(key, true); hydrateErr == nil {
+				result, cacheErr = cacheApplyTokenQuotaDelta(tokenId, key, int64(quota))
 			}
-		})
+		}
+		if cacheErr == nil && result == cacheQuotaInsufficient {
+			return ErrTokenQuotaInsufficient
+		}
+		if cacheErr == nil && result == cacheQuotaOK {
+			if err = persistTokenQuotaDelta(tokenId, quota); err == nil {
+				return nil
+			}
+			// The database write failed after the cache increment.  Compensate
+			// the cache so a retry sees the original state.
+			if compensated, compensateErr := cacheApplyTokenQuotaDelta(tokenId, key, -int64(quota)); compensateErr != nil || compensated != cacheQuotaOK {
+				common.SysError(fmt.Sprintf("failed to compensate token quota refund: result=%d error=%v", compensated, compensateErr))
+			}
+			return err
+		}
+		if cacheErr != nil {
+			common.SysLog("token quota cache refund unavailable, falling back to database: " + cacheErr.Error())
+		}
 	}
 	if common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
@@ -395,26 +421,68 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 }
 
 func increaseTokenQuota(id int, quota int) (err error) {
-	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
+	if quota == 0 {
+		return nil
+	}
+	query := DB.Model(&Token{}).Where("id = ?", id)
+	if quota < 0 {
+		query = query.Where("unlimited_quota = ? OR remain_quota >= ?", true, -quota)
+	}
+	result := query.
+		Updates(map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota + ?", quota),
-			"used_quota":    gorm.Expr("used_quota - ?", quota),
+			"used_quota":    gorm.Expr("CASE WHEN used_quota >= ? THEN used_quota - ? ELSE 0 END", quota, quota),
 			"accessed_time": common.GetTimestamp(),
-		},
-	).Error
-	return err
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		var token Token
+		if err := DB.Unscoped().Select("id", "deleted_at").First(&token, id).Error; err != nil {
+			return err
+		}
+		if token.DeletedAt.Valid {
+			return gorm.ErrRecordNotFound
+		}
+		return ErrTokenQuotaInsufficient
+	}
+	return nil
 }
 
 func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
+	if quota == 0 {
+		return nil
+	}
+
+	// The database/cache operation is guarded by remain_quota.  Unlimited
+	// tokens are explicitly allowed through this condition and continue to
+	// update their accounting counters.
 	if common.RedisEnabled {
-		gopool.Go(func() {
-			if _, err := cacheApplyTokenQuotaDelta(id, key, int64(-quota)); err != nil {
-				common.SysLog("failed to decrease token quota: " + err.Error())
+		result, cacheErr := cacheApplyTokenQuotaDelta(id, key, -int64(quota))
+		if cacheErr == nil && result == cacheQuotaMiss {
+			if _, hydrateErr := GetTokenByKey(key, true); hydrateErr == nil {
+				result, cacheErr = cacheApplyTokenQuotaDelta(id, key, -int64(quota))
 			}
-		})
+		}
+		if cacheErr == nil && result == cacheQuotaInsufficient {
+			return ErrTokenQuotaInsufficient
+		}
+		if cacheErr == nil && result == cacheQuotaOK {
+			if err = persistTokenQuotaDelta(id, -quota); err == nil {
+				return nil
+			}
+			if compensated, compensateErr := cacheApplyTokenQuotaDelta(id, key, int64(quota)); compensateErr != nil || compensated != cacheQuotaOK {
+				common.SysError(fmt.Sprintf("failed to compensate token quota charge: result=%d error=%v", compensated, compensateErr))
+			}
+			return err
+		}
+		if cacheErr != nil {
+			common.SysLog("token quota cache charge unavailable, falling back to database: " + cacheErr.Error())
+		}
 	}
 	if common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
@@ -424,14 +492,30 @@ func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 }
 
 func decreaseTokenQuota(id int, quota int) (err error) {
-	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
+	if quota == 0 {
+		return nil
+	}
+	result := DB.Model(&Token{}).
+		Where("id = ? AND (unlimited_quota = ? OR remain_quota >= ?)", id, true, quota).
+		Updates(map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota - ?", quota),
 			"used_quota":    gorm.Expr("used_quota + ?", quota),
 			"accessed_time": common.GetTimestamp(),
-		},
-	).Error
-	return err
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		var token Token
+		if err := DB.Unscoped().Select("id", "deleted_at").First(&token, id).Error; err != nil {
+			return err
+		}
+		if token.DeletedAt.Valid {
+			return gorm.ErrRecordNotFound
+		}
+		return ErrTokenQuotaInsufficient
+	}
+	return nil
 }
 
 // CountUserTokens returns total number of tokens for the given user, used for pagination
