@@ -4474,9 +4474,6 @@
           "group": {
             "type": "string"
           },
-          "quota": {
-            "type": "integer"
-          },
           "used_quota": {
             "type": "integer"
           },
