@@ -19,8 +19,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    image: modelport-dev:local
-    container_name: modelport-dev
+    image: new-api-dev:local
+    container_name: new-api-dev
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -28,7 +28,7 @@ services:
       - dev_data:/data
     environment:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-modelport-dev}
-      - SQL_DSN=postgresql://root:${POSTGRES_PASSWORD:-modelport-dev}@postgres:5432/modelport
+      - SQL_DSN=postgresql://root:${POSTGRES_PASSWORD:-modelport-dev}@postgres:5432/new-api
       - REDIS_CONN_STRING=redis://redis
       - TZ=Asia/Shanghai
       - BATCH_UPDATE_ENABLED=true
@@ -59,13 +59,13 @@ services:
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-modelport-dev}
-      POSTGRES_DB: modelport
+      POSTGRES_DB: new-api
     volumes:
       - dev_pg_data:/var/lib/postgresql/data
     networks:
       - dev-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d modelport"]
+      test: ["CMD-SHELL", "pg_isready -U root -d new-api"]
       interval: 5s
       timeout: 3s
       retries: 5
