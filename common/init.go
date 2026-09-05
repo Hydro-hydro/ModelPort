@@ -232,3 +232,16 @@ func initConstantEnv() {
 	}
 
 }
+
+// RefreshFeatureDerivedSettings reapplies constants whose values depend on
+// persisted optional-feature settings. Environment initialization runs before
+// the database is opened, so a saved feature option can only be known after
+// InitDB loads it. Call this before publishing OptionMap or starting workers.
+func RefreshFeatureDerivedSettings() {
+	optionalTasksEnabled := usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) ||
+		usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins)
+	constant.UpdateTask = GetEnvOrDefaultBool("UPDATE_TASK", optionalTasksEnabled)
+	constant.TaskPluginEnabled = usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins)
+	constant.TaskPluginOverrideEnabled = constant.TaskPluginEnabled &&
+		GetEnvOrDefaultBool("TASK_PLUGIN_OVERRIDE_ENABLED", true)
+}

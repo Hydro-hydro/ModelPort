@@ -67,7 +67,7 @@ func buildCompletionRatioMetaValue(optionValues map[string]string) string {
 func GetOptions(c *gin.Context) {
 	var options []*model.Option
 	optionValues := make(map[string]string)
-	common.OptionMapRWMutex.Lock()
+	common.OptionMapRWMutex.RLock()
 	for k, v := range common.OptionMap {
 		if k == "theme.frontend" {
 			continue
@@ -92,7 +92,7 @@ func GetOptions(c *gin.Context) {
 			}
 		}
 	}
-	common.OptionMapRWMutex.Unlock()
+	common.OptionMapRWMutex.RUnlock()
 	options = append(options, &model.Option{
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),

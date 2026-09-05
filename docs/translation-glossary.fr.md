@@ -9,8 +9,8 @@ Ce document présente les principaux termes encore utilisés par l'édition pers
 | 倍率 | Ratio | Ratio | Multiplicateur utilisé pour calculer les prix des modèles et des tâches |
 | 令牌 | Jeton | Token | Identifiant d'accès API ou unité de texte traitée par un modèle |
 | 渠道 | Canal | Channel | Canal d'accès à un fournisseur d'API en amont |
-| 路由分组 | Groupe de routage | Route Group | Définit le routage, les modèles disponibles et le ratio de facturation |
-| 额度 | Quota | Quota | Quota de service du portefeuille administrateur ou d'une clé API |
+| 路由分组 | Groupe de routage | Route Group | Définit le routage, les modèles disponibles et le multiplicateur de coût |
+| 额度 | Quota | Quota | Limite d'accès d'un jeton API ou unité d'utilisation du modèle |
 
 ## Modèles et prix (Models and Pricing)
 
@@ -20,7 +20,7 @@ Ce document présente les principaux termes encore utilisés par l'édition pers
 | 补全 | Complétion | Completion | Contenu de sortie du modèle |
 | 模型倍率 | Ratio du modèle | Model Ratio | Ratio de facturation d'un modèle |
 | 固定价格 | Prix par appel | Price per call | Prix fixe par appel |
-| 按量计费 | Paiement à l'utilisation | Pay-as-you-go | Facturation selon l'utilisation réelle |
+| 按量记账 | Comptabilisation selon l'utilisation | Usage-based accounting | Enregistre l'utilisation réelle du modèle sans portefeuille |
 
 ## Compte administrateur (Administrator Account)
 
@@ -53,6 +53,6 @@ Ce document présente les principaux termes encore utilisés par l'édition pers
 
 ## Recommandations (Guidelines)
 
-- **Groupe de routage (Route Group)** désigne uniquement le routage des modèles et la facturation, pas un niveau de compte ni une permission utilisateur.
-- **Prix du modèle (Model Price)** désigne les données du catalogue et de facturation ; il ne s'agit pas d'un prix de recharge, d'abonnement ou de vente publique.
+- **Groupe de routage (Route Group)** désigne uniquement le routage des modèles et le calcul des coûts, pas un niveau de compte ni une permission utilisateur.
+- **Prix du modèle (Model Price)** désigne les données du catalogue et du calcul d'usage ; il ne s'agit pas d'un prix de recharge, d'abonnement ou de vente publique.
 - Conserver **Ratio**, **Token**, **API Token** et **Access Token** comme termes techniques lorsque le contexte l'exige.

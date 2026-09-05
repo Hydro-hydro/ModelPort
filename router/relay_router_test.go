@@ -91,6 +91,7 @@ func TestListModelsSupportsOpenAIAndGeminiAuthentication(t *testing.T) {
 
 func TestSetRelayRouterOmitsDisabledMediaRoutes(t *testing.T) {
 	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "false")
 
 	engine := gin.New()
 	SetRelayRouter(engine)
@@ -108,6 +109,21 @@ func TestSetRelayRouterOmitsDisabledMediaRoutes(t *testing.T) {
 		_, registered := routes[route]
 		assert.False(t, registered, route)
 	}
+}
+
+func TestSetRelayRouterRegistersCoreResponsesRouteWhenPluginsDisabled(t *testing.T) {
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "false")
+
+	engine := gin.New()
+	SetRelayRouter(engine)
+
+	routes := make(map[string]struct{})
+	for _, route := range engine.Routes() {
+		routes[route.Method+" "+route.Path] = struct{}{}
+	}
+
+	_, registered := routes[http.MethodPost+" /v1/responses"]
+	assert.True(t, registered)
 }
 
 func setupRelayRouterTestDB(t *testing.T) {

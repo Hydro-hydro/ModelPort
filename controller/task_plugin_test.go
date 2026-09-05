@@ -23,12 +23,25 @@ import (
 
 func setupTaskPluginControllerTest(t *testing.T) {
 	t.Helper()
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+	originalTaskPluginEnabled := constant.TaskPluginEnabled
+	originalTaskPluginOverrideEnabled := constant.TaskPluginOverrideEnabled
+	constant.TaskPluginEnabled = true
+	constant.TaskPluginOverrideEnabled = true
+	jsplugin.DefaultRegistry.SetEnabled(true)
+	jsplugin.DefaultRegistry.SetOverrideEnabled(true)
 	originalDB := model.DB
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, database.AutoMigrate(&model.TaskPlugin{}, &model.Channel{}, &model.Ability{}, &model.Task{}, &model.Option{}))
 	model.DB = database
-	t.Cleanup(func() { model.DB = originalDB })
+	t.Cleanup(func() {
+		model.DB = originalDB
+		constant.TaskPluginEnabled = originalTaskPluginEnabled
+		constant.TaskPluginOverrideEnabled = originalTaskPluginOverrideEnabled
+		jsplugin.DefaultRegistry.SetEnabled(originalTaskPluginEnabled)
+		jsplugin.DefaultRegistry.SetOverrideEnabled(originalTaskPluginOverrideEnabled)
+	})
 }
 
 const lifecyclePluginSource = `
@@ -312,6 +325,7 @@ func TestMasterSwitchEmptiesOptionsAndKeepsList(t *testing.T) {
 }
 
 func TestGetTaskPluginOptionsIncludesUsageSchema(t *testing.T) {
+	setupTaskPluginControllerTest(t)
 	const key = "usage-options-probe"
 	source := `
 export const meta = {

@@ -102,6 +102,15 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/responses/compact", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIResponsesCompaction)
 		})
+		// Task-plugin mode registers the shared /v1/responses route through the
+		// host-protocol registry so plugin-owned models can claim it while
+		// ordinary models fall back to the core Responses relay. In the default
+		// personal mode, register the core route directly.
+		if !usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+			httpRouter.POST("/responses", func(c *gin.Context) {
+				controller.Relay(c, types.RelayFormatOpenAIResponses)
+			})
+		}
 
 		// alpha search related routes (Codex standalone web search)
 		httpRouter.POST("/alpha/search", func(c *gin.Context) {

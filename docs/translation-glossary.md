@@ -11,8 +11,8 @@ This document lists the core terminology still used by the personal edition so t
 | 倍率 | Ratio | 用于计算模型和任务价格的乘数因子 | Multiplier used to calculate model and task prices |
 | 令牌 | Token | API 访问凭证，也指模型处理的文本单元 | API access credential or text unit processed by a model |
 | 渠道 | Channel | 上游 API 服务提供商的接入通道 | Access channel for an upstream API provider |
-| 路由分组 | Route Group | 决定渠道路由、模型可用范围和计费倍率 | Selects routing, model availability, and billing ratio |
-| 额度 | Quota | 管理员钱包或 API Token 的服务额度 | Service quota held by the administrator wallet or an API Token |
+| 路由分组 | Route Group | 决定渠道路由、模型可用范围和成本倍率 | Selects routing, model availability, and cost multiplier |
+| 额度 | Quota | API Token 的访问上限或本次模型用量单位 | Token access limit or model-usage unit for one request |
 
 ## 模型相关 (Model Related)
 
@@ -25,7 +25,7 @@ This document lists the core terminology still used by the personal edition so t
 | 模型倍率 | Model Ratio | 不同模型的计费倍率 | Billing ratio for different models |
 | 补全倍率 | Completion Ratio | 输出内容的额外计费倍率 | Additional billing ratio for output content |
 | 固定价格 | Price per call | 按次计费的价格 | Fixed price per call |
-| 按量计费 | Pay-as-you-go | 根据实际用量计费 | Billing based on actual usage |
+| 按量记账 | Usage-based accounting | 根据实际模型用量记录费用，不涉及钱包余额 | Records model usage without a wallet balance |
 | 按次计费 | Pay-per-call | 每次调用固定价格 | Fixed price per invocation |
 
 ## 管理员账户 (Administrator Account)
@@ -60,7 +60,7 @@ This document lists the core terminology still used by the personal edition so t
 ## 翻译注意事项 (Translation Guidelines)
 
 - **路由分组 (Route Group)** 只表示模型路由和计费分组，不表示账户等级或用户权限。
-- **额度 (Quota)** 根据上下文可以指管理员钱包额度、API Token 额度或模型处理额度。
+- **额度 (Quota)** 根据上下文可以指 API Token 访问上限或模型处理用量单位，不表示个人钱包余额。
 - **Token** 根据上下文可能指 API Token、Access Token 或文本 Token。
 - **模型价格 (Model Price)** 是模型目录和计费配置，不表示充值、订阅或公开商业售卖价格。
 - **倍率 (Ratio)** 应保持为价格计算的乘数因子。

@@ -184,6 +184,7 @@ func InitDB() (err error) {
 		if err := loadPersistedOptionalFeatureSettings(); err != nil {
 			return err
 		}
+		common.RefreshFeatureDerivedSettings()
 		if !common.IsMasterNode {
 			return nil
 		}
