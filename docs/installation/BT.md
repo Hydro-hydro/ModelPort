@@ -1,6 +1,6 @@
 # 宝塔面板部署教程
 
-本文档提供使用宝塔面板 Docker 功能部署 New API 的图文教程。
+本文档提供使用宝塔面板 Docker 功能从当前仓库构建并部署 ModelPort 的步骤。
 
 > 📖 官方文档：[宝塔面板部署](https://docs.newapi.pro/zh/docs/installation/deployment-methods/bt-docker-installation)
 
@@ -32,15 +32,15 @@
 
 ***
 
-## 步骤三：安装 New API
+## 步骤三：安装 ModelPort
 
-### 方法一：使用宝塔应用商店（推荐）
+### 方法一：使用宝塔应用商店（仅适用于提供当前 ModelPort 构建的应用条目）
 
 1. 在宝塔面板 Docker 功能中，点击 **应用商店**
-2. 搜索并找到 **New-API**
+2. 搜索并找到 **ModelPort**；如果应用商店没有当前版本条目，请使用下面的源码 Compose 方法
 3. 点击 **安装**
 4. 配置以下基本选项：
-   - **容器名称**：可自定义，默认为 `new-api`
+   - **容器名称**：可自定义，默认为 `modelport`
    - **端口映射**：默认为 `3000:3000`
    - **环境变量**：
      - `SESSION_SECRET`：会话密钥（**必填**，多机部署时必须一致）
@@ -48,32 +48,39 @@
 5. 点击 **确认** 开始安装
 6. 等待安装完成后，访问 `http://您的服务器IP:3000` 即可使用
 
-### 方法二：使用 Docker Compose
+### 方法二：使用 Docker Compose（推荐）
 
-1. 在宝塔面板中创建网站目录，如 `/www/wwwroot/new-api`
-2. 创建 `docker-compose.yml` 文件：
+1. 在宝塔面板中创建网站目录，如 `/www/wwwroot/modelport`
+2. 将当前 ModelPort 仓库上传或克隆到该目录，并创建 `docker-compose.yml` 文件：
 
 ```yaml
-version: '3'
 services:
-  new-api:
-    image: calciumion/new-api:latest
-    container_name: new-api
-    restart: always
+  modelport:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: modelport:local
+    container_name: modelport
+    restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
       - ./data:/data
+      - ./logs:/app/logs
     environment:
-      - SESSION_SECRET=your_session_secret_here  # 请修改为随机字符串
+      - SESSION_SECRET=${SESSION_SECRET:?请先设置随机 SESSION_SECRET}
+      - CRYPTO_SECRET=${CRYPTO_SECRET:-}
       - TZ=Asia/Shanghai
 ```
 
-1. 在终端中进入目录并启动：
+默认 Compose 使用 SQLite，不启动 PostgreSQL 或 Redis；如需外部服务，使用环境变量传入 `SQL_DSN`、`LOG_SQL_DSN` 和 `REDIS_CONN_STRING`。
+本项目只支持全新部署，不支持旧 New API 数据库迁移；请使用新的 `./data` 目录完成初始化。
+
+3. 在终端中进入目录并启动：
 
 ```bash
-cd /www/wwwroot/new-api
-docker-compose up -d
+cd /www/wwwroot/modelport
+docker compose up -d --build
 ```
 
 ***
@@ -122,14 +129,12 @@ volumes:
   - ./data:/data
 ```
 
-### Q4：如何更新版本？
+### Q4：如何更新当前源码版本？
 
 ```bash
-# 拉取最新镜像
-docker pull calciumion/new-api:latest
-
-# 重启容器
-docker-compose down && docker-compose up -d
+# 在仓库目录更新源码后重新构建
+git pull
+docker compose up -d --build
 ```
 
 ***
@@ -148,4 +153,3 @@ docker-compose down && docker-compose up -d
 ![宝塔面板 Docker 安装](https://github.com/user-attachments/assets/7a6fc03e-c457-45e4-b8f9-184508fc26b0)
 
 > ⚠️ 注意：密钥为环境变量 `SESSION_SECRET`，请务必设置！
-

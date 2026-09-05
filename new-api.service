@@ -1,16 +1,19 @@
 # File path: /etc/systemd/system/new-api.service
+# ModelPort 使用当前仓库构建出的 new-api 可执行文件；服务单元名称保留
+# 以便与上游 New API 的既有部署文档和归属信息对应。
 # sudo systemctl daemon-reload
 # sudo systemctl start new-api
 # sudo systemctl enable new-api
 # sudo systemctl status new-api
 [Unit]
-Description=One API Service
+Description=ModelPort Personal API Gateway
 After=network.target
 
 [Service]
 User=ubuntu  # 注意修改用户名
-WorkingDirectory=/path/to/new-api  # 注意修改路径
-ExecStart=/path/to/new-api/new-api --port 3000 --log-dir /path/to/new-api/logs  # 注意修改路径和端口号
+WorkingDirectory=/opt/modelport  # 按实际安装目录修改
+ExecStart=/opt/modelport/new-api --port 3000 --log-dir /opt/modelport/logs  # 按实际路径和端口修改
+EnvironmentFile=-/opt/modelport/.env
 Restart=always
 RestartSec=5
 
