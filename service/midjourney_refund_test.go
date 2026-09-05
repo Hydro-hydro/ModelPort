@@ -73,7 +73,7 @@ func TestMidjourneySessionConsumptionAndRefundUseDurableOperation(t *testing.T) 
 	assert.Equal(t, int64(2), countLogs(t))
 }
 
-func TestRefundMidjourneyQuotaUsesDurableOperationOnce(t *testing.T) {
+func TestRefundMidjourneyQuotaRequiresExistingOperation(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()
 
@@ -99,22 +99,15 @@ func TestRefundMidjourneyQuotaUsesDurableOperationOnce(t *testing.T) {
 	}
 	require.NoError(t, task.Insert())
 
-	require.True(t, RefundMidjourneyQuota(ctx, task, "upstream failure"))
-	operation, err := model.GetBillingOperation(task.BillingOperationKey)
-	require.NoError(t, err)
-	assert.Equal(t, model.BillingOperationRefunded, operation.Status)
-	assert.True(t, operation.RefundTokenApplied)
-	assert.True(t, operation.RefundStatsApplied)
-	assert.True(t, operation.RefundLogApplied)
+	assert.False(t, RefundMidjourneyQuota(ctx, task, "upstream failure"))
+	assert.Empty(t, task.BillingOperationKey)
 	usedQuota, _ := getUserUsageAccounting(t, userID)
-	assert.Zero(t, usedQuota)
-	assert.Zero(t, getChannelUsedQuota(t, channelID))
-	assert.Equal(t, 5000, getTokenRemainQuota(t, tokenID))
-	assert.Zero(t, getTokenUsedQuota(t, tokenID))
-	assert.Equal(t, int64(1), countLogs(t))
-
-	// A retry observes the durable terminal marker and only clears the local
-	// task amount; it must not restore quota or write another refund log.
-	assert.True(t, RefundMidjourneyQuota(ctx, task, "duplicate poll"))
-	assert.Equal(t, int64(1), countLogs(t))
+	assert.Equal(t, chargedQuota, usedQuota)
+	assert.Equal(t, int64(chargedQuota), getChannelUsedQuota(t, channelID))
+	assert.Equal(t, 2000, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, chargedQuota, getTokenUsedQuota(t, tokenID))
+	assert.Zero(t, countLogs(t))
+	var operationCount int64
+	require.NoError(t, model.DB.Model(&model.BillingOperation{}).Count(&operationCount).Error)
+	assert.Zero(t, operationCount)
 }

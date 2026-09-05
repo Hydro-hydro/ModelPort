@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -49,18 +48,43 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	if quota < 0 {
 		return false, errors.New("quota cannot be negative")
 	}
+	if relayInfo.Billing == nil {
+		return false, errors.New("Midjourney billing session is required")
+	}
+	provider, ok := relayInfo.Billing.(interface{ OperationKey() string })
+	if !ok {
+		return false, errors.New("Midjourney billing session does not expose an operation key")
+	}
+	operationKey := strings.TrimSpace(provider.OperationKey())
+	if operationKey == "" {
+		return false, errors.New("Midjourney billing operation key is required")
+	}
+	operation, err := model.GetBillingOperation(operationKey)
+	if err != nil {
+		return false, fmt.Errorf("load Midjourney billing operation %s: %w", operationKey, err)
+	}
 	task.Quota = quota
 	task.BillingChannelId = task.ChannelId
 	if relayInfo.ChannelMeta != nil && relayInfo.ChannelId > 0 {
 		task.BillingChannelId = relayInfo.ChannelId
 	}
+	if operation.UserID != relayInfo.UserId {
+		return false, fmt.Errorf("Midjourney billing operation %s belongs to user %d", operationKey, operation.UserID)
+	}
+	if operation.TokenID != relayInfo.TokenId {
+		return false, fmt.Errorf("Midjourney billing operation %s belongs to token %d", operationKey, operation.TokenID)
+	}
+	if operation.ChannelID != task.BillingChannelId {
+		return false, fmt.Errorf("Midjourney billing operation %s belongs to channel %d", operationKey, operation.ChannelID)
+	}
+	if operation.PreConsumedQuota != quota {
+		return false, fmt.Errorf("Midjourney billing operation %s reserved quota %d, expected %d", operationKey, operation.PreConsumedQuota, quota)
+	}
 	// The request billing session is created before the Midjourney row is
 	// inserted. Persist its operation key on the task so a later poller can
 	// resume or refund the same durable operation after the request process has
 	// exited.
-	if provider, ok := relayInfo.Billing.(interface{ OperationKey() string }); ok {
-		task.BillingOperationKey = provider.OperationKey()
-	}
+	task.BillingOperationKey = operationKey
 	return true, nil
 }
 
@@ -77,52 +101,38 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 		return false, errors.New("Midjourney task must be persisted before billing")
 	}
 
-	// Midjourney routes reserve token quota before contacting the upstream.
-	// Reuse that session here so the successful task does not deduct the token
-	// a second time. Direct internal callers without a session use the same
-	// atomic helper as the request path.
-	if relayInfo.Billing != nil {
-		billingErr := relayInfo.Billing.Settle(task.Quota)
-		if billingErr != nil {
-			task.TokenId = 0
-		} else if task.Quota > 0 && !relayInfo.IsPlayground {
-			task.TokenId = relayInfo.TokenId
-		}
-		if updateErr := task.UpdateBillingState(); updateErr != nil {
-			return true, errors.Join(billingErr, fmt.Errorf("update Midjourney billing state: %w", updateErr))
-		}
-		return true, billingErr
+	if relayInfo.Billing == nil {
+		return false, errors.New("Midjourney billing session is required")
 	}
-
-	if task.Quota > 0 && !relayInfo.IsPlayground {
-		billingErr := model.DecreaseTokenQuotaImmediate(relayInfo.TokenId, relayInfo.TokenKey, task.Quota)
-		if billingErr != nil {
-			task.TokenId = 0
-			if updateErr := task.UpdateBillingState(); updateErr != nil {
-				return true, errors.Join(billingErr, fmt.Errorf("update Midjourney billing state: %w", updateErr))
-			}
-			// Keep the task's charge marker intact. A later refund worker can
-			// reconcile the usage/log components even though the Token mutation
-			// failed in this attempt.
-			return true, billingErr
-		}
+	provider, ok := relayInfo.Billing.(interface{ OperationKey() string })
+	if !ok {
+		return false, errors.New("Midjourney billing session does not expose an operation key")
 	}
-	if task.Quota == 0 || relayInfo.IsPlayground {
-		task.Quota = 0
+	sessionKey := strings.TrimSpace(provider.OperationKey())
+	taskKey := strings.TrimSpace(task.BillingOperationKey)
+	if sessionKey == "" || taskKey == "" {
+		return false, errors.New("Midjourney billing operation key is required")
+	}
+	if sessionKey != taskKey {
+		return false, fmt.Errorf("Midjourney task billing operation %s does not match session %s", taskKey, sessionKey)
+	}
+	operation, err := loadMidjourneyBillingOperation(task)
+	if err != nil {
+		return false, err
+	}
+	if operation.TokenID != relayInfo.TokenId {
+		return false, fmt.Errorf("Midjourney billing operation %s belongs to token %d", taskKey, operation.TokenID)
+	}
+	billingErr := relayInfo.Billing.Settle(task.Quota)
+	if billingErr != nil {
 		task.TokenId = 0
-		task.BillingChannelId = 0
-		if updateErr := task.UpdateBillingState(); updateErr != nil {
-			return false, updateErr
-		}
-		return false, nil
+	} else if task.Quota > 0 && !relayInfo.IsPlayground {
+		task.TokenId = relayInfo.TokenId
 	}
-
-	task.TokenId = 0
-	task.TokenId = relayInfo.TokenId
 	if updateErr := task.UpdateBillingState(); updateErr != nil {
-		return true, fmt.Errorf("update Midjourney billing state: %w", updateErr)
+		return true, errors.Join(billingErr, fmt.Errorf("update Midjourney billing state: %w", updateErr))
 	}
-	return true, nil
+	return true, billingErr
 }
 
 // RecordMidjourneyTaskConsumption persists the consume log and usage counters
@@ -211,9 +221,9 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		ctx = context.Background()
 	}
 
-	operation, err := ensureMidjourneyBillingOperation(task)
+	operation, err := loadMidjourneyBillingOperation(task)
 	if err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("创建 Midjourney 退款操作失败 task %s: %v", task.MjId, err))
+		logger.LogWarn(ctx, fmt.Sprintf("加载 Midjourney 退款操作失败 task %s: %v", task.MjId, err))
 		return false
 	}
 	key := operation.OperationKey
@@ -269,9 +279,6 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	}
 	if !operation.RefundTokenApplied {
 		tokenID := operation.TokenID
-		if tokenID <= 0 {
-			tokenID = task.TokenId
-		}
 		tokenRefundQuota := quota
 		if !operation.TokenApplied && operation.TokenReserved && operation.TokenReservedQuota > 0 {
 			tokenRefundQuota = operation.TokenReservedQuota
@@ -351,85 +358,29 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	return clearMidjourneyTaskQuota(task, ctx)
 }
 
-// ensureMidjourneyBillingOperation returns the operation associated with a
-// task. New requests persist the request session key; internal task runners use
-// a deterministic task key so every retry addresses the same operation.
-func ensureMidjourneyBillingOperation(task *model.Midjourney) (*model.BillingOperation, error) {
+// loadMidjourneyBillingOperation returns the durable operation created by the
+// request billing session. Personal mode only supports current-schema tasks;
+// missing operation keys or rows are invalid and are never reconstructed.
+func loadMidjourneyBillingOperation(task *model.Midjourney) (*model.BillingOperation, error) {
 	if task == nil {
 		return nil, errors.New("Midjourney task is nil")
 	}
 	key := strings.TrimSpace(task.BillingOperationKey)
 	if key == "" {
-		switch {
-		case task.Id > 0:
-			key = fmt.Sprintf("midjourney:id:%d", task.Id)
-		case task.MjId != "":
-			key = "midjourney:mj:" + task.MjId
-		default:
-			return nil, errors.New("Midjourney task has no stable billing key")
-		}
-		task.BillingOperationKey = key
+		return nil, errors.New("Midjourney task billing operation key is required")
 	}
-
-	operation, err := model.EnsureBillingOperation(model.BillingOperationAttrs{
-		OperationKey:     key,
-		UserID:           task.UserId,
-		TokenID:          task.TokenId,
-		ChannelID:        task.GetBillingChannelId(),
-		PreConsumedQuota: task.Quota,
-		ActualQuota:      task.Quota,
-		ActualQuotaSet:   true,
-	})
+	operation, err := model.GetBillingOperation(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load Midjourney billing operation %s: %w", key, err)
 	}
-	// Historical Midjourney rows were persisted after the request had already
-	// charged token quota and usage aggregates, but they did not carry a durable
-	// operation marker. Reconstruct those component markers once for the
-	// deterministic midjourney:* operation so a retry can reverse the original
-	// charge exactly once. Request-bound operations are owned by BillingSession
-	// and must not be inferred here.
-	if strings.HasPrefix(key, "midjourney:") && operation.RequestID == "" {
-		updates := map[string]any{"updated_at": common.GetTimestamp()}
-		changed := false
-		if task.Quota > 0 && !operation.StatsApplied {
-			updates["stats_applied"] = true
-			updates["stats_quota"] = task.Quota
-			updates["stats_quota_set"] = true
-			changed = true
-		}
-		if task.TokenId > 0 && task.Quota > 0 && !operation.TokenReserved && !operation.TokenApplied {
-			updates["token_id"] = task.TokenId
-			updates["token_reserved"] = true
-			updates["token_reserved_quota"] = task.Quota
-			changed = true
-		}
-		if changed {
-			if err := model.DB.Model(&model.BillingOperation{}).
-				Where("operation_key = ?", key).Updates(updates).Error; err != nil {
-				return nil, err
-			}
-			operation, err = model.GetBillingOperation(key)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-	if operation.UserID != 0 && operation.UserID != task.UserId {
+	if operation.UserID != task.UserId {
 		return nil, fmt.Errorf("Midjourney billing operation %s belongs to user %d", key, operation.UserID)
 	}
-	if operation.TokenID == 0 && task.TokenId > 0 {
-		if err := model.DB.Model(&model.BillingOperation{}).
-			Where("operation_key = ? AND token_id = ?", key, 0).
-			Updates(map[string]any{"token_id": task.TokenId, "updated_at": common.GetTimestamp()}).Error; err != nil {
-			return nil, err
-		}
-		operation.TokenID = task.TokenId
+	if task.TokenId > 0 && operation.TokenID != task.TokenId {
+		return nil, fmt.Errorf("Midjourney billing operation %s belongs to token %d", key, operation.TokenID)
 	}
-	if task.Id > 0 {
-		if err := task.UpdateBillingState(); err != nil {
-			return nil, err
-		}
+	if operation.ChannelID != task.GetBillingChannelId() {
+		return nil, fmt.Errorf("Midjourney billing operation %s belongs to channel %d", key, operation.ChannelID)
 	}
 	return operation, nil
 }
@@ -591,7 +542,7 @@ func DoMidjourneyHttpRequest(c *gin.Context, timeout time.Duration, fullRequestU
 	var mapResult map[string]interface{}
 	// if get request, no need to read request body
 	if c.Request.Method != "GET" {
-		err := json.NewDecoder(c.Request.Body).Decode(&mapResult)
+		err := common.DecodeJson(c.Request.Body, &mapResult)
 		if err != nil {
 			return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "read_request_body_failed", http.StatusInternalServerError), nullBytes, err
 		}
@@ -613,7 +564,7 @@ func DoMidjourneyHttpRequest(c *gin.Context, timeout time.Duration, fullRequestU
 			mapResult["prompt"] = prompt
 		}
 	}
-	reqBody, err := json.Marshal(mapResult)
+	reqBody, err := common.Marshal(mapResult)
 	if err != nil {
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "marshal_request_body_failed", http.StatusInternalServerError), nullBytes, err
 	}
@@ -660,9 +611,9 @@ func DoMidjourneyHttpRequest(c *gin.Context, timeout time.Duration, fullRequestU
 	if len(responseBody) == 0 {
 		return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "empty_response_body", statusCode), responseBody, nil
 	} else {
-		err = json.Unmarshal(responseBody, &midjResponse)
+		err = common.Unmarshal(responseBody, &midjResponse)
 		if err != nil {
-			err2 := json.Unmarshal(responseBody, &midjourneyUploadsResponse)
+			err2 := common.Unmarshal(responseBody, &midjourneyUploadsResponse)
 			if err2 != nil {
 				return MidjourneyErrorWithStatusCodeWrapper(constant.MjErrorUnknown, "unmarshal_response_body_failed", statusCode), responseBody, err
 			}
