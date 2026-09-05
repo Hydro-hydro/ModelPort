@@ -157,6 +157,9 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 // SettleBilling executes usage settlement through the request's BillingSession.
 // A session is mandatory so no user-balance fallback can be selected.
 func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
+	if relayInfo == nil {
+		return fmt.Errorf("relay info is required for usage settlement")
+	}
 	if relayInfo.Billing != nil {
 		// 普通请求的终态结算只依赖 UsageAccounting；完整的
 		// BillingSettler 能力仍保留给追加预扣和会话状态调用点。
@@ -189,5 +192,12 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 		return nil
 	}
 
+	// Free-model requests intentionally skip pre-consumption and therefore do
+	// not have a BillingSession. A zero-usage settlement is the corresponding
+	// no-op; a positive amount without a session indicates a broken caller and
+	// must remain visible as an error instead of silently charging elsewhere.
+	if actualQuota == 0 {
+		return nil
+	}
 	return fmt.Errorf("billing session is required for usage settlement")
 }

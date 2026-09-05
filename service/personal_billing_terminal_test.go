@@ -11,6 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSettleBillingWithoutSessionTreatsZeroUsageAsNoOp(t *testing.T) {
+	require.NoError(t, SettleBilling(newPersonalBillingTestContext(), &relaycommon.RelayInfo{}, 0))
+}
+
+func TestSettleBillingWithoutSessionRejectsPositiveUsage(t *testing.T) {
+	err := SettleBilling(newPersonalBillingTestContext(), &relaycommon.RelayInfo{}, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "billing session is required")
+}
+
 func TestPersonalBillingTerminalRefundsPreConsumedQuotaExactlyOnce(t *testing.T) {
 	truncate(t)
 
