@@ -6,7 +6,7 @@ DEV_POSTGRES_SERVICE = postgres
 DEV_API_SERVICE = new-api
 DEV_POSTGRES_DB = new-api
 DEV_POSTGRES_USER = root
-DEV_SQLITE_PATH ?= one-api.db
+DEV_SQLITE_PATH ?= modelport.db
 
 .PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
 
