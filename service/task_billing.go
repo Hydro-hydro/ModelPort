@@ -121,7 +121,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		return
 	}
 	if err := model.RecordConsumeLogChecked(c, info.UserId, logParams); err == nil {
-		_ = model.MarkBillingOperationComponent(operation.OperationKey, model.BillingComponentLog)
+		if markErr := model.MarkBillingOperationComponent(operation.OperationKey, model.BillingComponentLog); markErr != nil {
+			logger.LogWarn(c, fmt.Sprintf("任务消费日志完成标记失败 task %s: %v", task.TaskID, markErr))
+		}
 	} else {
 		logger.LogWarn(c, fmt.Sprintf("任务消费日志写入失败 task %s: %v", task.TaskID, err))
 	}
@@ -144,9 +146,17 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 	if operation, err := model.GetBillingOperation(operation.OperationKey); err == nil &&
 		operation.TokenApplied && operation.StatsApplied && operation.LogApplied &&
 		operation.FinalUsageApplied {
-		_, _ = model.UpdateBillingOperationStatus(operation.OperationKey,
+		updated, transitionErr := model.UpdateBillingOperationStatus(operation.OperationKey,
 			[]model.BillingOperationStatus{model.BillingOperationApplying, model.BillingOperationReserved},
 			model.BillingOperationSettled, "", common.GetTimestamp())
+		if transitionErr != nil {
+			logger.LogWarn(c, fmt.Sprintf("任务账单终态写入失败 task %s: %v", task.TaskID, transitionErr))
+		} else if !updated {
+			current, getErr := model.GetBillingOperation(operation.OperationKey)
+			if getErr != nil || current.Status != model.BillingOperationSettled {
+				logger.LogWarn(c, fmt.Sprintf("任务账单终态转换被拒绝 task %s: state=%v error=%v", task.TaskID, current, getErr))
+			}
+		}
 	}
 }
 
@@ -729,10 +739,16 @@ func finalizeTaskBillingOperation(task *model.Task, actualQuota int) {
 		!operation.StatsApplied || !operation.LogApplied || !operation.FinalUsageApplied {
 		return
 	}
-	if _, err := model.UpdateBillingOperationStatus(key,
+	updated, err := model.UpdateBillingOperationStatus(key,
 		[]model.BillingOperationStatus{model.BillingOperationReserved, model.BillingOperationApplying},
-		model.BillingOperationSettled, "", common.GetTimestamp()); err != nil {
+		model.BillingOperationSettled, "", common.GetTimestamp())
+	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to settle task billing operation task=%s: %v", task.TaskID, err))
+	} else if !updated {
+		current, getErr := model.GetBillingOperation(key)
+		if getErr != nil || current.Status != model.BillingOperationSettled {
+			common.SysLog(fmt.Sprintf("task billing terminal transition rejected task=%s state=%v error=%v", task.TaskID, current, getErr))
+		}
 	}
 }
 

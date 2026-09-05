@@ -51,6 +51,7 @@ func TestRefundTaskQuotaAfterTerminalReversesSettledOperationOnce(t *testing.T) 
 	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
 		require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, component))
 	}
+	require.NoError(t, model.MarkBillingOperationFinalUsage(operation.OperationKey, charged))
 	settled, err := model.UpdateBillingOperationStatus(operation.OperationKey,
 		[]model.BillingOperationStatus{model.BillingOperationReserved},
 		model.BillingOperationSettled, "", common.GetTimestamp())

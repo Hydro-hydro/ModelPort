@@ -414,12 +414,10 @@ func ReserveBillingOperationToken(operationKey string, tokenID int, tokenKey str
 				}).Error
 		}
 		delta := targetQuota - reservedQuota
-		result := tx.Model(&Token{}).Where("id = ?", tokenID)
-		if !unlimited {
-			result = result.Where("unlimited_quota = ? OR remain_quota >= ?", true, delta)
-		}
+		result := tx.Model(&Token{}).
+			Where("id = ? AND (unlimited_quota = ? OR remain_quota >= ?)", tokenID, true, delta)
 		result = result.Updates(map[string]any{
-			"remain_quota":  gorm.Expr("remain_quota - ?", delta),
+			"remain_quota":  gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota - ? END", true, delta),
 			"used_quota":    gorm.Expr("used_quota + ?", delta),
 			"accessed_time": common.GetTimestamp(),
 		})
@@ -585,17 +583,17 @@ func applyBillingOperationTokenAdjustment(operationKey string, tokenID int, toke
 		delta := targetQuota - currentQuota
 		if delta != 0 {
 			result := tx.Model(&Token{}).Where("id = ?", tokenID)
-			if delta > 0 && !unlimited {
+			if delta > 0 {
 				result = result.Where("unlimited_quota = ? OR remain_quota >= ?", true, delta)
 			}
 			updates := map[string]any{
-				"remain_quota":  gorm.Expr("remain_quota + ?", -delta),
+				"remain_quota":  gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota + ? END", true, -delta),
 				"used_quota":    gorm.Expr("used_quota + ?", delta),
 				"accessed_time": common.GetTimestamp(),
 			}
 			if delta < 0 {
 				amount := -delta
-				updates["remain_quota"] = gorm.Expr("remain_quota + ?", amount)
+				updates["remain_quota"] = gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota + ? END", true, amount)
 				updates["used_quota"] = gorm.Expr("CASE WHEN used_quota >= ? THEN used_quota - ? ELSE 0 END", amount, amount)
 			}
 			result = result.Updates(updates)
@@ -680,17 +678,17 @@ func applyBillingOperationToken(operationKey string, tokenID int, tokenKey strin
 		}
 		if delta != 0 {
 			result := tx.Model(&Token{}).Where("id = ?", tokenID)
-			if delta > 0 && !unlimited {
+			if delta > 0 {
 				result = result.Where("unlimited_quota = ? OR remain_quota >= ?", true, delta)
 			}
 			updates := map[string]any{
-				"remain_quota":  gorm.Expr("remain_quota + ?", -delta),
+				"remain_quota":  gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota + ? END", true, -delta),
 				"used_quota":    gorm.Expr("used_quota + ?", delta),
 				"accessed_time": common.GetTimestamp(),
 			}
 			if delta < 0 {
 				amount := -delta
-				updates["remain_quota"] = gorm.Expr("remain_quota + ?", amount)
+				updates["remain_quota"] = gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota + ? END", true, amount)
 				updates["used_quota"] = gorm.Expr("CASE WHEN used_quota >= ? THEN used_quota - ? ELSE 0 END", amount, amount)
 			}
 			result = result.Updates(updates)
@@ -792,7 +790,7 @@ func applyBillingOperationRefundToken(operationKey string, tokenID int, tokenKey
 		}
 		if refundQuota > 0 && tokenID > 0 {
 			result := tx.Model(&Token{}).Where("id = ?", tokenID).Updates(map[string]any{
-				"remain_quota":  gorm.Expr("remain_quota + ?", refundQuota),
+				"remain_quota":  gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota + ? END", true, refundQuota),
 				"used_quota":    gorm.Expr("CASE WHEN used_quota >= ? THEN used_quota - ? ELSE 0 END", refundQuota, refundQuota),
 				"accessed_time": common.GetTimestamp(),
 			})
@@ -1403,6 +1401,23 @@ func HasDueBillingOperations(now int64) bool {
 	return err == nil && count > 0
 }
 
+func applyBillingOperationTerminalRequirements(query *gorm.DB, to BillingOperationStatus) *gorm.DB {
+	switch to {
+	case BillingOperationSettled:
+		return query.
+			Where("actual_quota_set = ?", true).
+			Where("token_applied = ? AND stats_applied = ? AND log_applied = ?", true, true, true).
+			Where("task_id = ? OR final_usage_applied = ?", "", true)
+	case BillingOperationRefunded:
+		return query.Where(
+			"refund_token_applied = ? AND refund_stats_applied = ? AND refund_log_applied = ?",
+			true, true, true,
+		)
+	default:
+		return query
+	}
+}
+
 // UpdateBillingOperationStatus performs a guarded state transition. A stale
 // worker cannot overwrite a newer retry or terminal result.
 func UpdateBillingOperationStatus(operationKey string, from []BillingOperationStatus, to BillingOperationStatus, lastError string, nextRetryAt int64) (bool, error) {
@@ -1418,9 +1433,9 @@ func UpdateBillingOperationStatus(operationKey string, from []BillingOperationSt
 		"next_retry_at": nextRetryAt,
 		"updated_at":    common.GetTimestamp(),
 	}
-	result := DB.Model(&BillingOperation{}).
-		Where("operation_key = ? AND status IN ?", operationKey, from).
-		Updates(updates)
+	query := DB.Model(&BillingOperation{}).
+		Where("operation_key = ? AND status IN ?", operationKey, from)
+	result := applyBillingOperationTerminalRequirements(query, to).Updates(updates)
 	return result.RowsAffected == 1, result.Error
 }
 
@@ -1442,16 +1457,16 @@ func UpdateBillingOperationStatusOwned(operationKey, workerID string, from []Bil
 	if len(from) == 0 {
 		return false, errors.New("billing operation source status is required")
 	}
-	result := DB.Model(&BillingOperation{}).
-		Where("operation_key = ? AND locked_by = ? AND lease_until > ? AND status IN ?", operationKey, workerID, now, from).
-		Updates(map[string]any{
-			"status":        to,
-			"last_error":    lastError,
-			"next_retry_at": nextRetryAt,
-			"locked_by":     "",
-			"lease_until":   0,
-			"updated_at":    common.GetTimestamp(),
-		})
+	query := DB.Model(&BillingOperation{}).
+		Where("operation_key = ? AND locked_by = ? AND lease_until > ? AND status IN ?", operationKey, workerID, now, from)
+	result := applyBillingOperationTerminalRequirements(query, to).Updates(map[string]any{
+		"status":        to,
+		"last_error":    lastError,
+		"next_retry_at": nextRetryAt,
+		"locked_by":     "",
+		"lease_until":   0,
+		"updated_at":    common.GetTimestamp(),
+	})
 	return result.RowsAffected == 1, result.Error
 }
 
@@ -1470,14 +1485,14 @@ func UpdateBillingOperationStatusOwnedKeepLease(operationKey, workerID string, f
 	if len(from) == 0 {
 		return false, errors.New("billing operation source status is required")
 	}
-	result := DB.Model(&BillingOperation{}).
-		Where("operation_key = ? AND locked_by = ? AND lease_until > ? AND status IN ?", operationKey, workerID, now, from).
-		Updates(map[string]any{
-			"status":        to,
-			"last_error":    lastError,
-			"next_retry_at": nextRetryAt,
-			"updated_at":    common.GetTimestamp(),
-		})
+	query := DB.Model(&BillingOperation{}).
+		Where("operation_key = ? AND locked_by = ? AND lease_until > ? AND status IN ?", operationKey, workerID, now, from)
+	result := applyBillingOperationTerminalRequirements(query, to).Updates(map[string]any{
+		"status":        to,
+		"last_error":    lastError,
+		"next_retry_at": nextRetryAt,
+		"updated_at":    common.GetTimestamp(),
+	})
 	return result.RowsAffected == 1, result.Error
 }
 

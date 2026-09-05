@@ -182,6 +182,10 @@ func TestPersonalBillingTerminalRefundStopsWhenDurableSettlementWon(t *testing.T
 	require.Nil(t, PreConsumeBilling(newPersonalBillingTestContext(), preConsumedQuota, relayInfo))
 	session := relayInfo.Billing.(*BillingSession)
 	operationKey := session.OperationKey()
+	require.NoError(t, model.UpdateBillingOperationActualQuota(operationKey, preConsumedQuota))
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+		require.NoError(t, model.MarkBillingOperationComponent(operationKey, component))
+	}
 	updated, err := model.UpdateBillingOperationStatus(operationKey,
 		[]model.BillingOperationStatus{model.BillingOperationReserved},
 		model.BillingOperationSettled, "", 0)

@@ -126,10 +126,15 @@ func TestRefundTaskQuotaDoesNotRefundSettledOperation(t *testing.T) {
 	task.Status = model.TaskStatusFailure
 	operation := ensureTaskBillingFixture(t, task)
 	require.NoError(t, model.DB.Create(task).Error)
-	_, err := model.UpdateBillingOperationStatus(operation.OperationKey,
+	require.NoError(t, model.MarkBillingOperationFinalUsage(operation.OperationKey, task.Quota))
+	for _, component := range []string{model.BillingComponentToken, model.BillingComponentStats, model.BillingComponentLog} {
+		require.NoError(t, model.MarkBillingOperationComponent(operation.OperationKey, component))
+	}
+	updated, err := model.UpdateBillingOperationStatus(operation.OperationKey,
 		[]model.BillingOperationStatus{model.BillingOperationReserved},
 		model.BillingOperationSettled, "", common.GetTimestamp())
 	require.NoError(t, err)
+	require.True(t, updated)
 
 	assert.False(t, RefundTaskQuota(context.Background(), task, "stale failure"))
 	assert.Equal(t, 7000, getUserQuota(t, userID))

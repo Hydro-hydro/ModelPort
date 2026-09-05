@@ -24,10 +24,13 @@ if tonumber(redis.call('HGET', KEYS[1], 'Id') or '0') ~= tonumber(ARGV[2])
   return -1
 end
 local remain = tonumber(redis.call('HGET', KEYS[1], 'RemainQuota'))
-if remain == nil or remain < tonumber(ARGV[1]) then
+local unlimited = redis.call('HGET', KEYS[1], 'UnlimitedQuota')
+if remain == nil or (unlimited ~= 'true' and unlimited ~= '1' and remain < tonumber(ARGV[1])) then
   return 0
 end
-redis.call('HINCRBY', KEYS[1], 'RemainQuota', -tonumber(ARGV[1]))
+if unlimited ~= 'true' and unlimited ~= '1' then
+  redis.call('HINCRBY', KEYS[1], 'RemainQuota', -tonumber(ARGV[1]))
+end
 redis.call('HINCRBY', KEYS[1], 'UsedQuota', tonumber(ARGV[1]))
 redis.call('HSET', KEYS[1], 'AccessedTime', ARGV[3])
 return 1`
@@ -41,17 +44,19 @@ end
 local delta = tonumber(ARGV[1])
 local remain = tonumber(redis.call('HGET', KEYS[1], 'RemainQuota'))
 local used = tonumber(redis.call('HGET', KEYS[1], 'UsedQuota'))
+local unlimited = redis.call('HGET', KEYS[1], 'UnlimitedQuota')
 if remain == nil or used == nil then
   return -1
 end
 if delta < 0 then
-  local unlimited = redis.call('HGET', KEYS[1], 'UnlimitedQuota')
   if unlimited ~= 'true' and unlimited ~= '1' and remain < -delta then
     return 0
   end
   -- A negative delta is a charge: increase the used counter by the
   -- requested amount, while the remain-quota guard above prevents overdraft.
-  redis.call('HINCRBY', KEYS[1], 'RemainQuota', delta)
+  if unlimited ~= 'true' and unlimited ~= '1' then
+    redis.call('HINCRBY', KEYS[1], 'RemainQuota', delta)
+  end
   redis.call('HINCRBY', KEYS[1], 'UsedQuota', -delta)
 else
   -- A positive delta is a refund. Decrease used_quota only by the amount
@@ -63,7 +68,9 @@ else
   if refundUsed > delta then
     refundUsed = delta
   end
-  redis.call('HINCRBY', KEYS[1], 'RemainQuota', delta)
+  if unlimited ~= 'true' and unlimited ~= '1' then
+    redis.call('HINCRBY', KEYS[1], 'RemainQuota', delta)
+  end
   redis.call('HINCRBY', KEYS[1], 'UsedQuota', -refundUsed)
 end
 redis.call('HSET', KEYS[1], 'AccessedTime', ARGV[3])
@@ -112,7 +119,7 @@ func persistTokenQuotaDeltaImmediate(id int, delta int) error {
 		query = query.Where("unlimited_quota = ? OR remain_quota >= ?", true, amount)
 	}
 	updates := map[string]interface{}{
-		"remain_quota":  gorm.Expr("remain_quota + ?", delta),
+		"remain_quota":  gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota + ? END", true, delta),
 		"used_quota":    gorm.Expr("used_quota - ?", delta),
 		"accessed_time": common.GetTimestamp(),
 	}
@@ -141,9 +148,9 @@ func persistTokenQuotaDeltaImmediate(id int, delta int) error {
 
 func reserveTokenQuotaDB(id int, quota int) (bool, error) {
 	result := DB.Model(&Token{}).
-		Where("id = ? AND remain_quota >= ?", id, quota).
+		Where("id = ? AND (unlimited_quota = ? OR remain_quota >= ?)", id, true, quota).
 		Updates(map[string]interface{}{
-			"remain_quota":  gorm.Expr("remain_quota - ?", quota),
+			"remain_quota":  gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota - ? END", true, quota),
 			"used_quota":    gorm.Expr("used_quota + ?", quota),
 			"accessed_time": common.GetTimestamp(),
 		})
@@ -151,7 +158,8 @@ func reserveTokenQuotaDB(id int, quota int) (bool, error) {
 }
 
 // TryReserveTokenQuota atomically checks and deducts a token quota. Unlimited
-// tokens skip the remaining-quota check but still update remain/used accounting.
+// tokens skip the remaining-quota check, keep RemainQuota unchanged, and only
+// update usage accounting.
 func TryReserveTokenQuota(id int, key string, quota int, unlimited bool) (bool, error) {
 	if quota < 0 {
 		return false, errors.New("quota 不能为负数！")
@@ -185,6 +193,9 @@ func TryReserveTokenQuota(id int, key string, quota int, unlimited bool) (bool, 
 		compensated, compensateErr := cacheApplyTokenQuotaDelta(id, key, int64(quota))
 		if compensateErr != nil || compensated != cacheQuotaOK {
 			common.SysError(fmt.Sprintf("failed to compensate reserved token quota: result=%d error=%v", compensated, compensateErr))
+			if invalidateErr := invalidateTokenCacheForMutation(key); invalidateErr != nil {
+				common.SysError("failed to invalidate token cache after reserve compensation failure: " + invalidateErr.Error())
+			}
 		}
 		return false, err
 	}
@@ -218,6 +229,9 @@ func IncreaseTokenQuotaImmediate(id int, key string, quota int) error {
 			} else {
 				if compensated, compensateErr := cacheApplyTokenQuotaDelta(id, key, -int64(quota)); compensateErr != nil || compensated != cacheQuotaOK {
 					common.SysError(fmt.Sprintf("failed to compensate immediate token refund: result=%d error=%v", compensated, compensateErr))
+					if invalidateErr := invalidateTokenCacheForMutation(key); invalidateErr != nil {
+						common.SysError("failed to invalidate token cache after refund compensation failure: " + invalidateErr.Error())
+					}
 				}
 				return err
 			}
@@ -255,6 +269,9 @@ func DecreaseTokenQuotaImmediate(id int, key string, quota int) error {
 			} else {
 				if compensated, compensateErr := cacheApplyTokenQuotaDelta(id, key, int64(quota)); compensateErr != nil || compensated != cacheQuotaOK {
 					common.SysError(fmt.Sprintf("failed to compensate immediate token charge: result=%d error=%v", compensated, compensateErr))
+					if invalidateErr := invalidateTokenCacheForMutation(key); invalidateErr != nil {
+						common.SysError("failed to invalidate token cache after charge compensation failure: " + invalidateErr.Error())
+					}
 				}
 				return err
 			}

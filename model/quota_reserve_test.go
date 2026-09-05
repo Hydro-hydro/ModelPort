@@ -91,16 +91,54 @@ func TestTokenQuotaAdjustmentsNeverUnderflow(t *testing.T) {
 	assert.Zero(t, reloaded.UsedQuota)
 }
 
-func TestUnlimitedTokenCanRecordUsageWithoutRemainQuota(t *testing.T) {
+func TestUnlimitedTokenTracksUsageWithoutChangingRemainQuota(t *testing.T) {
 	truncateTables(t)
 	resetBatchUpdateTestState(t)
 
 	token := createReserveTestToken(t, 0)
 	require.NoError(t, DB.Model(&Token{}).Where("id = ?", token.Id).Update("unlimited_quota", true).Error)
-	require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 25))
+	reserved, err := TryReserveTokenQuota(token.Id, token.Key, 25, false)
+	require.NoError(t, err)
+	require.True(t, reserved)
 	reloaded := getTokenFromDB(t, token.Id)
-	assert.Equal(t, -25, reloaded.RemainQuota)
+	assert.Zero(t, reloaded.RemainQuota)
 	assert.Equal(t, 25, reloaded.UsedQuota)
+
+	require.NoError(t, IncreaseTokenQuota(token.Id, token.Key, 10))
+	reloaded = getTokenFromDB(t, token.Id)
+	assert.Zero(t, reloaded.RemainQuota)
+	assert.Equal(t, 15, reloaded.UsedQuota)
+}
+
+func TestUnlimitedTokenCacheTracksUsageWithoutChangingRemainQuota(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	useUserCacheMiniRedis(t)
+
+	token := createReserveTestToken(t, 0)
+	require.NoError(t, DB.Model(&Token{}).Where("id = ?", token.Id).Update("unlimited_quota", true).Error)
+	_, err := GetTokenByKey(token.Key, true)
+	require.NoError(t, err)
+
+	reserved, err := TryReserveTokenQuota(token.Id, token.Key, 25, false)
+	require.NoError(t, err)
+	require.True(t, reserved)
+	reloaded := getTokenFromDB(t, token.Id)
+	assert.Zero(t, reloaded.RemainQuota)
+	assert.Equal(t, 25, reloaded.UsedQuota)
+	cached, err := cacheGetTokenByKey(token.Key)
+	require.NoError(t, err)
+	assert.Zero(t, cached.RemainQuota)
+	assert.Equal(t, 25, cached.UsedQuota)
+
+	require.NoError(t, IncreaseTokenQuotaImmediate(token.Id, token.Key, 25))
+	reloaded = getTokenFromDB(t, token.Id)
+	assert.Zero(t, reloaded.RemainQuota)
+	assert.Zero(t, reloaded.UsedQuota)
+	cached, err = cacheGetTokenByKey(token.Key)
+	require.NoError(t, err)
+	assert.Zero(t, cached.RemainQuota)
+	assert.Zero(t, cached.UsedQuota)
 }
 
 func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.T) {

@@ -152,6 +152,72 @@ func TestApplyBillingOperationTokenAdjustmentUsesLastAppliedQuota(t *testing.T) 
 	assert.Equal(t, -20, gotOperation.TokenDelta)
 }
 
+func TestBillingOperationUnlimitedTokenNeverChangesRemainQuota(t *testing.T) {
+	if err := ensureBillingOperationTable(); err != nil {
+		t.Fatal(err)
+	}
+	token := &Token{
+		UserId:         1,
+		Key:            "billing-unlimited-" + common.GetRandomString(8),
+		Name:           "billing unlimited",
+		Status:         common.TokenStatusEnabled,
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+	}
+	require.NoError(t, token.Insert())
+	operation, err := EnsureBillingOperation(BillingOperationAttrs{
+		OperationKey: "request:billing-unlimited-" + common.GetRandomString(8),
+		TokenID:      token.Id,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = DB.Delete(&BillingOperation{}, "operation_key = ?", operation.OperationKey).Error
+		_ = DB.Delete(&Token{}, token.Id).Error
+	})
+
+	// The persisted token row is authoritative even if a caller passes stale
+	// unlimited metadata.
+	require.NoError(t, ReserveBillingOperationToken(operation.OperationKey, token.Id, token.Key, 100, false))
+	require.NoError(t, ApplyBillingOperationToken(operation.OperationKey, token.Id, token.Key, 60, false))
+	gotToken := getTokenFromDB(t, token.Id)
+	assert.Zero(t, gotToken.RemainQuota)
+	assert.Equal(t, 160, gotToken.UsedQuota)
+}
+
+func TestBillingOperationUnlimitedTokenRefundKeepsRemainQuota(t *testing.T) {
+	if err := ensureBillingOperationTable(); err != nil {
+		t.Fatal(err)
+	}
+	token := &Token{
+		UserId:         1,
+		Key:            "billing-unlimited-refund-" + common.GetRandomString(8),
+		Name:           "billing unlimited refund",
+		Status:         common.TokenStatusEnabled,
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+	}
+	require.NoError(t, token.Insert())
+	operation, err := EnsureBillingOperation(BillingOperationAttrs{
+		OperationKey: "request:billing-unlimited-refund-" + common.GetRandomString(8),
+		TokenID:      token.Id,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = DB.Delete(&BillingOperation{}, "operation_key = ?", operation.OperationKey).Error
+		_ = DB.Delete(&Token{}, token.Id).Error
+	})
+
+	require.NoError(t, ReserveBillingOperationToken(operation.OperationKey, token.Id, token.Key, 100, false))
+	transitioned, err := UpdateBillingOperationStatus(operation.OperationKey,
+		[]BillingOperationStatus{BillingOperationReserved}, BillingOperationRefundPending, "", common.GetTimestamp())
+	require.NoError(t, err)
+	require.True(t, transitioned)
+	require.NoError(t, ApplyBillingOperationRefundToken(operation.OperationKey, token.Id, token.Key, 100, false))
+	gotToken := getTokenFromDB(t, token.Id)
+	assert.Zero(t, gotToken.RemainQuota)
+	assert.Zero(t, gotToken.UsedQuota)
+}
+
 func TestApplyBillingOperationStatsAdjustmentConcurrentTargetsFinalQuota(t *testing.T) {
 	if err := ensureBillingOperationTable(); err != nil {
 		t.Fatal(err)

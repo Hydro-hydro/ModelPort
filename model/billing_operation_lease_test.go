@@ -16,10 +16,15 @@ func TestBillingOperationLeaseGuardsTerminalTransition(t *testing.T) {
 	t.Cleanup(func() { _ = DB.Exec("DELETE FROM billing_operations") })
 
 	operation, err := EnsureBillingOperation(BillingOperationAttrs{
-		OperationKey: "request:lease-guard",
-		Status:       BillingOperationReserved,
+		OperationKey:   "request:lease-guard",
+		Status:         BillingOperationReserved,
+		ActualQuota:    0,
+		ActualQuotaSet: true,
 	})
 	require.NoError(t, err)
+	require.NoError(t, MarkBillingOperationComponent(operation.OperationKey, BillingComponentToken))
+	require.NoError(t, MarkBillingOperationComponent(operation.OperationKey, BillingComponentStats))
+	require.NoError(t, MarkBillingOperationComponent(operation.OperationKey, BillingComponentLog))
 
 	now := common.GetTimestamp()
 	claimed, err := ClaimBillingOperations("worker-a", now, 60, 10)

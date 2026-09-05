@@ -165,18 +165,24 @@ func SaveQuotaDataCache() {
 }
 
 func increaseQuotaData(quotaData *QuotaData) error {
-	err := DB.Table("quota_data").
+	result := DB.Table("quota_data").
 		Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
 			quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
 		Updates(map[string]interface{}{
 			"count":      gorm.Expr("count + ?", quotaData.Count),
 			"quota":      gorm.Expr("quota + ?", quotaData.Quota),
 			"token_used": gorm.Expr("token_used + ?", quotaData.TokenUsed),
-		}).Error
-	if err != nil {
-		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", err))
+		})
+	if result.Error != nil {
+		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", result.Error))
+		return result.Error
 	}
-	return err
+	if result.RowsAffected != 1 {
+		err := fmt.Errorf("increase quota data matched %d rows: %w", result.RowsAffected, gorm.ErrRecordNotFound)
+		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", err))
+		return err
+	}
+	return nil
 }
 
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {

@@ -1,10 +1,12 @@
 package model
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func seedFlowQuotaData(t *testing.T, quotaData QuotaData) {
@@ -190,4 +192,25 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 	require.Equal(t, 60, rows[0].TokenUsed)
 	require.Equal(t, "default", rows[1].UseGroup)
 	require.Equal(t, 25, rows[1].Quota)
+}
+
+func TestIncreaseQuotaDataRejectsMissingBusinessRow(t *testing.T) {
+	truncateTables(t)
+
+	err := increaseQuotaData(&QuotaData{
+		UserID:    1,
+		Username:  "alice",
+		ModelName: "gpt-a",
+		CreatedAt: 3600,
+		UseGroup:  "default",
+		TokenID:   11,
+		ChannelID: 1,
+		NodeName:  "node-a",
+		Count:     1,
+		Quota:     100,
+		TokenUsed: 40,
+	})
+
+	require.Error(t, err)
+	require.True(t, errors.Is(err, gorm.ErrRecordNotFound))
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -106,4 +107,84 @@ func TestMarkBillingOperationFinalUsageIsFirstWriterWins(t *testing.T) {
 	err = MarkBillingOperationFinalUsage(key, 80)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrBillingOperationQuotaConflict))
+}
+
+func TestBillingOperationTerminalStatusRequiresCompletedComponents(t *testing.T) {
+	require.NoError(t, ensureBillingOperationTable())
+	const settledKey = "request:billing-operation-terminal-components"
+	const refundedKey = "request:billing-operation-refund-components"
+	require.NoError(t, DB.Where("operation_key IN ?", []string{settledKey, refundedKey}).Delete(&BillingOperation{}).Error)
+	t.Cleanup(func() {
+		_ = DB.Where("operation_key IN ?", []string{settledKey, refundedKey}).Delete(&BillingOperation{}).Error
+	})
+
+	_, err := EnsureBillingOperation(BillingOperationAttrs{
+		OperationKey:   settledKey,
+		RequestID:      settledKey,
+		ActualQuota:    0,
+		ActualQuotaSet: true,
+	})
+	require.NoError(t, err)
+	updated, err := UpdateBillingOperationStatus(settledKey,
+		[]BillingOperationStatus{BillingOperationReserved}, BillingOperationSettled, "", common.GetTimestamp())
+	require.NoError(t, err)
+	assert.False(t, updated)
+
+	require.NoError(t, DB.Model(&BillingOperation{}).Where("operation_key = ?", settledKey).Updates(map[string]any{
+		"token_applied": true,
+		"stats_applied": true,
+		"log_applied":   true,
+	}).Error)
+	updated, err = UpdateBillingOperationStatus(settledKey,
+		[]BillingOperationStatus{BillingOperationReserved}, BillingOperationSettled, "", common.GetTimestamp())
+	require.NoError(t, err)
+	assert.True(t, updated)
+
+	_, err = EnsureBillingOperation(BillingOperationAttrs{OperationKey: refundedKey})
+	require.NoError(t, err)
+	updated, err = UpdateBillingOperationStatus(refundedKey,
+		[]BillingOperationStatus{BillingOperationReserved}, BillingOperationRefunded, "", common.GetTimestamp())
+	require.NoError(t, err)
+	assert.False(t, updated)
+
+	require.NoError(t, DB.Model(&BillingOperation{}).Where("operation_key = ?", refundedKey).Updates(map[string]any{
+		"refund_token_applied": true,
+		"refund_stats_applied": true,
+		"refund_log_applied":   true,
+	}).Error)
+	updated, err = UpdateBillingOperationStatus(refundedKey,
+		[]BillingOperationStatus{BillingOperationReserved}, BillingOperationRefunded, "", common.GetTimestamp())
+	require.NoError(t, err)
+	assert.True(t, updated)
+}
+
+func TestTaskBillingOperationCannotSettleBeforeFinalUsage(t *testing.T) {
+	require.NoError(t, ensureBillingOperationTable())
+	const key = "task:billing-operation-terminal-final-usage"
+	require.NoError(t, DB.Where("operation_key = ?", key).Delete(&BillingOperation{}).Error)
+	t.Cleanup(func() { _ = DB.Where("operation_key = ?", key).Delete(&BillingOperation{}).Error })
+
+	_, err := EnsureBillingOperation(BillingOperationAttrs{
+		OperationKey:   key,
+		TaskID:         "terminal-final-usage",
+		ActualQuota:    100,
+		ActualQuotaSet: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, DB.Model(&BillingOperation{}).Where("operation_key = ?", key).Updates(map[string]any{
+		"token_applied": true,
+		"stats_applied": true,
+		"log_applied":   true,
+	}).Error)
+
+	updated, err := UpdateBillingOperationStatus(key,
+		[]BillingOperationStatus{BillingOperationReserved}, BillingOperationSettled, "", common.GetTimestamp())
+	require.NoError(t, err)
+	assert.False(t, updated)
+
+	require.NoError(t, MarkBillingOperationFinalUsage(key, 100))
+	updated, err = UpdateBillingOperationStatus(key,
+		[]BillingOperationStatus{BillingOperationReserved}, BillingOperationSettled, "", common.GetTimestamp())
+	require.NoError(t, err)
+	assert.True(t, updated)
 }

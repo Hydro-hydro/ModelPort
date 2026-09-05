@@ -294,8 +294,8 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 		return nil, err
 	}
 	if common.RedisEnabled {
-			// 冷缓存时用数据库快照初始化；已存在的哈希只刷新 TTL，
-			// 避免快照覆盖 Redis 中已被原子预扣的剩余额度。初始化失败不影响本次读取。
+		// 冷缓存时用数据库快照初始化；已存在的哈希只刷新 TTL，
+		// 避免快照覆盖 Redis 中已被原子预扣的剩余额度。初始化失败不影响本次读取。
 		if _, cacheErr := cacheInitToken(*token); cacheErr != nil {
 			common.SysLog("failed to init token cache: " + cacheErr.Error())
 		}
@@ -406,6 +406,9 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 			// the cache so a retry sees the original state.
 			if compensated, compensateErr := cacheApplyTokenQuotaDelta(tokenId, key, -int64(quota)); compensateErr != nil || compensated != cacheQuotaOK {
 				common.SysError(fmt.Sprintf("failed to compensate token quota refund: result=%d error=%v", compensated, compensateErr))
+				if invalidateErr := invalidateTokenCacheForMutation(key); invalidateErr != nil {
+					common.SysError("failed to invalidate token cache after refund compensation failure: " + invalidateErr.Error())
+				}
 			}
 			return err
 		}
@@ -426,7 +429,7 @@ func increaseTokenQuota(id int, quota int) (err error) {
 	}
 	result := query.
 		Updates(map[string]interface{}{
-			"remain_quota":  gorm.Expr("remain_quota + ?", quota),
+			"remain_quota":  gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota + ? END", true, quota),
 			"used_quota":    gorm.Expr("CASE WHEN used_quota >= ? THEN used_quota - ? ELSE 0 END", quota, quota),
 			"accessed_time": common.GetTimestamp(),
 		})
@@ -473,6 +476,9 @@ func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 			}
 			if compensated, compensateErr := cacheApplyTokenQuotaDelta(id, key, int64(quota)); compensateErr != nil || compensated != cacheQuotaOK {
 				common.SysError(fmt.Sprintf("failed to compensate token quota charge: result=%d error=%v", compensated, compensateErr))
+				if invalidateErr := invalidateTokenCacheForMutation(key); invalidateErr != nil {
+					common.SysError("failed to invalidate token cache after charge compensation failure: " + invalidateErr.Error())
+				}
 			}
 			return err
 		}
@@ -490,7 +496,7 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 	result := DB.Model(&Token{}).
 		Where("id = ? AND (unlimited_quota = ? OR remain_quota >= ?)", id, true, quota).
 		Updates(map[string]interface{}{
-			"remain_quota":  gorm.Expr("remain_quota - ?", quota),
+			"remain_quota":  gorm.Expr("CASE WHEN unlimited_quota = ? THEN remain_quota ELSE remain_quota - ? END", true, quota),
 			"used_quota":    gorm.Expr("used_quota + ?", quota),
 			"accessed_time": common.GetTimestamp(),
 		})

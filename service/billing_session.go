@@ -376,14 +376,29 @@ func (s *BillingSession) refundWithError(c *gin.Context) error {
 	if refundErr == nil &&
 		(s.tokenRefunded || s.tokenConsumed <= 0 || s.relayInfo.IsPlayground) && s.tokenRefundMarked &&
 		s.statsRefundMarked && s.logRefundMarked {
-		s.refunded = true
-		if s.operationKey != "" {
-			if _, err := model.UpdateBillingOperationStatus(s.operationKey,
+		if s.operationKey == "" {
+			s.refunded = true
+		} else {
+			updated, err := model.UpdateBillingOperationStatus(s.operationKey,
 				[]model.BillingOperationStatus{model.BillingOperationRefundPending, model.BillingOperationApplying},
-				model.BillingOperationRefunded, "", common.GetTimestamp()); err != nil {
+				model.BillingOperationRefunded, "", common.GetTimestamp())
+			if err != nil {
 				common.SysLog("failed to mark billing operation refunded: " + err.Error())
-				s.refunded = false
 				refundErr = errors.Join(refundErr, err)
+			} else if updated {
+				s.refunded = true
+			} else {
+				operation, getErr := model.GetBillingOperation(s.operationKey)
+				if getErr != nil {
+					refundErr = errors.Join(refundErr, getErr)
+				} else if operation.Status == model.BillingOperationRefunded {
+					s.refunded = true
+				} else {
+					refundErr = errors.Join(refundErr, fmt.Errorf(
+						"billing operation %s refund terminal transition rejected in state %s",
+						s.operationKey, operation.Status,
+					))
+				}
 			}
 		}
 	}
@@ -554,11 +569,24 @@ func (s *BillingSession) abortPreConsume(apiErr *types.NewAPIError) {
 		return
 	}
 	if operation.Status == model.BillingOperationReserved || operation.Status == model.BillingOperationApplying {
-		if _, transitionErr := model.UpdateBillingOperationStatus(s.operationKey,
+		transitioned, transitionErr := model.UpdateBillingOperationStatus(s.operationKey,
 			[]model.BillingOperationStatus{model.BillingOperationReserved, model.BillingOperationApplying},
-			model.BillingOperationRefundPending, apiErr.Error(), common.GetTimestamp()); transitionErr != nil {
+			model.BillingOperationRefundPending, apiErr.Error(), common.GetTimestamp())
+		if transitionErr != nil {
 			common.SysLog("failed to preserve pre-consume refund operation: " + transitionErr.Error())
 			return
+		}
+		if !transitioned {
+			current, getErr := model.GetBillingOperation(s.operationKey)
+			if getErr != nil {
+				common.SysLog("failed to reload billing operation after refund transition rejection: " + getErr.Error())
+				return
+			}
+			if current.Status != model.BillingOperationRefundPending {
+				common.SysLog(fmt.Sprintf("pre-consume refund transition rejected in state %s", current.Status))
+				return
+			}
+			operation = current
 		}
 	}
 	// Statistics and log components were never applied before a successful
@@ -591,9 +619,19 @@ func (s *BillingSession) abortPreConsume(apiErr *types.NewAPIError) {
 	}
 	if operation, err = model.GetBillingOperation(s.operationKey); err == nil &&
 		operation.RefundTokenApplied && operation.RefundStatsApplied && operation.RefundLogApplied {
-		_, _ = model.UpdateBillingOperationStatus(s.operationKey,
+		updated, transitionErr := model.UpdateBillingOperationStatus(s.operationKey,
 			[]model.BillingOperationStatus{model.BillingOperationRefundPending, model.BillingOperationApplying},
 			model.BillingOperationRefunded, apiErr.Error(), common.GetTimestamp())
+		if transitionErr != nil {
+			common.SysLog("failed to finalize pre-consume refund operation: " + transitionErr.Error())
+			return
+		}
+		if !updated {
+			current, getErr := model.GetBillingOperation(s.operationKey)
+			if getErr != nil || current.Status != model.BillingOperationRefunded {
+				common.SysLog(fmt.Sprintf("pre-consume refund terminal transition rejected: operation=%s error=%v", s.operationKey, getErr))
+			}
+		}
 	}
 }
 
