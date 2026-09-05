@@ -29,7 +29,7 @@ import {
   Info,
   Loader2,
   Route,
-  WalletCards,
+  BarChart3,
 } from 'lucide-react'
 import {
   Fragment,
@@ -101,13 +101,13 @@ interface FlowChartsProps {
 }
 
 const FLOW_METRIC_OPTIONS = [
-  { value: 'quota', labelKey: 'By quota', icon: WalletCards },
+  { value: 'quota', labelKey: 'By usage', icon: BarChart3 },
   { value: 'tokens', labelKey: 'By tokens', icon: Hash },
   { value: 'requests', labelKey: 'By requests', icon: Activity },
 ] as const
 
 const FLOW_METRIC_LABEL_KEYS: Record<FlowMetric, string> = {
-  quota: 'Quota',
+  quota: 'Usage',
   tokens: 'Tokens',
   requests: 'Requests',
 }

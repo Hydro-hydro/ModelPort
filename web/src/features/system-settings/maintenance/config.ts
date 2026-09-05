@@ -49,13 +49,6 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
   },
 }
 
-const RETIRED_SIDEBAR_MODULES = new Set([
-  'personal.topup',
-  'admin.redemption',
-  'admin.subscription',
-  'admin.user',
-])
-
 const toBoolean = (value: unknown, fallback: boolean): boolean => {
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value === 1
@@ -99,10 +92,7 @@ export function parseSidebarModulesAdmin(
 
       Object.entries(raw as Record<string, unknown>).forEach(
         ([moduleKey, moduleValue]) => {
-          if (
-            moduleKey === 'enabled' ||
-            RETIRED_SIDEBAR_MODULES.has(`${sectionKey}.${moduleKey}`)
-          ) {
+          if (moduleKey === 'enabled') {
             return
           }
           sectionConfig[moduleKey] = toBoolean(

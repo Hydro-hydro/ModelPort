@@ -25,6 +25,7 @@ import type { NavGroup } from '@/components/layout/types'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
+import { useFeatureAccess } from '@/lib/feature-access'
 
 import {
   type LogsViewScope,
@@ -65,17 +66,28 @@ function UsageLogsContent() {
   const { affinityTarget, affinityDialogOpen, setAffinityDialogOpen } =
     useUsageLogsContext()
   const { canManageScope, viewScope, setViewScope } = useLogsViewScope()
+  const { isEnabled, isTaskLogsEnabled } = useFeatureAccess()
+  const visibleTaskSections = useMemo(
+    () =>
+      TASK_LOG_SECTIONS.filter((section) =>
+        section === 'drawing' ? isEnabled('media_tasks') : isTaskLogsEnabled()
+      ),
+    [isEnabled, isTaskLogsEnabled]
+  )
   const tabNavGroups = useMemo<NavGroup[]>(
-    () => [
-      {
-        title: 'Task Logs',
-        items: TASK_LOG_SECTIONS.map((section) => ({
-          title: SECTION_META[section].titleKey,
-          url: `/usage-logs/${section}`,
-        })),
-      },
-    ],
-    []
+    () =>
+      visibleTaskSections.length > 0
+        ? [
+            {
+              title: 'Task Logs',
+              items: visibleTaskSections.map((section) => ({
+                title: SECTION_META[section].titleKey,
+                url: `/usage-logs/${section}`,
+              })),
+            },
+          ]
+        : [],
+    [visibleTaskSections]
   )
   const filteredTabGroups = useSidebarConfig(tabNavGroups)
   const visibleSections = useMemo(

@@ -26,5 +26,5 @@ import type { TopNavLink } from '../types'
  */
 export const defaultTopNavLinks: TopNavLink[] = [
   { title: 'Console', href: '/dashboard' },
-  { title: 'Model Square', href: '/pricing' },
+  { title: 'Model Catalog', href: '/pricing' },
 ]

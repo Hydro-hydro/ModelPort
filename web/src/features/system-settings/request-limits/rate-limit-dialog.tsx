@@ -140,7 +140,7 @@ export function RateLimitDialog({
                 <FormLabel>{t('Group Name')}</FormLabel>
                 <FormControl>
                   <Input
-                    placeholder={t('e.g., default, vip, premium')}
+                    placeholder={t('e.g., default, fast, backup')}
                     {...field}
                     disabled={isEditMode}
                   />

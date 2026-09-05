@@ -279,7 +279,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                       name={field.name}
                       onBlur={field.onBlur}
                       textareaRef={field.ref}
-                      placeholder={`{\n  "default": [200, 100],\n  "vip": [0, 1000]\n}`}
+                      placeholder={`{\n  "default": [200, 100],\n  "fast": [0, 1000]\n}`}
                       aria-invalid={Boolean(
                         form.formState.errors.ModelRequestRateLimitGroup
                       )}
@@ -297,7 +297,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                         </li>
                         <li>
                           {t('Example:')}{' '}
-                          {`{"default": [200, 100], "vip": [0, 1000]}`}
+                          {`{"default": [200, 100], "fast": [0, 1000]}`}
                         </li>
                         <li>
                           {t(

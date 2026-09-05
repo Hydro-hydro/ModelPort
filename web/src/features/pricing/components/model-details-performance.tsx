@@ -36,7 +36,7 @@ import {
 import type { PerformanceGroup } from '@/features/performance-metrics/types'
 import { cn } from '@/lib/utils'
 
-import type { UptimeDayPoint } from '../lib/mock-stats'
+import type { UptimeDayPoint } from '../lib/performance'
 import type { PricingModel } from '../types'
 import { LatencyTrendChart, UptimeTrendChart } from './model-details-charts'
 import { UptimeSparkline } from './model-details-uptime-sparkline'
@@ -112,12 +112,11 @@ function toUptimeSeries(groups: PerformanceGroup[]): UptimeDayPoint[] {
   const byTs = new Map<number, { rates: number[]; incidents: number }>()
   for (const group of groups) {
     for (const point of group.series) {
+      if (!Number.isFinite(point.success_rate)) continue
       const current = byTs.get(point.ts) ?? { rates: [], incidents: 0 }
-      if (Number.isFinite(point.success_rate)) {
-        const successRate = toUptimePct(point.success_rate)
-        current.rates.push(successRate)
-        if (successRate < 100) current.incidents += 1
-      }
+      const successRate = toUptimePct(point.success_rate)
+      current.rates.push(successRate)
+      if (successRate < 100) current.incidents += 1
       byTs.set(point.ts, current)
     }
   }
@@ -139,15 +138,17 @@ function toUptimeSeries(groups: PerformanceGroup[]): UptimeDayPoint[] {
 }
 
 function toGroupUptimeSeries(group: PerformanceGroup): UptimeDayPoint[] {
-  return group.series.map((point) => {
-    const successRate = toUptimePct(point.success_rate)
-    return {
-      date: new Date(point.ts * 1000).toISOString(),
-      uptime_pct: successRate,
-      incidents: successRate < 100 ? 1 : 0,
-      outage_minutes: 0,
-    }
-  })
+  return group.series
+    .filter((point) => Number.isFinite(point.success_rate))
+    .map((point) => {
+      const successRate = toUptimePct(point.success_rate)
+      return {
+        date: new Date(point.ts * 1000).toISOString(),
+        uptime_pct: successRate,
+        incidents: successRate < 100 ? 1 : 0,
+        outage_minutes: 0,
+      }
+    })
 }
 
 function average(

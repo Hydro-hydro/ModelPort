@@ -44,9 +44,6 @@ import {
 
 type DynamicPriceOptions = {
   tokenUnit: TokenUnit
-  showRechargePrice?: boolean
-  priceRate?: number
-  usdExchangeRate?: number
   groupRatioMultiplier?: number
   usageSchema?: BillingUsageSchema
 }
@@ -161,34 +158,16 @@ export function getDynamicDisplayGroupRatio(
   return getDisplayGroupRatio(model, selectedGroup)
 }
 
-function applyRechargeRate(
-  price: number,
-  showWithRecharge: boolean,
-  priceRate: number,
-  usdExchangeRate: number
-): number {
-  if (!showWithRecharge) return price
-  return (price * priceRate) / usdExchangeRate
-}
-
 export function formatDynamicUnitPrice(
   valuePerMillionTokens: number,
   options: DynamicPriceOptions
 ): string {
   const groupRatio = options.groupRatioMultiplier ?? 1
-  const priceRate = options.priceRate ?? 1
-  const usdExchangeRate = options.usdExchangeRate ?? 1
   const priceUSD =
     (valuePerMillionTokens * groupRatio) /
     TOKEN_UNIT_DIVISORS[options.tokenUnit]
-  const displayPrice = applyRechargeRate(
-    priceUSD,
-    options.showRechargePrice ?? false,
-    priceRate,
-    usdExchangeRate
-  )
 
-  return formatBillingCurrencyFromUSD(displayPrice, {
+  return formatBillingCurrencyFromUSD(priceUSD, {
     digitsLarge: 4,
     digitsSmall: 6,
     abbreviate: false,
@@ -200,17 +179,9 @@ export function formatTaskUsageUnitPrice(
   options: DynamicPriceOptions
 ): string {
   const groupRatio = options.groupRatioMultiplier ?? 1
-  const priceRate = options.priceRate ?? 1
-  const usdExchangeRate = options.usdExchangeRate ?? 1
   const priceUSD = valuePerUnit * groupRatio
-  const displayPrice = applyRechargeRate(
-    priceUSD,
-    options.showRechargePrice ?? false,
-    priceRate,
-    usdExchangeRate
-  )
 
-  return formatBillingCurrencyFromUSD(displayPrice, {
+  return formatBillingCurrencyFromUSD(priceUSD, {
     digitsLarge: 4,
     digitsSmall: 6,
     abbreviate: false,

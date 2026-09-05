@@ -30,10 +30,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { ROLE } from '@/lib/roles'
 
 import { updateUserSettings } from '../../api'
-import {
-  DEFAULT_QUOTA_WARNING_THRESHOLD,
-  NOTIFICATION_METHODS,
-} from '../../constants'
+import { NOTIFICATION_METHODS } from '../../constants'
 import { parseUserSettings } from '../../lib'
 import type { UserProfile, UserSettings, NotifyType } from '../../types'
 
@@ -114,15 +111,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   const handleSave = async () => {
     try {
       setLoading(true)
-      // Keep the legacy threshold in the payload for older servers while the
-      // deprecated setting remains hidden from the profile UI.
-      const storedThreshold =
-        parseUserSettings(profile?.setting).quota_warning_threshold ??
-        DEFAULT_QUOTA_WARNING_THRESHOLD
-      const response = await updateUserSettings({
-        ...settings,
-        quota_warning_threshold: storedThreshold,
-      })
+      const response = await updateUserSettings(settings)
 
       if (response.success) {
         toast.success(t('Settings updated successfully'))

@@ -46,7 +46,7 @@ type Segment = {
 /**
  * Reusable icon segmented control for switching a data table between table and
  * card views. Shared, accessible version of the local control used by the
- * model square (`pricing-toolbar.tsx`).
+ * model catalog (`pricing-toolbar.tsx`).
  */
 export function DataTableViewModeToggle(props: DataTableViewModeToggleProps) {
   const { t } = useTranslation()

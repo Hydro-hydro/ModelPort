@@ -40,9 +40,9 @@ export function Features(_props: FeaturesProps) {
     {
       id: 'fast',
       num: '01',
-      title: t('Lightning Fast'),
+      title: t('Streaming Support'),
       desc: t(
-        'Optimized network architecture ensures millisecond response times'
+        'Handle streaming responses and usage events across supported protocols'
       ),
       span: 'md:col-span-2',
       icon: <Zap className='size-4 text-blue-400' />,
@@ -64,10 +64,8 @@ export function Features(_props: FeaturesProps) {
     {
       id: 'secure',
       num: '02',
-      title: t('Secure & Reliable'),
-      desc: t(
-        'Enterprise-grade security with comprehensive permission management'
-      ),
+      title: t('Access Control'),
+      desc: t('Manage API tokens, model limits, and request access locally'),
       span: 'md:col-span-1',
       icon: <Shield className='size-4 text-emerald-400' />,
       visual: (
@@ -101,8 +99,10 @@ export function Features(_props: FeaturesProps) {
     {
       id: 'global',
       num: '03',
-      title: t('Global Coverage'),
-      desc: t('Multi-region deployment for stable global access'),
+      title: t('Multi-channel Routing'),
+      desc: t(
+        'Route requests across configured upstream channels and model groups'
+      ),
       span: 'md:col-span-1',
       icon: <Globe className='size-4 text-violet-400' />,
       visual: (
@@ -158,13 +158,15 @@ export function Features(_props: FeaturesProps) {
   const additionalFeatures = [
     {
       icon: <Gauge className='size-5' strokeWidth={1.5} />,
-      title: t('High Performance'),
-      desc: t('Support for high concurrency with automatic load balancing'),
+      title: t('Failure Retry'),
+      desc: t(
+        'Use channel priority, weights, and retry rules for resilient routing'
+      ),
     },
     {
       icon: <DollarSign className='size-5' strokeWidth={1.5} />,
-      title: t('Transparent Billing'),
-      desc: t('Pay-as-you-go with real-time usage monitoring'),
+      title: t('Usage Tracking'),
+      desc: t('Track model usage and request costs for this gateway'),
     },
     {
       icon: <HeartHandshake className='size-5' strokeWidth={1.5} />,
@@ -181,9 +183,9 @@ export function Features(_props: FeaturesProps) {
             {t('Core Features')}
           </p>
           <h2 className='text-2xl leading-tight font-bold tracking-tight md:text-3xl'>
-            {t('Built for developers,')}
+            {t('Built for personal gateways')}
             <br />
-            {t('designed for scale')}
+            {t('focused on interoperability')}
           </h2>
         </AnimateInView>
 

@@ -45,8 +45,6 @@ export interface UserProfile {
   email?: string
   /** Default route group */
   group: string
-  /** Current quota balance */
-  quota: number
   /** Total used quota */
   used_quota: number
   /** Total request count */
@@ -72,8 +70,6 @@ export type NotifyType = 'email' | 'webhook' | 'bark' | 'gotify'
 export interface UserSettings {
   /** Notification type */
   notify_type?: NotifyType
-  /** Quota warning threshold */
-  quota_warning_threshold?: number
   /** Webhook URL */
   webhook_url?: string
   /** Webhook secret */
@@ -112,7 +108,6 @@ export interface UpdateUserRequest {
  */
 export interface UpdateUserSettingsRequest {
   notify_type?: string
-  quota_warning_threshold?: number
   webhook_url?: string
   webhook_secret?: string
   notification_email?: string

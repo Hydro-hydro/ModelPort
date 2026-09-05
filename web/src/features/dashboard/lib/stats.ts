@@ -27,13 +27,13 @@ export function safeDivide(
   precision: number = 3
 ): number {
   const result = value / divisor
-  if (isNaN(result) || !isFinite(result)) return 0
+  if (Number.isNaN(result) || !Number.isFinite(result)) return 0
   const factor = Math.pow(10, precision)
   return Math.round(result * factor) / factor
 }
 
 /**
- * Calculate aggregated statistics from quota data
+ * Calculate aggregated statistics from recorded model-usage data.
  */
 export function calculateDashboardStats(data: QuotaDataItem[]) {
   return data.reduce(

@@ -49,7 +49,7 @@ export const GATEWAY_FEATURES = [
   'Model Access',
   'Guardrails',
   'Observability',
-  'Budgets',
+  'Usage Logs',
   'Load Balancing',
   'Rate Limiting',
   'Token Mgmt',
@@ -57,47 +57,23 @@ export const GATEWAY_FEATURES = [
   'Pass-Through',
 ] as const
 
-// Stats section - Default statistics
-export const DEFAULT_STATS = [
-  {
-    value: '50',
-    suffix: '+',
-    description: 'upstream services integrated',
-  },
-  {
-    value: '100',
-    suffix: '+',
-    description: 'model billing support',
-  },
-  {
-    value: '50',
-    suffix: '+',
-    description: 'compatible API routes',
-  },
-  {
-    value: '10',
-    suffix: '+',
-    description: 'scheduling controls',
-  },
-] as const
-
 // Features section - Default features
 export const DEFAULT_FEATURES = [
   {
-    title: 'Lightning Fast',
+    title: 'Streaming Support',
     description:
-      'Optimized network architecture ensures millisecond response times',
-    iconName: 'Zap',
+      'Handle streaming responses and usage events across supported protocols',
+    iconName: 'Radio',
   },
   {
-    title: 'Secure & Reliable',
-    description:
-      'Enterprise-grade security with comprehensive permission management',
+    title: 'Access Control',
+    description: 'Manage API tokens, model limits, and request access locally',
     iconName: 'Shield',
   },
   {
-    title: 'Global Coverage',
-    description: 'Multi-region deployment for stable global access',
+    title: 'Multi-channel Routing',
+    description:
+      'Route requests across configured upstream channels and model groups',
     iconName: 'Globe',
   },
   {
@@ -106,13 +82,13 @@ export const DEFAULT_FEATURES = [
     iconName: 'Code',
   },
   {
-    title: 'High Performance',
-    description: 'Support for high concurrency with automatic load balancing',
-    iconName: 'Gauge',
+    title: 'Failure Retry',
+    description: 'Use channel priority, weights, and retry rules for resilient routing',
+    iconName: 'RefreshCw',
   },
   {
-    title: 'Transparent Billing',
-    description: 'Pay-as-you-go with real-time usage monitoring',
+    title: 'Usage Tracking',
+    description: 'Track model usage and request costs for this gateway',
     iconName: 'DollarSign',
   },
   {
@@ -124,13 +100,6 @@ export const DEFAULT_FEATURES = [
 
 export function getGatewayFeatures(t: TFunction) {
   return GATEWAY_FEATURES.map((feature) => t(feature))
-}
-
-export function getDefaultStats(t: TFunction) {
-  return DEFAULT_STATS.map((stat) => ({
-    ...stat,
-    description: stat.description ? t(stat.description) : undefined,
-  }))
 }
 
 export function getDefaultFeatures(t: TFunction) {

@@ -24,6 +24,7 @@ import {
   MODELS_SECTION_IDS,
   MODELS_DEFAULT_SECTION,
 } from '@/features/models/section-registry'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -41,7 +42,7 @@ const modelsSearchSchema = z.object({
 })
 
 export const Route = createFileRoute('/_authenticated/models/$section')({
-  beforeLoad: ({ params }) => {
+  beforeLoad: async ({ params }) => {
     const { auth } = useAuthStore.getState()
 
     if (!auth.user || auth.user.role < ROLE.ADMIN) {
@@ -56,6 +57,16 @@ export const Route = createFileRoute('/_authenticated/models/$section')({
         to: '/models/$section',
         params: { section: MODELS_DEFAULT_SECTION },
       })
+    }
+
+    if (params.section === 'deployments') {
+      const access = await getFreshFeatureAccess('deployments')
+      if (!access.enabled) {
+        throw redirect({
+          to: '/models/$section',
+          params: { section: MODELS_DEFAULT_SECTION },
+        })
+      }
     }
   },
   validateSearch: modelsSearchSchema,

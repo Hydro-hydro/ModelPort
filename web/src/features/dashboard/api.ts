@@ -29,10 +29,10 @@ import type {
 // ============================================================================
 
 // ----------------------------------------------------------------------------
-// Quota & Usage Data
+// Usage Data
 // ----------------------------------------------------------------------------
 
-// Get user quota data within a time range
+// Get user usage data within a time range
 // Admin users get all users' data by default.
 export async function getUserQuotaDates(
   params: {

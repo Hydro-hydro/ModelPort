@@ -44,7 +44,6 @@ export function buildSetupPayload(
   if (rootInitialized) return {}
 
   return {
-    username: 'root',
     password: values.password,
     confirmPassword: values.confirmPassword,
   }

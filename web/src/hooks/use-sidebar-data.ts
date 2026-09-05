@@ -45,7 +45,7 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
-  const { isEnabled } = useFeatureAccess()
+  const { isEnabled, isTaskLogsEnabled } = useFeatureAccess()
 
   return {
     navGroups: [
@@ -97,13 +97,17 @@ export function useSidebarData(): SidebarData {
                 },
               ]
             : []),
-          {
-            title: t('Task Logs'),
-            url: '/usage-logs/task',
-            activeUrls: ['/usage-logs/drawing'],
-            configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
-            icon: ListTodo,
-          },
+          ...(isTaskLogsEnabled()
+            ? [
+                {
+                  title: t('Task Logs'),
+                  url: '/usage-logs/task' as const,
+                  activeUrls: ['/usage-logs/drawing'],
+                  configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
+                  icon: ListTodo,
+                },
+              ]
+            : []),
         ],
       },
       {

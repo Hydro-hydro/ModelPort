@@ -162,7 +162,7 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                 name='QuotaPerUnit'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Quota Per Unit')}</FormLabel>
+                    <FormLabel>{t('Usage Unit')}</FormLabel>
                     <FormControl>
                       <Input
                         type='number'
@@ -175,7 +175,7 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                       />
                     </FormControl>
                     <FormDescription>
-                      {t('Number of tokens per unit quota')}
+                      {t('Number of tokens per usage unit')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -220,7 +220,7 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    {t('Choose how quota values are shown to users')}
+                    {t('Choose how usage values are displayed')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -299,9 +299,11 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                       <FormDescription>
                         {displayType === 'TOKENS'
                           ? t(
-                              'Tokens-only mode will show raw quota values regardless of this toggle.'
+                              'Token-only mode shows raw usage units regardless of this setting.'
                             )
-                          : t('Show prices in currency instead of quota.')}
+                          : t(
+                              'Show usage prices in currency instead of units.'
+                            )}
                       </FormDescription>
                     </SettingsSwitchContent>
                     <FormControl>

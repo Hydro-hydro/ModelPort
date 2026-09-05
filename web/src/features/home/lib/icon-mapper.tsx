@@ -17,11 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
-  Zap,
+  Radio,
   Shield,
   Globe,
   Code,
-  Gauge,
+  RefreshCw,
   DollarSign,
   HeartHandshake,
   type LucideIcon,
@@ -31,11 +31,11 @@ import {
  * Map of icon names to Lucide icon components
  */
 const ICON_MAP: Record<string, LucideIcon> = {
-  Zap,
+  Radio,
   Shield,
   Globe,
   Code,
-  Gauge,
+  RefreshCw,
   DollarSign,
   HeartHandshake,
 }

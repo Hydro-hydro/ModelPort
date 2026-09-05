@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
+
 import { describe, test } from 'vitest'
 
 import { getDynamicPriceEntries } from '../lib/dynamic-price'
@@ -148,13 +149,11 @@ describe('task matrix marketplace display rows', () => {
 
     const baseEntries = getDynamicPriceEntries(rows[0], {
       tokenUnit: 'K',
-      showRechargePrice: false,
       usageSchema: resolutionSchema,
       groupRatioMultiplier: 1,
     })
     const doubledEntries = getDynamicPriceEntries(rows[0], {
       tokenUnit: 'K',
-      showRechargePrice: false,
       usageSchema: resolutionSchema,
       groupRatioMultiplier: 2,
     })

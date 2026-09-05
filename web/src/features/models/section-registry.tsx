@@ -29,6 +29,7 @@ const MODELS_SECTIONS = [
   },
   {
     id: 'deployments',
+    feature: 'deployments',
     titleKey: 'Deployments',
     build: () => null, // Content is rendered directly in the page component
   },

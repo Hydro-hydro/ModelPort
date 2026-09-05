@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 import {
   Box,
-  CreditCard,
+  Receipt,
   Layout,
   Settings,
   Shield,
@@ -61,8 +61,8 @@ function getSystemSettingsNavGroups(t: TFunction): NavGroup[] {
           items: getAuthSectionNavItems(t),
         },
         {
-          title: t('Billing'),
-          icon: CreditCard,
+          title: t('Pricing & Usage'),
+          icon: Receipt,
           items: getBillingSectionNavItems(t),
         },
         {

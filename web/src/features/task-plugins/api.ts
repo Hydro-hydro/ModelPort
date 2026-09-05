@@ -168,24 +168,3 @@ export async function deleteTaskPluginVersion(
   )
   requireSuccess(response.data)
 }
-
-export async function getTaskPluginEnabledOption() {
-  const response =
-    await api.get<ApiResponse<Array<{ key: string; value: string }>>>(
-      '/api/option/'
-    )
-  const options = requireSuccess(response.data)
-  return (
-    options.find((option) => option.key === 'TaskPluginEnabled')
-      ?.value === 'true'
-  )
-}
-
-export async function setTaskPluginEnabledOption(enabled: boolean) {
-  const response = await api.put<ApiResponse<null>>(
-    '/api/option/',
-    { key: 'TaskPluginEnabled', value: String(enabled) },
-    mutationConfig
-  )
-  requireSuccess(response.data)
-}

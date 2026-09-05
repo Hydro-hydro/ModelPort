@@ -46,9 +46,6 @@ function pricingModel(overrides: Partial<PricingModel>): PricingModel {
 
 const summaryOptions = {
   tokenUnit: 'K' as const,
-  showRechargePrice: true,
-  priceRate: 3,
-  usdExchangeRate: 6,
   groupRatioMultiplier: 2,
 }
 
@@ -72,7 +69,7 @@ describe('task dynamic pricing', () => {
     assert.equal(summary.tier?.label, 'std')
     assert.equal(summary.primaryEntries[0]?.value, 0.4)
     assert.equal(summary.primaryEntries[0]?.unit, 'second')
-    assert.match(summary.primaryEntries[0]?.formatted ?? '', /0[.,]4/)
+    assert.match(summary.primaryEntries[0]?.formatted ?? '', /0[.,]8/)
   })
 
   test('falls back for a non-canonical task expression', () => {
@@ -106,10 +103,10 @@ describe('task dynamic pricing', () => {
     const summary = getDynamicPricingSummary(model, summaryOptions)
 
     assert.ok(summary)
-    assert.match(summary.primaryEntries[0]?.formattedRange ?? '', /0[.,]4/)
     assert.match(summary.primaryEntries[0]?.formattedRange ?? '', /0[.,]8/)
+    assert.match(summary.primaryEntries[0]?.formattedRange ?? '', /1[.,]6/)
     assert.match(summary.primaryEntries[0]?.formattedRange ?? '', /–/)
-    assert.match(summary.primaryEntries[0]?.formatted ?? '', /0[.,]4/)
+    assert.match(summary.primaryEntries[0]?.formatted ?? '', /0[.,]8/)
   })
 
   test('omits a task price range when every tier has the same unit price', () => {
@@ -371,7 +368,7 @@ describe('task dynamic pricing', () => {
 
     assert.ok(example)
     assert.equal(example.label, '720p · 5s')
-    assert.match(example.formatted, /1[.,]0584/)
+    assert.match(example.formatted, /2[.,]1168/)
   })
 
   test('returns null when the expression is not canonical or examples are missing', () => {

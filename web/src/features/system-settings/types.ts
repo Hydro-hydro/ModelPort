@@ -219,7 +219,6 @@ export type BillingSettings = {
 }
 
 export type OperationsSettings = {
-  QuotaRemindThreshold: string
   SMTPServer: string
   SMTPPort: string
   SMTPAccount: string
@@ -245,6 +244,11 @@ export type OperationsSettings = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
   'perf_metrics_setting.retention_days': number
+  'feature.system_tasks': boolean
+  'feature.media_tasks': boolean
+  'feature.task_plugins': boolean
+  'feature.deployments': boolean
+  'feature.multi_node': boolean
 }
 
 export type SecuritySettings = {

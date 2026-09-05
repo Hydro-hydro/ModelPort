@@ -30,7 +30,7 @@ export type TopNavLink = {
  * Return the fixed personal-version top navigation.
  *
  * Backend top-navigation configuration is intentionally ignored: the
- * personal version exposes only the console and model square.
+ * personal version exposes only the console and model catalog.
  */
 export function useTopNavLinks(): TopNavLink[] {
   return defaultTopNavLinks

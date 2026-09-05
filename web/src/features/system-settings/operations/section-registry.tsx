@@ -22,10 +22,26 @@ import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
+import { OptionalFeaturesSection } from './optional-features-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 
 const OPERATIONS_SECTIONS = [
+  {
+    id: 'features',
+    titleKey: 'Optional Features',
+    build: (settings: OperationsSettings) => (
+      <OptionalFeaturesSection
+        defaultValues={{
+          'feature.system_tasks': settings['feature.system_tasks'] ?? false,
+          'feature.media_tasks': settings['feature.media_tasks'] ?? false,
+          'feature.task_plugins': settings['feature.task_plugins'] ?? false,
+          'feature.deployments': settings['feature.deployments'] ?? false,
+          'feature.multi_node': settings['feature.multi_node'] ?? false,
+        }}
+      />
+    ),
+  },
   {
     id: 'alerts',
     feature: 'performance_console',
@@ -33,7 +49,6 @@ const OPERATIONS_SECTIONS = [
     build: (settings: OperationsSettings) => (
       <MonitoringSettingsSection
         defaultValues={{
-          QuotaRemindThreshold: settings.QuotaRemindThreshold,
           'perf_metrics_setting.enabled':
             settings['perf_metrics_setting.enabled'] ?? true,
           'perf_metrics_setting.flush_interval':
@@ -139,7 +154,7 @@ const operationsRegistry = createSectionRegistry<
   [string | null | undefined, number | null | undefined]
 >({
   sections: OPERATIONS_SECTIONS,
-  defaultSection: 'email',
+  defaultSection: 'features',
   basePath: '/system-settings/operations',
   urlStyle: 'path',
 })

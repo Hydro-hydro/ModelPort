@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { TFunction } from 'i18next'
-import { CreditCard } from 'lucide-react'
+import { Receipt } from 'lucide-react'
 import { describe, expect, test } from 'vitest'
 
 import { SYSTEM_SETTINGS_VIEW } from '@/components/layout/config/system-settings.config'
@@ -61,17 +61,17 @@ describe('personal billing settings', () => {
     expect(parseCurrencyDisplayType(undefined)).toBe('CNY')
   })
 
-  test('keeps the protected default system name', () => {
-    expect(DEFAULT_SYSTEM_NAME).toBe('New API')
+  test('uses the ModelPort default system name', () => {
+    expect(DEFAULT_SYSTEM_NAME).toBe('ModelPort')
   })
 
   test('shows the billing icon in system administration navigation', () => {
     const groups = SYSTEM_SETTINGS_VIEW.getNavGroups(translate)
     const billingItem = groups
       .flatMap((group) => group.items)
-      .find((item) => item.title === 'Billing')
+      .find((item) => item.title === 'Pricing & Usage')
 
     expect(billingItem).toBeDefined()
-    expect(billingItem?.icon).toBe(CreditCard)
+    expect(billingItem?.icon).toBe(Receipt)
   })
 })

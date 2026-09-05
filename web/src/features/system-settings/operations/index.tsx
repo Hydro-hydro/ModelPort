@@ -27,7 +27,6 @@ import {
 } from './section-registry.tsx'
 
 const defaultOperationsSettings: OperationsSettings = {
-  QuotaRemindThreshold: '',
   SMTPServer: '',
   SMTPPort: '',
   SMTPAccount: '',
@@ -53,6 +52,11 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'feature.system_tasks': false,
+  'feature.media_tasks': false,
+  'feature.task_plugins': false,
+  'feature.deployments': false,
+  'feature.multi_node': false,
 }
 
 export function OperationsSettings() {

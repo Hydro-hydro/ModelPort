@@ -24,6 +24,11 @@ import {
   isUsageLogsSectionId,
   USAGE_LOGS_DEFAULT_SECTION,
 } from '@/features/usage-logs/section-registry'
+import {
+  getFreshAnyFeatureAccess,
+  getFreshFeatureAccess,
+  TASK_LOG_FEATURES,
+} from '@/lib/feature-access'
 
 const logTypeValues = ['0', '1', '2', '3', '4', '5', '6', '7'] as const
 const logTypeSearchSchema = z
@@ -50,12 +55,24 @@ const usageLogsSearchSchema = z.object({
 })
 
 export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
-  beforeLoad: ({ params, search }) => {
+  beforeLoad: async ({ params, search }) => {
     if (!isUsageLogsSectionId(params.section)) {
       throw redirect({
         to: '/usage-logs/$section',
         params: { section: USAGE_LOGS_DEFAULT_SECTION },
       })
+    }
+    if (params.section === 'drawing' || params.section === 'task') {
+      const access =
+        params.section === 'drawing'
+          ? await getFreshFeatureAccess('media_tasks')
+          : await getFreshAnyFeatureAccess(TASK_LOG_FEATURES)
+      if (!access.enabled) {
+        throw redirect({
+          to: '/usage-logs/$section',
+          params: { section: 'common' },
+        })
+      }
     }
     // type 仅 common 使用，非 common 时清掉 URL 里的 type
     const hasTypeSearch = Array.isArray(search?.type)
