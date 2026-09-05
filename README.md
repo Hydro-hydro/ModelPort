@@ -18,16 +18,32 @@ ModelPort 基于 [New API](https://github.com/QuantumNous/new-api) fork 改造�
 ### 使用 Docker
 
 ```bash
-docker build -t modelport .
-docker run -d \
-  --name modelport \
-  --restart unless-stopped \
-  -p 3000:3000 \
-  -v "$(pwd)/data:/data" \
-  modelport
+docker compose up -d --build
 ```
 
 启动后访问 <http://localhost:3000>，按页面提示完成初始化。
+
+默认 Compose 配置直接构建当前仓库，并使用挂载到 `./data` 的 SQLite 数据库，
+不依赖 PostgreSQL、Redis 或其他外部服务。需要使用其他数据库或缓存时，
+请在启动前通过环境变量配置 `SQL_DSN`、`LOG_SQL_DSN` 或 `REDIS_CONN_STRING`。
+
+生产环境必须显式设置持久、随机且妥善保管的 `SESSION_SECRET` 和 `CRYPTO_SECRET`。
+留空仅适合临时本地运行；服务重启后会生成新的随机值，导致浏览器会话和依赖加密密钥的数据失效。
+不要将 `SESSION_SECRET` 设置为 `random_string`。
+
+本项目面向全新部署，不提供旧 New API 数据库迁移或历史数据兼容；使用旧实例时请创建新的数据目录并重新完成初始化。
+
+任务插件、媒体任务、部署、多节点和系统维护任务默认关闭。确有需要时，在启动前显式设置对应环境变量并重启：
+
+```bash
+MODELPORT_ENABLE_TASK_PLUGINS=true
+MODELPORT_ENABLE_MEDIA_TASKS=true
+MODELPORT_ENABLE_DEPLOYMENTS=true
+MODELPORT_ENABLE_MULTI_NODE=true
+MODELPORT_ENABLE_SYSTEM_TASKS=true
+```
+
+任务插件或媒体任务会自动启用其依赖的系统任务表和轮询 runner；关闭能力不会删除已有可选表。
 
 ### 本地开发
 
