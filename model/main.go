@@ -207,7 +207,7 @@ func loadPersistedOptionalFeatureSettings() error {
 	}
 
 	var options []Option
-	if err := DB.Where("key IN ?", usage_mode.OptionalFeatureOptionKeys()).Find(&options).Error; err != nil {
+	if err := DB.Where(commonKeyCol+" IN ?", usage_mode.OptionalFeatureOptionKeys()).Find(&options).Error; err != nil {
 		return fmt.Errorf("load optional feature settings: %w", err)
 	}
 	overrides := make(map[usage_mode.Feature]bool, len(options))
