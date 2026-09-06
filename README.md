@@ -18,8 +18,12 @@ ModelPort 基于 [New API](https://github.com/QuantumNous/new-api) fork 改造�
 ### 使用 Docker
 
 ```bash
+export SESSION_SECRET="$(openssl rand -hex 32)"
+export CRYPTO_SECRET="$(openssl rand -hex 32)"
 docker compose up -d --build
 ```
+
+首次启动前必须设置这两个密钥，并在后续重启时继续使用相同的值。建议将它们保存到项目根目录的 `.env` 文件或其他受保护的环境变量管理方式中；默认 Compose 会在缺少任一密钥时直接报错，不会使用临时随机值启动。
 
 启动后访问 <http://localhost:3000>，按页面提示完成初始化。
 
@@ -28,7 +32,7 @@ docker compose up -d --build
 请在启动前通过环境变量配置 `SQL_DSN`、`LOG_SQL_DSN` 或 `REDIS_CONN_STRING`。
 
 生产环境必须显式设置持久、随机且妥善保管的 `SESSION_SECRET` 和 `CRYPTO_SECRET`。
-留空仅适合临时本地运行；服务重启后会生成新的随机值，导致浏览器会话和依赖加密密钥的数据失效。
+更换任一密钥会导致浏览器会话和依赖该密钥的数据失效。
 不要将 `SESSION_SECRET` 设置为 `random_string`。
 
 本项目面向全新部署，不提供旧 New API 数据库迁移或历史数据兼容；使用旧实例时请创建新的数据目录并重新完成初始化。

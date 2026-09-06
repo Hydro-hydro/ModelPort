@@ -32,8 +32,11 @@ services:
       - ERROR_LOG_ENABLED=${ERROR_LOG_ENABLED:-true}
       - BATCH_UPDATE_ENABLED=${BATCH_UPDATE_ENABLED:-true}
       - NODE_NAME=${NODE_NAME:-modelport}
-      - SESSION_SECRET=${SESSION_SECRET:-}
-      - CRYPTO_SECRET=${CRYPTO_SECRET:-}
+      # These secrets must stay stable across restarts. Compose fails early when
+      # either value is missing instead of letting the application generate a
+      # new random value for every container start.
+      - SESSION_SECRET=${SESSION_SECRET:?请先设置持久的 SESSION_SECRET}
+      - CRYPTO_SECRET=${CRYPTO_SECRET:?请先设置持久的 CRYPTO_SECRET}
       - SQL_DSN=${SQL_DSN:-}
       - LOG_SQL_DSN=${LOG_SQL_DSN:-}
       - REDIS_CONN_STRING=${REDIS_CONN_STRING:-}
