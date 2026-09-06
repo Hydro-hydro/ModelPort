@@ -24,7 +24,7 @@ func HasCSAMViolationMarker(err *types.NewAPIError) bool {
 		return true
 	}
 	msg := err.ToOpenAIError().Message
-	return strings.Contains(msg, CSAMViolationMarker) || strings.Contains(err.Error(), ContentViolatesUsageMarker)
+	return strings.Contains(msg, CSAMViolationMarker) || strings.Contains(msg, ContentViolatesUsageMarker)
 }
 
 func WrapAsViolationFeeGrokCSAM(err *types.NewAPIError) *types.NewAPIError {

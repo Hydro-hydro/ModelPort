@@ -41,3 +41,18 @@ func TestNormalizeViolationFeeErrorDoesNotCreateBillingSideEffects(t *testing.T)
 	// request billing path, never by error normalization.
 	assert.False(t, IsViolationFeeCode(types.ErrorCodeBadResponse))
 }
+
+func TestHasCSAMViolationMarkerChecksUpstreamMessage(t *testing.T) {
+	err := types.WithOpenAIError(types.OpenAIError{
+		Message: "upstream detail",
+		Type:    "bad_request",
+		Code:    types.ErrorCodeBadResponse,
+	}, http.StatusBadRequest)
+	err.RelayError = types.OpenAIError{
+		Message: ContentViolatesUsageMarker,
+		Type:    "bad_request",
+		Code:    types.ErrorCodeBadResponse,
+	}
+
+	assert.True(t, HasCSAMViolationMarker(err))
+}
