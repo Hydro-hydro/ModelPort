@@ -24,6 +24,28 @@ type Option struct {
 	Value string `json:"value"`
 }
 
+func validateTurnstileOption(key, value string) error {
+	trimmedValue := strings.TrimSpace(value)
+	switch key {
+	case "TurnstileCheckEnabled":
+		if trimmedValue != "true" {
+			return nil
+		}
+		if strings.TrimSpace(common.TurnstileSiteKey) == "" || strings.TrimSpace(common.TurnstileSecretKey) == "" {
+			return fmt.Errorf("启用 Turnstile 前必须配置 Site Key 和 Secret Key")
+		}
+	case "TurnstileSiteKey":
+		if common.TurnstileCheckEnabled && trimmedValue == "" {
+			return fmt.Errorf("Turnstile 已启用，不能清空 Site Key")
+		}
+	case "TurnstileSecretKey":
+		if common.TurnstileCheckEnabled && trimmedValue == "" {
+			return fmt.Errorf("Turnstile 已启用，不能清空 Secret Key")
+		}
+	}
+	return nil
+}
+
 func AllOption() ([]*Option, error) {
 	var options []*Option
 	var err error
@@ -41,7 +63,6 @@ func InitOptionMap() {
 	common.OptionMap["FileDownloadPermission"] = strconv.Itoa(common.FileDownloadPermission)
 	common.OptionMap["ImageUploadPermission"] = strconv.Itoa(common.ImageUploadPermission)
 	common.OptionMap["ImageDownloadPermission"] = strconv.Itoa(common.ImageDownloadPermission)
-	common.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(common.PasswordLoginEnabled)
 	common.OptionMap["TurnstileCheckEnabled"] = strconv.FormatBool(common.TurnstileCheckEnabled)
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
@@ -157,6 +178,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if err := validateTurnstileOption(key, value); err != nil {
+		return err
+	}
 	if usage_mode.IsOptionalFeatureOptionKey(key) {
 		if _, err := strconv.ParseBool(strings.TrimSpace(value)); err != nil {
 			return fmt.Errorf("optional feature %s must be a boolean: %w", key, err)
@@ -276,7 +300,7 @@ func isFixedPersonalModeOption(key string) bool {
 
 func isRetiredPersonalOption(key string) bool {
 	switch key {
-	case "TaskEnabled", "TaskPluginEnabled", "TaskPluginOverrideEnabled":
+	case "PasswordLoginEnabled", "TaskEnabled", "TaskPluginEnabled", "TaskPluginOverrideEnabled":
 		return true
 	default:
 		return false
@@ -300,6 +324,9 @@ func updateOptionMap(key string, value string) (err error) {
 		delete(common.OptionMap, key)
 		common.OptionMapRWMutex.Unlock()
 		return nil
+	}
+	if err := validateTurnstileOption(key, value); err != nil {
+		return err
 	}
 	// 检查是否是模型配置 - 使用更规范的方式处理
 	if handled, updateErr := handleConfigUpdate(key, value); handled {
@@ -337,8 +364,6 @@ func updateOptionMap(key string, value string) (err error) {
 	if strings.HasSuffix(key, "Enabled") || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" || key == "SMTPInsecureSkipVerify" {
 		boolValue := value == "true"
 		switch key {
-		case "PasswordLoginEnabled":
-			common.PasswordLoginEnabled = boolValue
 		case "TurnstileCheckEnabled":
 			common.TurnstileCheckEnabled = boolValue
 		case "AutomaticDisableChannelEnabled":

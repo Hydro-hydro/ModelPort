@@ -44,6 +44,7 @@ func TestGetStatusAdvertisesDefaultDashboard(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
 	assert.True(t, payload.Success)
 	assert.Equal(t, "default", payload.Data["theme"])
+	assert.NotContains(t, payload.Data, "password_login_enabled")
 	for _, key := range []string{
 		"footer_html",
 		"announcements_enabled",

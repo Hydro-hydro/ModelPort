@@ -77,7 +77,6 @@ func GetStatus(c *gin.Context) {
 		"chats":                         setting.Chats,
 		"usage_mode":                    string(usage_mode.CurrentMode()),
 		"features":                      usage_mode.Capabilities(),
-		"password_login_enabled":        common.PasswordLoginEnabled,
 		"default_use_auto_group":        setting.GetDefaultUseAutoGroup(),
 
 		"password_login_encryption_enabled": common.PasswordLoginEncryptionEnabled,

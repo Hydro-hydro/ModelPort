@@ -51,7 +51,6 @@ interface SystemStatusData {
   usd_exchange_rate?: number
   custom_currency_symbol?: string
   custom_currency_exchange_rate?: number
-  password_login_enabled?: boolean
   password_login_encryption_enabled?: boolean
   usage_mode?: string
   features?: Partial<Record<FeatureName, boolean>>

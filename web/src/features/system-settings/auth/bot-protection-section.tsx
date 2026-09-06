@@ -71,10 +71,19 @@ export function BotProtectionSection({
   }, [defaultValues, form])
 
   const onSubmit = async (data: BotProtectionFormValues) => {
-    const updates = Object.entries(data).filter(
+    const changed = Object.entries(data).filter(
       ([key, value]) =>
         value !== defaultValues[key as keyof BotProtectionFormValues]
     )
+    const enabledUpdate = changed.find(
+      ([key]) => key === 'TurnstileCheckEnabled'
+    )
+    const otherUpdates = changed.filter(
+      ([key]) => key !== 'TurnstileCheckEnabled'
+    )
+    const updates = data.TurnstileCheckEnabled
+      ? [...otherUpdates, ...(enabledUpdate ? [enabledUpdate] : [])]
+      : [...(enabledUpdate ? [enabledUpdate] : []), ...otherUpdates]
 
     for (const [key, value] of updates) {
       await updateOption.mutateAsync({ key, value: value ?? '' })
@@ -97,9 +106,7 @@ export function BotProtectionSection({
                 <SettingsSwitchContent>
                   <FormLabel>{t('Enable Turnstile')}</FormLabel>
                   <FormDescription>
-                    {t(
-                      'Protect administrator login with Cloudflare Turnstile'
-                    )}
+                    {t('Protect administrator login with Cloudflare Turnstile')}
                   </FormDescription>
                 </SettingsSwitchContent>
                 <FormControl>

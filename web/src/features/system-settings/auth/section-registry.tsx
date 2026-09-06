@@ -18,19 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { AuthSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
-import { BasicAuthSection } from './basic-auth-section'
 import { BotProtectionSection } from './bot-protection-section'
 
 const AUTH_SECTIONS = [
-  {
-    id: 'basic-auth',
-    titleKey: 'Basic Authentication',
-    build: (settings: AuthSettings) => (
-      <BasicAuthSection
-        defaultValues={{ PasswordLoginEnabled: settings.PasswordLoginEnabled }}
-      />
-    ),
-  },
   {
     id: 'bot-protection',
     titleKey: 'Bot Protection',
@@ -50,7 +40,7 @@ export type AuthSectionId = (typeof AUTH_SECTIONS)[number]['id']
 
 const authRegistry = createSectionRegistry<AuthSectionId, AuthSettings>({
   sections: AUTH_SECTIONS,
-  defaultSection: 'basic-auth',
+  defaultSection: 'bot-protection',
   basePath: '/system-settings/auth',
   urlStyle: 'path',
 })

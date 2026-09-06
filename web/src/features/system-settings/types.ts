@@ -104,7 +104,6 @@ export type SiteSettings = {
 }
 
 export type AuthSettings = {
-  PasswordLoginEnabled: boolean
   TurnstileCheckEnabled: boolean
   TurnstileSiteKey: string
   TurnstileSecretKey: string

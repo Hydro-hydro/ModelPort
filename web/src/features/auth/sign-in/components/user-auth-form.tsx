@@ -57,10 +57,6 @@ export function UserAuthForm({
   const loginFailedMessage = t('Login failed')
 
   const { status } = useStatus()
-  const passwordLoginEnabled =
-    (status?.password_login_enabled ??
-      status?.data?.password_login_enabled ??
-      true) !== false
   const passwordLoginEncryptionEnabled =
     (status?.password_login_encryption_enabled ??
       status?.data?.password_login_encryption_enabled ??
@@ -125,50 +121,42 @@ export function UserAuthForm({
         className={cn('grid gap-4', className)}
         {...props}
       >
-        {passwordLoginEnabled ? (
-          <>
-            <FormField
-              control={form.control}
-              name='password'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Password')}</FormLabel>
-                  <FormControl>
-                    <PasswordInput
-                      placeholder={t('Enter password')}
-                      autoComplete='current-password'
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <Button
-              type='submit'
-              className='mt-2 w-full justify-center gap-2'
-              disabled={isLoading}
-            >
-              {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
-              {t('Sign in')}
-            </Button>
-
-            {isTurnstileEnabled && (
-              <div className='mt-2'>
-                <Turnstile
-                  key={turnstileWidgetKey}
-                  siteKey={turnstileSiteKey}
-                  onVerify={setTurnstileToken}
-                  onExpire={() => setTurnstileToken('')}
+        <FormField
+          control={form.control}
+          name='password'
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('Password')}</FormLabel>
+              <FormControl>
+                <PasswordInput
+                  placeholder={t('Enter password')}
+                  autoComplete='current-password'
+                  {...field}
                 />
-              </div>
-            )}
-          </>
-        ) : (
-          <p className='text-muted-foreground text-center text-sm'>
-            {t('Password Login')}
-          </p>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <Button
+          type='submit'
+          className='mt-2 w-full justify-center gap-2'
+          disabled={isLoading}
+        >
+          {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
+          {t('Sign in')}
+        </Button>
+
+        {isTurnstileEnabled && (
+          <div className='mt-2'>
+            <Turnstile
+              key={turnstileWidgetKey}
+              siteKey={turnstileSiteKey}
+              onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken('')}
+            />
+          </div>
         )}
       </form>
     </Form>

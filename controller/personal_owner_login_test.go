@@ -27,14 +27,12 @@ func setupPersonalOwnerLoginTest(t *testing.T) *gorm.DB {
 	previousLogDB := model.LOG_DB
 	previousRedis := common.RedisEnabled
 	previousSessionSecret := common.SessionSecret
-	previousPasswordLogin := common.PasswordLoginEnabled
 	previousPasswordEncryption := common.PasswordLoginEncryptionEnabled
 	previousSetup := constant.Setup
 	model.DB = db
 	model.LOG_DB = db
 	common.RedisEnabled = false
 	common.SessionSecret = "personal-owner-login-test-secret"
-	common.PasswordLoginEnabled = true
 	common.PasswordLoginEncryptionEnabled = false
 	constant.Setup = true
 	t.Cleanup(func() {
@@ -42,7 +40,6 @@ func setupPersonalOwnerLoginTest(t *testing.T) *gorm.DB {
 		model.LOG_DB = previousLogDB
 		common.RedisEnabled = previousRedis
 		common.SessionSecret = previousSessionSecret
-		common.PasswordLoginEnabled = previousPasswordLogin
 		common.PasswordLoginEncryptionEnabled = previousPasswordEncryption
 		constant.Setup = previousSetup
 	})

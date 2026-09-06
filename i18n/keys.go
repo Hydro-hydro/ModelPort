@@ -62,7 +62,6 @@ const (
 
 // User related messages
 const (
-	MsgUserPasswordLoginDisabled   = "user.password_login_disabled"
 	MsgUserUsernameOrPasswordEmpty = "user.username_or_password_empty"
 	MsgUserUsernameOrPasswordError = "user.username_or_password_error"
 	MsgUserEmailOrPasswordEmpty    = "user.email_or_password_empty"

@@ -25,7 +25,6 @@ import {
 } from './section-registry.tsx'
 
 const defaultAuthSettings: AuthSettings = {
-  PasswordLoginEnabled: true,
   TurnstileCheckEnabled: false,
   TurnstileSiteKey: '',
   TurnstileSecretKey: '',
