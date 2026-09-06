@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
@@ -30,9 +31,53 @@ import (
 
 var openAIModels []dto.OpenAIModels
 var openAIModelsMap map[string]dto.OpenAIModels
+var openAIModelChannelTypes map[string]map[int]struct{}
 var channelId2Models map[int][]string
 
+func appendOpenAIModel(modelName, owner string, channelType int) {
+	openAIModels = append(openAIModels, dto.OpenAIModels{
+		Id:      modelName,
+		Object:  "model",
+		Created: 1626777600,
+		OwnedBy: owner,
+	})
+	if channelType == 0 {
+		return
+	}
+	if openAIModelChannelTypes == nil {
+		openAIModelChannelTypes = make(map[string]map[int]struct{})
+	}
+	if openAIModelChannelTypes[modelName] == nil {
+		openAIModelChannelTypes[modelName] = make(map[int]struct{})
+	}
+	openAIModelChannelTypes[modelName][channelType] = struct{}{}
+}
+
+func channelTypeForAPIType(apiType int) int {
+	for channelType := 1; channelType < constant.ChannelTypeDummy; channelType++ {
+		mappedAPIType, ok := common.ChannelType2APIType(channelType)
+		if ok && mappedAPIType == apiType {
+			return channelType
+		}
+	}
+	return 0
+}
+
+func openAIModelAvailable(modelName string) bool {
+	channelTypes, ok := openAIModelChannelTypes[modelName]
+	if !ok || len(channelTypes) == 0 {
+		return true
+	}
+	for channelType := range channelTypes {
+		if usage_mode.IsChannelTypeEnabled(channelType) {
+			return true
+		}
+	}
+	return false
+}
+
 func init() {
+	openAIModelChannelTypes = make(map[string]map[int]struct{})
 	// https://platform.openai.com/docs/models/model-endpoint-compatibility
 	for i := 0; i < constant.APITypeDummy; i++ {
 		if i == constant.APITypeAIProxyLibrary {
@@ -42,53 +87,23 @@ func init() {
 		channelName := adaptor.GetChannelName()
 		modelNames := adaptor.GetModelList()
 		for _, modelName := range modelNames {
-			openAIModels = append(openAIModels, dto.OpenAIModels{
-				Id:      modelName,
-				Object:  "model",
-				Created: 1626777600,
-				OwnedBy: channelName,
-			})
+			appendOpenAIModel(modelName, channelName, channelTypeForAPIType(i))
 		}
 	}
 	for _, modelName := range ai360.ModelList {
-		openAIModels = append(openAIModels, dto.OpenAIModels{
-			Id:      modelName,
-			Object:  "model",
-			Created: 1626777600,
-			OwnedBy: ai360.ChannelName,
-		})
+		appendOpenAIModel(modelName, ai360.ChannelName, constant.ChannelType360)
 	}
 	for _, modelName := range moonshot.ModelList {
-		openAIModels = append(openAIModels, dto.OpenAIModels{
-			Id:      modelName,
-			Object:  "model",
-			Created: 1626777600,
-			OwnedBy: moonshot.ChannelName,
-		})
+		appendOpenAIModel(modelName, moonshot.ChannelName, constant.ChannelTypeMoonshot)
 	}
 	for _, modelName := range lingyiwanwu.ModelList {
-		openAIModels = append(openAIModels, dto.OpenAIModels{
-			Id:      modelName,
-			Object:  "model",
-			Created: 1626777600,
-			OwnedBy: lingyiwanwu.ChannelName,
-		})
+		appendOpenAIModel(modelName, lingyiwanwu.ChannelName, constant.ChannelTypeLingYiWanWu)
 	}
 	for _, modelName := range minimax.ModelList {
-		openAIModels = append(openAIModels, dto.OpenAIModels{
-			Id:      modelName,
-			Object:  "model",
-			Created: 1626777600,
-			OwnedBy: minimax.ChannelName,
-		})
+		appendOpenAIModel(modelName, minimax.ChannelName, constant.ChannelTypeMiniMax)
 	}
 	for modelName, _ := range constant.MidjourneyModel2Action {
-		openAIModels = append(openAIModels, dto.OpenAIModels{
-			Id:      modelName,
-			Object:  "model",
-			Created: 1626777600,
-			OwnedBy: "midjourney",
-		})
+		appendOpenAIModel(modelName, "midjourney", constant.ChannelTypeMidjourney)
 	}
 	openAIModelsMap = make(map[string]dto.OpenAIModels)
 	for _, aiModel := range openAIModels {
@@ -316,18 +331,30 @@ func ListModels(c *gin.Context, modelType int) {
 }
 
 func ChannelListModels(c *gin.Context) {
+	models := make([]dto.OpenAIModels, 0, len(openAIModels))
+	for _, model := range openAIModels {
+		if openAIModelAvailable(model.Id) {
+			models = append(models, model)
+		}
+	}
 	c.JSON(200, gin.H{
 		"success": true,
-		"data":    openAIModels,
+		"data":    models,
 	})
 }
 
 func DashboardListModels(c *gin.Context) {
 	modelsByChannel := make(map[int][]string, len(channelId2Models))
 	for channelType, models := range channelId2Models {
+		if !usage_mode.IsChannelTypeEnabled(channelType) {
+			continue
+		}
 		modelsByChannel[channelType] = append([]string(nil), models...)
 	}
 	for channelType := 1; channelType <= constant.ChannelTypeDummy; channelType++ {
+		if !usage_mode.IsChannelTypeEnabled(channelType) {
+			continue
+		}
 		if plugin, ok := jsplugin.DefaultRegistry.GetByChannelType(channelType); ok {
 			modelsByChannel[channelType] = append([]string(nil), plugin.Meta.Models...)
 		}
@@ -347,7 +374,7 @@ func EnabledListModels(c *gin.Context) {
 
 func RetrieveModel(c *gin.Context, modelType int) {
 	modelId := c.Param("model")
-	if aiModel, ok := openAIModelsMap[modelId]; ok {
+	if aiModel, ok := openAIModelsMap[modelId]; ok && openAIModelAvailable(modelId) {
 		switch modelType {
 		case constant.ChannelTypeAnthropic:
 			c.JSON(200, dto.AnthropicModel{

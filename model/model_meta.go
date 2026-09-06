@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"gorm.io/gorm"
 )
@@ -183,6 +184,9 @@ func GetPreferredModelOwnerChannelTypes(modelNames []string, groups []string) (m
 	}
 
 	for _, r := range rows {
+		if !usage_mode.IsChannelTypeEnabled(r.ChannelType) {
+			continue
+		}
 		if _, ok := result[r.Model]; ok {
 			continue
 		}

@@ -3,6 +3,7 @@ package usage_mode
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,6 +62,21 @@ func TestPersistedOptionalFeatureOverridesEnvironmentUntilRestart(t *testing.T) 
 	t.Cleanup(func() { SetPersistedOptionalFeatures(nil) })
 
 	assert.False(t, IsFeatureEnabled(FeatureTaskPlugins))
+}
+
+func TestChannelTypeFeatureBoundary(t *testing.T) {
+	SetPersistedOptionalFeatures(nil)
+	t.Cleanup(func() { SetPersistedOptionalFeatures(nil) })
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "false")
+
+	assert.True(t, IsChannelTypeEnabled(constant.ChannelTypeOpenAI))
+	assert.False(t, IsChannelTypeEnabled(constant.ChannelTypeKling))
+	assert.False(t, IsChannelTypeEnabled(constant.ChannelTypeTaskPlugin))
+
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+	assert.True(t, IsChannelTypeEnabled(constant.ChannelTypeKling))
+	assert.True(t, IsChannelTypeEnabled(constant.ChannelTypeTaskPlugin))
 }
 
 func TestTaskFeatureDependencyUsesPersistedConfiguration(t *testing.T) {

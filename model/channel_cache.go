@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 )
 
 var group2model2channels map[string]map[string][]int // enabled channel
@@ -165,6 +166,9 @@ func InitChannelCache() {
 		}
 		channel, ok := newChannelId2channel[ability.ChannelId]
 		if !ok || channel.Status != common.ChannelStatusEnabled {
+			continue
+		}
+		if !usage_mode.IsChannelTypeEnabled(channel.Type) {
 			continue
 		}
 		model2channels := newGroup2model2channels[ability.Group]
@@ -436,7 +440,7 @@ func CacheUpdateChannel(channel *Channel) {
 		}
 	}
 	removeChannelFromRouteIndexLocked(updated.Id)
-	if updated.Status == common.ChannelStatusEnabled {
+	if updated.Status == common.ChannelStatusEnabled && usage_mode.IsChannelTypeEnabled(updated.Type) {
 		for _, ability := range abilities {
 			if !ability.Enabled {
 				continue

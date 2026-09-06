@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +28,9 @@ export function parseTaskResult() { return {}; }
 }
 
 func TestPricingCarriesTaskUsageSchemaAndRefreshesWithPluginGeneration(t *testing.T) {
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+	t.Cleanup(func() { usage_mode.SetPersistedOptionalFeatures(nil) })
 	resetPricingEndpointTestTables(t)
 	const pluginKey = "pricing-usage-probe"
 	initialSource := pricingUsagePluginSource("1.0.0", `{
@@ -62,6 +66,9 @@ func TestPricingCarriesTaskUsageSchemaAndRefreshesWithPluginGeneration(t *testin
 }
 
 func TestPricingAliasCarriesPluginUsageSchemaAndTailExpr(t *testing.T) {
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+	t.Cleanup(func() { usage_mode.SetPersistedOptionalFeatures(nil) })
 	resetPricingEndpointTestTables(t)
 	const pluginKey = "pricing-usage-probe"
 	source := pricingUsagePluginSource("1.0.0", `{

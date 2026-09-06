@@ -136,6 +136,8 @@ func TestMultiprotocolGatewayEndpointTypes(t *testing.T) {
 
 func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
+	var initialChannelCount int64
+	require.NoError(t, db.Model(&model.Channel{}).Count(&initialChannelCount).Error)
 	settingBytes, err := common.Marshal(dto.ChannelSettings{
 		Proxy: "socks5://proxy.example/legacy-path",
 	})
@@ -161,7 +163,7 @@ func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 	assert.Contains(t, recorder.Body.String(), "invalid channel settings")
 	var channelCount int64
 	require.NoError(t, db.Model(&model.Channel{}).Count(&channelCount).Error)
-	assert.Equal(t, int64(1), channelCount)
+	assert.Equal(t, initialChannelCount+1, channelCount)
 }
 
 func TestDeleteChannelResetsProxyCacheWhenPreReadFails(t *testing.T) {

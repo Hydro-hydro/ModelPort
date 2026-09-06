@@ -6,11 +6,16 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTaskPluginChannelSelectionFiltersBothCachePaths(t *testing.T) {
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "true")
+	t.Cleanup(func() { usage_mode.SetPersistedOptionalFeatures(nil) })
 	truncateTables(t)
 	priority := int64(0)
 	weight := uint(1)

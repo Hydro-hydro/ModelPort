@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -61,7 +62,7 @@ func Distribute() func(c *gin.Context) {
 				}
 				return
 			}
-			if channel.Status != common.ChannelStatusEnabled {
+			if channel.Status != common.ChannelStatusEnabled || !usage_mode.IsChannelTypeEnabled(channel.Type) {
 				if pin.Source == taskdto.PinSourceOriginTask {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, "origin_task_channel_disabled", types.ErrorCode("origin_task_channel_disabled"))
 				} else {

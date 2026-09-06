@@ -49,6 +49,10 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	model.LOG_DB = db
 
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	require.NoError(t, db.Create(&[]model.Channel{
+		{Id: 1, Name: "model-list-channel-1", Key: "model-list-key-1", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled},
+		{Id: 2, Name: "model-list-channel-2", Key: "model-list-key-2", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled},
+	}).Error)
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

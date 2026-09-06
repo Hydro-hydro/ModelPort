@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -27,6 +28,10 @@ import (
 
 func setupOriginTaskDB(t *testing.T) {
 	t.Helper()
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "true")
+	t.Cleanup(func() { usage_mode.SetPersistedOptionalFeatures(nil) })
 	previousDB := model.DB
 	previousType := common.MainDatabaseType()
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

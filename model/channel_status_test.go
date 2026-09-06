@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -130,6 +131,55 @@ func TestInitChannelCacheUsesEnabledAbilitiesAndChannelStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, selected)
 	assert.Equal(t, 101, selected.Id)
+}
+
+func TestOptionalChannelTypesStayOutOfRoutingAndModelLists(t *testing.T) {
+	setupChannelStatusTest(t)
+	previousMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = true
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "false")
+	t.Cleanup(func() {
+		usage_mode.SetPersistedOptionalFeatures(nil)
+		common.MemoryCacheEnabled = previousMemoryCacheEnabled
+		if previousMemoryCacheEnabled {
+			InitChannelCache()
+		}
+	})
+
+	channels := []Channel{
+		{Id: 131, Name: "core", Key: "key-131", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled},
+		{Id: 132, Name: "media", Key: "key-132", Type: constant.ChannelTypeKling, Status: common.ChannelStatusEnabled},
+		{Id: 133, Name: "plugin", Key: "key-133", Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled},
+	}
+	for _, channel := range channels {
+		require.NoError(t, DB.Create(&channel).Error)
+	}
+	require.NoError(t, DB.Create(&[]Ability{
+		{Group: "default", Model: "core-model", ChannelId: 131, Enabled: true},
+		{Group: "default", Model: "media-model", ChannelId: 132, Enabled: true},
+		{Group: "default", Model: "plugin-model", ChannelId: 133, Enabled: true},
+	}).Error)
+
+	InitChannelCache()
+	selected, err := GetRandomSatisfiedChannel("default", "core-model", 0, nil)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, 131, selected.Id)
+	selected, err = GetRandomSatisfiedChannel("default", "media-model", 0, nil)
+	require.NoError(t, err)
+	assert.Nil(t, selected)
+	selected, err = GetRandomSatisfiedChannel("default", "plugin-model", 0, nil)
+	require.NoError(t, err)
+	assert.Nil(t, selected)
+	assert.Equal(t, []string{"core-model"}, GetEnabledModels())
+
+	common.MemoryCacheEnabled = false
+	selected, err = GetChannel("default", "media-model", 0, nil)
+	require.NoError(t, err)
+	assert.Nil(t, selected)
+	assert.False(t, IsChannelEnabledForGroupModel("default", "media-model", 132))
 }
 
 func TestEnabledAbilityQueriesExcludeDisabledChannels(t *testing.T) {

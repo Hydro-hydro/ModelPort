@@ -8,7 +8,9 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -34,54 +36,116 @@ func GetAllEnableAbilityWithChannels() ([]AbilityWithChannel, error) {
 	var abilities []AbilityWithChannel
 	err := DB.Table("abilities").
 		Select("abilities.*, channels.type as channel_type").
-		// Keep orphaned ability rows visible to pricing/model metadata callers;
-		// the in-memory routing index still rejects them because it requires an
-		// enabled channel snapshot. Disabled channels are excluded at the source.
-		Joins("left join channels on abilities.channel_id = channels.id").
-		Where("abilities.enabled = ? and (channels.status = ? or channels.id IS NULL)", true, common.ChannelStatusEnabled).
+		Joins("JOIN channels ON abilities.channel_id = channels.id").
+		Where("abilities.enabled = ? and channels.status = ?", true, common.ChannelStatusEnabled).
 		Scan(&abilities).Error
-	return abilities, err
+	if err != nil {
+		return nil, err
+	}
+	filtered := abilities[:0]
+	for _, ability := range abilities {
+		if usage_mode.IsChannelTypeEnabled(ability.ChannelType) {
+			filtered = append(filtered, ability)
+		}
+	}
+	return filtered, nil
 }
 
 func GetGroupEnabledModels(group string) []string {
-	var models []string
-	// Model metadata may contain orphaned ability rows while a channel is being
-	// provisioned or migrated. Keep those rows visible to model-list callers,
-	// but exclude abilities backed by an explicitly disabled channel. The route
-	// selector itself still requires an enabled backing channel.
+	var rows []struct {
+		Model       string
+		ChannelType int
+	}
 	DB.Table("abilities").
-		Joins("LEFT JOIN channels ON channels.id = abilities.channel_id").
-		Where("abilities."+commonGroupCol+" = ? AND abilities.enabled = ? AND (channels.status = ? OR channels.id IS NULL)", group, true, common.ChannelStatusEnabled).
-		Distinct("abilities.model").Pluck("abilities.model", &models)
+		Select("abilities.model, channels.type as channel_type").
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities."+commonGroupCol+" = ? AND abilities.enabled = ? AND channels.status = ?", group, true, common.ChannelStatusEnabled).
+		Scan(&rows)
+	models := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		if !usage_mode.IsChannelTypeEnabled(row.ChannelType) {
+			continue
+		}
+		if _, ok := seen[row.Model]; ok {
+			continue
+		}
+		seen[row.Model] = struct{}{}
+		models = append(models, row.Model)
+	}
 	return models
 }
 
 func GetEnabledModels() []string {
-	var models []string
+	var rows []struct {
+		Model       string
+		ChannelType int
+	}
 	DB.Table("abilities").
-		Joins("LEFT JOIN channels ON channels.id = abilities.channel_id").
-		Where("abilities.enabled = ? AND (channels.status = ? OR channels.id IS NULL)", true, common.ChannelStatusEnabled).
-		Distinct("abilities.model").Pluck("abilities.model", &models)
+		Select("abilities.model, channels.type as channel_type").
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities.enabled = ? AND channels.status = ?", true, common.ChannelStatusEnabled).
+		Scan(&rows)
+	models := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		if !usage_mode.IsChannelTypeEnabled(row.ChannelType) {
+			continue
+		}
+		if _, ok := seen[row.Model]; ok {
+			continue
+		}
+		seen[row.Model] = struct{}{}
+		models = append(models, row.Model)
+	}
 	return models
 }
 
 func GetAllEnableAbilities() []Ability {
-	var abilities []Ability
-	DB.Model(&Ability{}).
+	var rows []AbilityWithChannel
+	DB.Table("abilities").
+		Select("abilities.*, channels.type as channel_type").
 		Joins("JOIN channels ON channels.id = abilities.channel_id").
 		Where("abilities.enabled = ? AND channels.status = ?", true, common.ChannelStatusEnabled).
-		Find(&abilities)
+		Find(&rows)
+	abilities := make([]Ability, 0, len(rows))
+	for _, row := range rows {
+		if usage_mode.IsChannelTypeEnabled(row.ChannelType) {
+			abilities = append(abilities, row.Ability)
+		}
+	}
 	return abilities
+}
+
+func scopeAvailableChannelTypes(query *gorm.DB, table string) *gorm.DB {
+	if !usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) &&
+		!usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+		query = query.Where(table+".type NOT IN ?", []int{
+			constant.ChannelTypeMidjourney,
+			constant.ChannelTypeMidjourneyPlus,
+			constant.ChannelTypeSunoAPI,
+			constant.ChannelTypeKling,
+			constant.ChannelTypeJimeng,
+			constant.ChannelTypeVidu,
+			constant.ChannelTypeDoubaoVideo,
+			constant.ChannelTypeSora,
+		})
+	}
+	if !usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+		query = query.Where(table+".type <> ?", constant.ChannelTypeTaskPlugin)
+	}
+	return query
 }
 
 func getPriority(group string, model string, retry int) (int, error) {
 
 	var priorities []int
-	err := DB.Model(&Ability{}).
+	query := DB.Model(&Ability{}).
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
 		Select("DISTINCT(priority)").
-		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
-		Order("priority DESC").              // 按优先级降序排序
-		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
+		Where("abilities."+commonGroupCol+" = ? and abilities.model = ? and abilities.enabled = ? and channels.status = ?", group, model, true, common.ChannelStatusEnabled)
+	query = scopeAvailableChannelTypes(query, "channels")
+	err := query.Order("priority DESC").Pluck("priority", &priorities).Error
 
 	if err != nil {
 		// 处理错误
@@ -105,7 +169,11 @@ func getPriority(group string, model string, retry int) (int, error) {
 }
 
 func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
-	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
+	maxPrioritySubQuery := DB.Model(&Ability{}).
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Select("MAX(abilities.priority)").
+		Where("abilities."+commonGroupCol+" = ? and abilities.model = ? and abilities.enabled = ? and channels.status = ?", group, model, true, common.ChannelStatusEnabled)
+	maxPrioritySubQuery = scopeAvailableChannelTypes(maxPrioritySubQuery, "channels")
 	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
 	if retry != 0 {
 		priority, err := getPriority(group, model, retry)
@@ -126,10 +194,11 @@ func GetChannel(
 	filters []dto.ChannelFilter,
 ) (*Channel, error) {
 	var abilities []Ability
-	err := DB.Model(&Ability{}).
+	query := DB.Model(&Ability{}).
 		Joins("JOIN channels ON channels.id = abilities.channel_id").
-		Where("abilities."+commonGroupCol+" = ? and abilities.model = ? and abilities.enabled = ? and channels.status = ?", group, model, true, common.ChannelStatusEnabled).
-		Order("abilities.priority DESC, abilities.weight DESC").Find(&abilities).Error
+		Where("abilities."+commonGroupCol+" = ? and abilities.model = ? and abilities.enabled = ? and channels.status = ?", group, model, true, common.ChannelStatusEnabled)
+	query = scopeAvailableChannelTypes(query, "channels")
+	err := query.Order("abilities.priority DESC, abilities.weight DESC").Find(&abilities).Error
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +283,9 @@ func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters
 	filtered := make([]Ability, 0, len(abilities))
 	for _, ability := range abilities {
 		channel := channelsByID[ability.ChannelId]
+		if channel != nil && !usage_mode.IsChannelTypeEnabled(channel.Type) {
+			continue
+		}
 		if ok, _ := ChannelSatisfiesFilters(channel, modelName, filters); ok {
 			filtered = append(filtered, ability)
 		}

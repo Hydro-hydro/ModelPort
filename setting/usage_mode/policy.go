@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/QuantumNous/new-api/constant"
 )
 
 // Mode describes how the instance is intended to be operated.
@@ -206,6 +208,28 @@ func IsFeatureEnabled(feature Feature) bool {
 		return configured && enabled
 	}
 	return true
+}
+
+// IsChannelTypeEnabled applies the feature boundary to a channel before it
+// can participate in routing or model discovery. Media providers may also be
+// used by an enabled task plugin, so either feature keeps those providers
+// available; task-plugin channels themselves require the plugin feature.
+func IsChannelTypeEnabled(channelType int) bool {
+	switch channelType {
+	case constant.ChannelTypeTaskPlugin:
+		return IsFeatureEnabled(FeatureTaskPlugins)
+	case constant.ChannelTypeMidjourney,
+		constant.ChannelTypeMidjourneyPlus,
+		constant.ChannelTypeSunoAPI,
+		constant.ChannelTypeKling,
+		constant.ChannelTypeJimeng,
+		constant.ChannelTypeVidu,
+		constant.ChannelTypeDoubaoVideo,
+		constant.ChannelTypeSora:
+		return IsFeatureEnabled(FeatureMediaTasks) || IsFeatureEnabled(FeatureTaskPlugins)
+	default:
+		return true
+	}
 }
 
 // Capabilities returns a fresh map suitable for an API response. A fresh map
