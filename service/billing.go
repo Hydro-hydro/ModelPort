@@ -150,6 +150,24 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 	return nil
 }
 
+// ensureBillingSessionForUsage lazily creates the usage-only session needed by
+// a free-model request that reports a positive final charge (for example, a
+// tool or audio surcharge). Free models skip the initial reservation, so the
+// session has to be created after the final usage is known. A zero charge keeps
+// the old no-session fast path.
+func ensureBillingSessionForUsage(c *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
+	if relayInfo == nil || relayInfo.Billing != nil || actualQuota <= 0 {
+		return nil
+	}
+	if !relayInfo.PriceData.FreeModel {
+		return fmt.Errorf("billing session is required before usage settlement")
+	}
+	if apiErr := PreConsumeBilling(c, 0, relayInfo); apiErr != nil {
+		return apiErr
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // SettleBilling — 后结算辅助函数
 // ---------------------------------------------------------------------------

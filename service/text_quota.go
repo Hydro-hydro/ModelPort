@@ -444,6 +444,17 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	}
 
+	// Free models skip the request-time reservation. Tool and audio surcharges
+	// are still real usage charges, so create a zero-reservation session before
+	// writing stats/logs and settling the final Token amount. A zero-cost free
+	// model keeps the no-session path.
+	if summary.Quota > 0 && relayInfo.PriceData.FreeModel && relayInfo.Billing == nil {
+		if err := ensureBillingSessionForUsage(ctx, relayInfo, summary.Quota); err != nil {
+			logger.LogError(ctx, "error creating free-model usage billing session: "+err.Error())
+			return
+		}
+	}
+
 	logModel := summary.ModelName
 	if strings.HasPrefix(logModel, "gpt-4-gizmo") {
 		logModel = "gpt-4-gizmo-*"

@@ -57,6 +57,36 @@ func TestPersonalBillingSessionUsesTokenQuota(t *testing.T) {
 	require.NoError(t, session.Settle(preConsumedQuota))
 }
 
+func TestFreeModelUsageSessionIsCreatedOnlyForPositiveSurcharge(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 807, 807
+	const initialTokenQuota = 1_000
+	const tokenKey = "sk-personal-free-model-surcharge"
+	seedUser(t, userID, 0)
+	seedToken(t, tokenID, userID, tokenKey, initialTokenQuota)
+
+	relayInfo := personalBillingRelayInfo(userID, tokenID, tokenKey)
+	relayInfo.PriceData.FreeModel = true
+	ctx := newPersonalBillingTestContext()
+
+	// A genuinely free response does not need a durable billing operation.
+	require.NoError(t, ensureBillingSessionForUsage(ctx, relayInfo, 0))
+	assert.Nil(t, relayInfo.Billing)
+
+	// A positive tool/audio surcharge must enter the same usage-only settlement
+	// path as a normally pre-consumed request, starting from zero reservation.
+	require.NoError(t, ensureBillingSessionForUsage(ctx, relayInfo, 1))
+	require.NotNil(t, relayInfo.Billing)
+	require.NoError(t, relayInfo.Billing.Settle(1))
+
+	assert.Equal(t, initialTokenQuota-1, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, 1, getTokenUsedQuota(t, tokenID))
+	operation, err := model.GetBillingOperation(relayInfo.Billing.(*BillingSession).OperationKey())
+	require.NoError(t, err)
+	assert.True(t, operation.TokenApplied)
+}
+
 func TestPersonalBillingSessionCanReserveAfterZeroInitialEstimate(t *testing.T) {
 	truncate(t)
 
