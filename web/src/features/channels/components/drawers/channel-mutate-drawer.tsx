@@ -122,6 +122,7 @@ import {
   parseChannelConnectionInfo,
   type ChannelConnectionInfo,
 } from '@/lib/channel-connection-info'
+import { useFeatureAccess } from '@/lib/feature-access'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
@@ -141,9 +142,10 @@ import {
   ADD_MODE_OPTIONS,
   CLAUDE_FIELD_PASSTHROUGH_TYPES,
   CHANNEL_STATUS_LABELS,
+  MEDIA_TASK_CHANNEL_TYPES,
   CHANNEL_TYPE_OPTIONS,
   CHANNEL_TYPE_TASK_PLUGIN,
-  channelTypeOptionsForTaskPluginBind,
+  channelTypeOptionsForFeatureAccess,
   CHANNEL_TYPE_WARNINGS,
   ERROR_MESSAGES,
   FIELD_PASSTHROUGH_TYPES,
@@ -617,6 +619,7 @@ export function ChannelMutateDrawer({
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { setOpen } = useChannels()
+  const { isEnabled } = useFeatureAccess()
   const currentUser = useAuthStore((s) => s.auth.user)
   const canEditSensitive = hasPermission(
     currentUser,
@@ -628,6 +631,8 @@ export function ChannelMutateDrawer({
     ADMIN_PERMISSION_RESOURCES.TASK_PLUGIN,
     ADMIN_PERMISSION_ACTIONS.BIND
   )
+  const mediaTasksEnabled = isEnabled('media_tasks')
+  const taskPluginsEnabled = isEnabled('task_plugins')
   const canRevealChannelKey = currentUser?.role === ROLE.SUPER_ADMIN
   const [fetchModelsDialogOpen, setFetchModelsDialogOpen] = useState(false)
   const [channelKey, setChannelKey] = useState<string | null>(null)
@@ -938,18 +943,31 @@ export function ChannelMutateDrawer({
   const taskPluginOptionsQuery = useQuery({
     queryKey: ['task-plugin-options'],
     queryFn: getTaskPluginOptions,
-    enabled: currentType === CHANNEL_TYPE_TASK_PLUGIN && canBindTaskPlugin,
+    enabled:
+      currentType === CHANNEL_TYPE_TASK_PLUGIN &&
+      canBindTaskPlugin &&
+      taskPluginsEnabled,
   })
 
   const channelTypeOptions = useMemo(() => {
-    const options = channelTypeOptionsForTaskPluginBind(canBindTaskPlugin).map(
-      (option) => ({
-        value: String(option.value),
-        label: t(option.label),
-        icon: <ChannelTypeLogo type={option.value} size={16} />,
-      })
-    )
-    if (!options.some((option) => Number(option.value) === currentType)) {
+    const options = channelTypeOptionsForFeatureAccess(
+      canBindTaskPlugin,
+      mediaTasksEnabled,
+      taskPluginsEnabled
+    ).map((option) => ({
+      value: String(option.value),
+      label: t(option.label),
+      icon: <ChannelTypeLogo type={option.value} size={16} />,
+    }))
+    const currentTypeAllowed =
+      (!MEDIA_TASK_CHANNEL_TYPES.has(currentType) ||
+        mediaTasksEnabled ||
+        taskPluginsEnabled) &&
+      (currentType !== CHANNEL_TYPE_TASK_PLUGIN || taskPluginsEnabled)
+    if (
+      currentTypeAllowed &&
+      !options.some((option) => Number(option.value) === currentType)
+    ) {
       options.push({
         value: String(currentType),
         label: `#${currentType}`,
@@ -957,7 +975,7 @@ export function ChannelMutateDrawer({
       })
     }
     return options
-  }, [canBindTaskPlugin, currentType, t])
+  }, [canBindTaskPlugin, currentType, mediaTasksEnabled, t, taskPluginsEnabled])
 
   const formErrors = form.formState.errors
   const identityHasErrors = Boolean(
@@ -2042,80 +2060,81 @@ export function ChannelMutateDrawer({
                             />
                           </fieldset>
 
-                          {currentType === CHANNEL_TYPE_TASK_PLUGIN && (
-                            <FormField
-                              control={form.control}
-                              name='task_plugin_key'
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>{t('Task plugin *')}</FormLabel>
-                                  {canBindTaskPlugin ? (
-                                    <Select
-                                      value={field.value}
-                                      onValueChange={(value) => {
-                                        field.onChange(value)
-                                        const plugin =
-                                          taskPluginOptionsQuery.data?.find(
-                                            (item) => item.key === value
-                                          )
-                                        if (plugin?.models?.length) {
-                                          form.setValue(
-                                            'models',
-                                            formatModelsArray(plugin.models),
-                                            {
-                                              shouldDirty: true,
-                                            }
-                                          )
-                                        }
-                                      }}
-                                      items={(
-                                        taskPluginOptionsQuery.data ?? []
-                                      ).map((plugin) => ({
-                                        value: plugin.key,
-                                        label: `${plugin.name} (${plugin.key})`,
-                                      }))}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger>
-                                          <SelectValue
-                                            placeholder={t(
-                                              'Select task plugin'
-                                            )}
-                                          />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        {(
+                          {currentType === CHANNEL_TYPE_TASK_PLUGIN &&
+                            taskPluginsEnabled && (
+                              <FormField
+                                control={form.control}
+                                name='task_plugin_key'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>{t('Task plugin *')}</FormLabel>
+                                    {canBindTaskPlugin ? (
+                                      <Select
+                                        value={field.value}
+                                        onValueChange={(value) => {
+                                          field.onChange(value)
+                                          const plugin =
+                                            taskPluginOptionsQuery.data?.find(
+                                              (item) => item.key === value
+                                            )
+                                          if (plugin?.models?.length) {
+                                            form.setValue(
+                                              'models',
+                                              formatModelsArray(plugin.models),
+                                              {
+                                                shouldDirty: true,
+                                              }
+                                            )
+                                          }
+                                        }}
+                                        items={(
                                           taskPluginOptionsQuery.data ?? []
-                                        ).map((plugin) => (
-                                          <SelectItem
-                                            key={plugin.key}
-                                            value={plugin.key}
-                                          >
-                                            {plugin.name} ({plugin.key})
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  ) : (
-                                    <FormControl>
-                                      <Input
-                                        readOnly
-                                        value={field.value ?? ''}
-                                        className='font-mono'
-                                      />
-                                    </FormControl>
-                                  )}
-                                  <FormDescription>
-                                    {t(
-                                      'Selecting a plugin fills its declared models.'
+                                        ).map((plugin) => ({
+                                          value: plugin.key,
+                                          label: `${plugin.name} (${plugin.key})`,
+                                        }))}
+                                      >
+                                        <FormControl>
+                                          <SelectTrigger>
+                                            <SelectValue
+                                              placeholder={t(
+                                                'Select task plugin'
+                                              )}
+                                            />
+                                          </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                          {(
+                                            taskPluginOptionsQuery.data ?? []
+                                          ).map((plugin) => (
+                                            <SelectItem
+                                              key={plugin.key}
+                                              value={plugin.key}
+                                            >
+                                              {plugin.name} ({plugin.key})
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    ) : (
+                                      <FormControl>
+                                        <Input
+                                          readOnly
+                                          value={field.value ?? ''}
+                                          className='font-mono'
+                                        />
+                                      </FormControl>
                                     )}
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          )}
+                                    <FormDescription>
+                                      {t(
+                                        'Selecting a plugin fills its declared models.'
+                                      )}
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
 
                           <FormField
                             control={form.control}

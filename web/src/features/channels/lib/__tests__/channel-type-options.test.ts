@@ -21,6 +21,8 @@ import { describe, expect, test } from 'vitest'
 import {
   CHANNEL_TYPE_OPTIONS,
   CHANNEL_TYPE_TASK_PLUGIN,
+  MEDIA_TASK_CHANNEL_TYPES,
+  channelTypeOptionsForFeatureAccess,
   channelTypeOptionsForTaskPluginBind,
 } from '../../constants'
 
@@ -40,5 +42,22 @@ describe('channel type options for task plugin bind', () => {
     expect(
       options.some((option) => option.value === CHANNEL_TYPE_TASK_PLUGIN)
     ).toBe(true)
+  })
+
+  test('hides media and task plugin types when optional features are disabled', () => {
+    const options = channelTypeOptionsForFeatureAccess(false, false, false)
+
+    expect(
+      options.some((option) => MEDIA_TASK_CHANNEL_TYPES.has(option.value))
+    ).toBe(false)
+    expect(
+      options.some((option) => option.value === CHANNEL_TYPE_TASK_PLUGIN)
+    ).toBe(false)
+  })
+
+  test('keeps media provider types available for task-plugin routing', () => {
+    const options = channelTypeOptionsForFeatureAccess(true, false, true)
+
+    expect(options).toEqual(CHANNEL_TYPE_OPTIONS)
   })
 })

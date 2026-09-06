@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { DEFAULT_SYSTEM_NAME } from '@/lib/constants'
+import { useFeatureAccess } from '@/lib/feature-access'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -65,7 +66,10 @@ function normalizeValue(value: unknown): string {
 
 export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
   const { t } = useTranslation()
+  const { isEnabled } = useFeatureAccess()
   const updateOption = useUpdateOption()
+  const asyncTasksEnabled =
+    isEnabled('media_tasks') || isEnabled('task_plugins')
 
   const normalizedDefaults: SystemInfoFormValues = {
     SystemName: normalizeValue(defaultValues.SystemName),
@@ -161,27 +165,29 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name='TaskPublicAddress'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Async Task Public Address')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder='https://media.example.com/tasks'
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Public base URL for async task media. Supports a dedicated media domain, port, or Nginx path prefix; falls back to Server Address when empty.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {asyncTasksEnabled && (
+                <FormField
+                  control={form.control}
+                  name='TaskPublicAddress'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Async Task Public Address')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='https://media.example.com/tasks'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Public base URL for async task media. Supports a dedicated media domain, port, or Nginx path prefix; falls back to Server Address when empty.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}

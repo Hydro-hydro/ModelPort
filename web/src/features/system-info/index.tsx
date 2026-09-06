@@ -20,12 +20,15 @@ import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
+import { useFeatureAccess } from '@/lib/feature-access'
 
 import { SystemInstancesPanel } from './components/system-instances-panel'
 import { SystemTasksPanel } from './components/system-tasks-panel'
 
 export function SystemInfo() {
   const { t } = useTranslation()
+  const { isEnabled } = useFeatureAccess()
+  const systemTasksEnabled = isEnabled('system_tasks')
 
   return (
     <SectionPageLayout>
@@ -40,7 +43,7 @@ export function SystemInfo() {
       <SectionPageLayout.Content>
         <div className='space-y-4'>
           <SystemInstancesPanel />
-          <SystemTasksPanel />
+          {systemTasksEnabled && <SystemTasksPanel />}
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

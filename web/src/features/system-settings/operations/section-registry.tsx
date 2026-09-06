@@ -22,9 +22,9 @@ import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
-import { OptionalFeaturesSection } from './optional-features-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { OptionalFeaturesSection } from './optional-features-section'
 
 const OPERATIONS_SECTIONS = [
   {
@@ -97,6 +97,7 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'logs',
+    feature: 'system_tasks',
     titleKey: 'Log Maintenance',
     build: (settings: OperationsSettings) => (
       <LogSettingsSection

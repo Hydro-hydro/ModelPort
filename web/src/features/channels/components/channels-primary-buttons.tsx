@@ -56,6 +56,7 @@ import {
   ADMIN_PERMISSION_RESOURCES,
   hasPermission,
 } from '@/lib/admin-permissions'
+import { useFeatureAccess } from '@/lib/feature-access'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
@@ -80,6 +81,8 @@ export function ChannelsPrimaryButtons() {
     upstream,
   } = useChannels()
   const queryClient = useQueryClient()
+  const { isEnabled } = useFeatureAccess()
+  const systemTasksEnabled = isEnabled('system_tasks')
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showConsistencyDialog, setShowConsistencyDialog] = useState(false)
   const [isRepairingConsistency, setIsRepairingConsistency] = useState(false)
@@ -207,16 +210,18 @@ export function ChannelsPrimaryButtons() {
 
             <DropdownMenuSeparator className='sm:hidden' />
 
-            <DropdownMenuItem
-              onClick={() => {
-                handleTestAllChannels(queryClient)
-              }}
-            >
-              {t('Test All Channels')}
-              <DropdownMenuShortcut>
-                <TestTube className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+            {systemTasksEnabled && (
+              <DropdownMenuItem
+                onClick={() => {
+                  handleTestAllChannels(queryClient)
+                }}
+              >
+                {t('Test All Channels')}
+                <DropdownMenuShortcut>
+                  <TestTube className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            )}
 
             <DropdownMenuItem
               onClick={() => {
@@ -231,15 +236,17 @@ export function ChannelsPrimaryButtons() {
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem
-              onClick={() => upstream.detectAllUpdates()}
-              disabled={upstream.detectAllLoading}
-            >
-              {t('Detect All Upstream Updates')}
-              <DropdownMenuShortcut>
-                <RefreshCw className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+            {systemTasksEnabled && (
+              <DropdownMenuItem
+                onClick={() => upstream.detectAllUpdates()}
+                disabled={upstream.detectAllLoading}
+              >
+                {t('Detect All Upstream Updates')}
+                <DropdownMenuShortcut>
+                  <RefreshCw className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            )}
 
             <DropdownMenuItem
               onClick={() => upstream.applyAllUpdates()}

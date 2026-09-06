@@ -22,18 +22,31 @@ import { ContentSettings } from '@/features/system-settings/content'
 import {
   CONTENT_DEFAULT_SECTION,
   CONTENT_SECTION_IDS,
+  getContentSectionMeta,
+  type ContentSectionId,
 } from '@/features/system-settings/content/section-registry.tsx'
+import { getFreshFeatureAccess } from '@/lib/feature-access'
 
 export const Route = createFileRoute(
   '/_authenticated/system-settings/content/$section'
 )({
-  beforeLoad: ({ params }) => {
+  beforeLoad: async ({ params }) => {
     const validSections = CONTENT_SECTION_IDS as unknown as string[]
     if (!validSections.includes(params.section)) {
       throw redirect({
         to: '/system-settings/content/$section',
         params: { section: CONTENT_DEFAULT_SECTION },
       })
+    }
+
+    const feature = getContentSectionMeta(
+      params.section as ContentSectionId
+    ).feature
+    if (feature) {
+      const access = await getFreshFeatureAccess(feature)
+      if (!access.enabled) {
+        throw redirect({ to: '/system-settings/site' })
+      }
     }
   },
   component: ContentSettings,

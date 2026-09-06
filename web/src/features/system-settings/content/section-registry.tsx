@@ -91,6 +91,7 @@ const CONTENT_SECTIONS = [
   },
   {
     id: 'drawing',
+    feature: 'media_tasks',
     titleKey: 'Drawing',
     build: (settings: ContentSettings) => (
       <DrawingSettingsSection

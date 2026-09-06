@@ -44,6 +44,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useFeatureAccess } from '@/lib/feature-access'
 import { parseHttpStatusCodeRules } from '@/lib/http-status-code-rules'
 
 import {
@@ -256,7 +257,9 @@ export function RoutingReliabilitySection({
   defaultValues,
 }: RoutingReliabilitySectionProps) {
   const { t } = useTranslation()
+  const { isEnabled } = useFeatureAccess()
   const updateOption = useUpdateOption()
+  const systemTasksEnabled = isEnabled('system_tasks')
   const routingReliabilitySchema = createRoutingReliabilitySchema(t)
   const baselineRef = useRef<NormalizedRoutingReliabilityValues>(
     normalizeDefaults(defaultValues)
@@ -397,166 +400,172 @@ export function RoutingReliabilitySection({
             </div>
           </div>
 
-          <Separator />
+          {systemTasksEnabled && (
+            <>
+              <Separator />
 
-          <div className='flex min-w-0 flex-col gap-4'>
-            <div className='flex flex-col gap-1'>
-              <h4 className='text-sm font-medium'>
-                {t('Channel health checks')}
-              </h4>
-            </div>
-            <div className='grid min-w-0 gap-6 lg:grid-cols-3'>
-              <FormField
-                control={form.control}
-                name='monitor_setting.auto_test_channel_enabled'
-                render={({ field }) => (
-                  <SettingsSwitchItem>
-                    <SettingsSwitchContent>
-                      <FormLabel>{t('Scheduled channel tests')}</FormLabel>
-                      <FormDescription>
-                        {t(
-                          'Automatically probe all channels in the background'
-                        )}
-                      </FormDescription>
-                    </SettingsSwitchContent>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </SettingsSwitchItem>
-                )}
-              />
+              <div className='flex min-w-0 flex-col gap-4'>
+                <div className='flex flex-col gap-1'>
+                  <h4 className='text-sm font-medium'>
+                    {t('Channel health checks')}
+                  </h4>
+                </div>
+                <div className='grid min-w-0 gap-6 lg:grid-cols-3'>
+                  <FormField
+                    control={form.control}
+                    name='monitor_setting.auto_test_channel_enabled'
+                    render={({ field }) => (
+                      <SettingsSwitchItem>
+                        <SettingsSwitchContent>
+                          <FormLabel>{t('Scheduled channel tests')}</FormLabel>
+                          <FormDescription>
+                            {t(
+                              'Automatically probe all channels in the background'
+                            )}
+                          </FormDescription>
+                        </SettingsSwitchContent>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </SettingsSwitchItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name='monitor_setting.channel_test_mode'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Channel test mode')}</FormLabel>
-                    <Select
-                      items={[
-                        {
-                          value: 'scheduled_all',
-                          label: t('Actively check all channels'),
-                        },
-                        {
-                          value: 'auto_ban_only',
-                          label: t(
-                            'Actively check auto-disable-enabled channels'
-                          ),
-                        },
-                        {
-                          value: 'passive_recovery',
-                          label: t('Check channels awaiting recovery only'),
-                        },
-                      ]}
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectGroup>
-                          <SelectItem value='scheduled_all'>
-                            {t('Actively check all channels')}
-                          </SelectItem>
-                          <SelectItem value='auto_ban_only'>
-                            {t('Actively check auto-disable-enabled channels')}
-                          </SelectItem>
-                          <SelectItem value='passive_recovery'>
-                            {t('Check channels awaiting recovery only')}
-                          </SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      {channelTestModeDescription}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name='monitor_setting.channel_test_mode'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Channel test mode')}</FormLabel>
+                        <Select
+                          items={[
+                            {
+                              value: 'scheduled_all',
+                              label: t('Actively check all channels'),
+                            },
+                            {
+                              value: 'auto_ban_only',
+                              label: t(
+                                'Actively check auto-disable-enabled channels'
+                              ),
+                            },
+                            {
+                              value: 'passive_recovery',
+                              label: t('Check channels awaiting recovery only'),
+                            },
+                          ]}
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              <SelectItem value='scheduled_all'>
+                                {t('Actively check all channels')}
+                              </SelectItem>
+                              <SelectItem value='auto_ban_only'>
+                                {t(
+                                  'Actively check auto-disable-enabled channels'
+                                )}
+                              </SelectItem>
+                              <SelectItem value='passive_recovery'>
+                                {t('Check channels awaiting recovery only')}
+                              </SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          {channelTestModeDescription}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name='monitor_setting.auto_test_channel_minutes'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Test interval (minutes)')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min={1}
-                        step={1}
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {channelTestMode === 'passive_recovery'
-                        ? t(
-                            'How frequently the system checks auto-disabled channels for recovery'
-                          )
-                        : t('How frequently the system tests all channels')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name='monitor_setting.auto_test_channel_minutes'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Test interval (minutes)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            min={1}
+                            step={1}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {channelTestMode === 'passive_recovery'
+                            ? t(
+                                'How frequently the system checks auto-disabled channels for recovery'
+                              )
+                            : t('How frequently the system tests all channels')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name='monitor_setting.channel_test_concurrency'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Channel test concurrency')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min={1}
-                        max={MAX_CHANNEL_TEST_CONCURRENCY}
-                        step={1}
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Maximum number of channels tested at the same time (1-32)'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name='monitor_setting.channel_test_concurrency'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Channel test concurrency')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            min={1}
+                            max={MAX_CHANNEL_TEST_CONCURRENCY}
+                            step={1}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Maximum number of channels tested at the same time (1-32)'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name='AutomaticEnableChannelEnabled'
-                render={({ field }) => (
-                  <SettingsSwitchItem>
-                    <SettingsSwitchContent>
-                      <FormLabel>{t('Re-enable on success')}</FormLabel>
-                      <FormDescription>
-                        {t(
-                          'Bring channels back online after successful checks'
-                        )}
-                      </FormDescription>
-                    </SettingsSwitchContent>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </SettingsSwitchItem>
-                )}
-              />
-            </div>
-          </div>
+                  <FormField
+                    control={form.control}
+                    name='AutomaticEnableChannelEnabled'
+                    render={({ field }) => (
+                      <SettingsSwitchItem>
+                        <SettingsSwitchContent>
+                          <FormLabel>{t('Re-enable on success')}</FormLabel>
+                          <FormDescription>
+                            {t(
+                              'Bring channels back online after successful checks'
+                            )}
+                          </FormDescription>
+                        </SettingsSwitchContent>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </SettingsSwitchItem>
+                    )}
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           <Separator />
 

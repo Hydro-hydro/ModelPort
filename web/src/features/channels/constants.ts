@@ -25,6 +25,20 @@ export const CHANNEL_TYPE_NEW_API = 60
 
 export const CHANNEL_TYPE_TASK_PLUGIN = 61
 
+// Channel types whose primary relay path is backed by asynchronous media
+// tasks. They remain available when task plugins are enabled because plugins
+// may target the same provider channels.
+export const MEDIA_TASK_CHANNEL_TYPES = new Set<number>([
+  2, // Midjourney
+  5, // MidjourneyPlus
+  36, // SunoAPI
+  50, // Kling
+  51, // Jimeng
+  52, // Vidu
+  54, // DoubaoVideo
+  55, // Sora
+])
+
 export const CHANNEL_TYPES = {
   0: 'Unknown',
   1: 'OpenAI',
@@ -88,8 +102,8 @@ export const CHANNEL_TYPES = {
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
   1, 14, 33, 24, 43, 3, 41, 48, 60, 58, 61, 42, 34, 20, 4, 40, 27, 25, 17, 26,
-  15, 46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 59, 22, 21,
-  44, 2, 5, 36, 50, 51, 52, 53, 54, 55, 56,
+  15, 46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 59, 22, 21, 44,
+  2, 5, 36, 50, 51, 52, 53, 54, 55, 56,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
@@ -120,6 +134,18 @@ export function channelTypeOptionsForTaskPluginBind(
   return CHANNEL_TYPE_OPTIONS.filter(
     (option) => option.value !== CHANNEL_TYPE_TASK_PLUGIN
   )
+}
+
+export function channelTypeOptionsForFeatureAccess(
+  canBindTaskPlugin: boolean,
+  mediaTasksEnabled: boolean,
+  taskPluginsEnabled: boolean
+): { value: number; label: string }[] {
+  const options = channelTypeOptionsForTaskPluginBind(
+    canBindTaskPlugin && taskPluginsEnabled
+  )
+  if (mediaTasksEnabled || taskPluginsEnabled) return options
+  return options.filter((option) => !MEDIA_TASK_CHANNEL_TYPES.has(option.value))
 }
 
 // ============================================================================
