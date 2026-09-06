@@ -69,6 +69,33 @@ func Distribute() func(c *gin.Context) {
 				}
 				return
 			}
+			// A pinned channel still has to expose the requested model in the
+			// selected route group. Without this check an explicit channel pin
+			// could bypass an operator-disabled Ability or select a model that
+			// is no longer part of the channel's route index.
+			usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+			if usingGroup != "" && modelRequest.Model != "" {
+				abilityEnabled := false
+				if usingGroup == "auto" {
+					for _, group := range service.GetRequestAutoGroups(c) {
+						if model.IsChannelEnabledForGroupModel(group, modelRequest.Model, channel.Id) {
+							common.SetContextKey(c, constant.ContextKeyAutoGroup, group)
+							abilityEnabled = true
+							break
+						}
+					}
+				} else {
+					abilityEnabled = model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, channel.Id)
+				}
+				if !abilityEnabled {
+					if pin.Source == taskdto.PinSourceOriginTask {
+						abortWithOpenAiMessage(c, http.StatusBadRequest, "origin_task_channel_disabled", types.ErrorCode("origin_task_channel_disabled"))
+					} else {
+						abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
+					}
+					return
+				}
+			}
 			if ok, kind := model.ChannelSatisfiesFilters(channel, modelRequest.Model, constraints.Filters); !ok {
 				if kind == taskdto.FilterTaskPluginIdentity {
 					logTaskPluginChannelDecision(c, channel, modelRequest.Model, "channel_rejected", "identity_mismatch")

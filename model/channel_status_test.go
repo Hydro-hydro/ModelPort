@@ -149,6 +149,24 @@ func TestEnabledAbilityQueriesExcludeDisabledChannels(t *testing.T) {
 	assert.Equal(t, enabled.Id, abilities[0].ChannelId)
 }
 
+func TestIsChannelEnabledForGroupModelRequiresEnabledChannelAndAbility(t *testing.T) {
+	setupChannelStatusTest(t)
+
+	enabled := Channel{Id: 123, Name: "enabled-helper", Key: "key-123", Status: common.ChannelStatusEnabled}
+	disabled := Channel{Id: 124, Name: "disabled-helper", Key: "key-124", Status: common.ChannelStatusManuallyDisabled}
+	require.NoError(t, DB.Create(&enabled).Error)
+	require.NoError(t, DB.Create(&disabled).Error)
+	require.NoError(t, DB.Create(&[]Ability{
+		{Group: "default", Model: "helper-model", ChannelId: enabled.Id, Enabled: true},
+		{Group: "default", Model: "disabled-ability", ChannelId: enabled.Id, Enabled: false},
+		{Group: "default", Model: "helper-model", ChannelId: disabled.Id, Enabled: true},
+	}).Error)
+
+	assert.True(t, IsChannelEnabledForGroupModel("default", "helper-model", enabled.Id))
+	assert.False(t, IsChannelEnabledForGroupModel("default", "disabled-ability", enabled.Id))
+	assert.False(t, IsChannelEnabledForGroupModel("default", "helper-model", disabled.Id))
+}
+
 func TestUpdateChannelStatusRestoresEnabledRouteAfterDisable(t *testing.T) {
 	truncateTables(t)
 	previousMemoryCacheEnabled := common.MemoryCacheEnabled
@@ -182,6 +200,67 @@ func TestUpdateChannelStatusRestoresEnabledRouteAfterDisable(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, selected)
 	assert.Equal(t, channel.Id, selected.Id)
+}
+
+func TestChannelStatusChangesPreservePerAbilityEnabledState(t *testing.T) {
+	setupChannelStatusTest(t)
+
+	tag := "status-ability-tag"
+	channel := Channel{
+		Id:     112,
+		Name:   "status-ability-preserve",
+		Key:    "key-112",
+		Status: common.ChannelStatusEnabled,
+		Tag:    &tag,
+	}
+	require.NoError(t, DB.Create(&channel).Error)
+	require.NoError(t, DB.Create(&[]Ability{
+		{Group: "default", Model: "kept-enabled", ChannelId: channel.Id, Enabled: true, Tag: &tag},
+		{Group: "default", Model: "kept-disabled", ChannelId: channel.Id, Enabled: false, Tag: &tag},
+	}).Error)
+
+	require.True(t, UpdateChannelStatus(channel.Id, "", common.ChannelStatusManuallyDisabled, "manual"))
+	require.True(t, UpdateChannelStatus(channel.Id, "", common.ChannelStatusEnabled, "restore"))
+
+	var abilities []Ability
+	require.NoError(t, DB.Where("channel_id = ?", channel.Id).Order("model").Find(&abilities).Error)
+	require.Len(t, abilities, 2)
+	assert.False(t, abilities[0].Enabled, "disabled model ability must remain disabled after channel restore")
+	assert.True(t, abilities[1].Enabled, "enabled model ability must remain enabled after channel restore")
+
+	require.NoError(t, DisableChannelByTag(tag))
+	require.NoError(t, EnableChannelByTag(tag))
+	abilities = nil
+	require.NoError(t, DB.Where("channel_id = ?", channel.Id).Order("model").Find(&abilities).Error)
+	require.Len(t, abilities, 2)
+	assert.False(t, abilities[0].Enabled, "tag channel toggle must preserve disabled model ability")
+	assert.True(t, abilities[1].Enabled, "tag channel toggle must preserve enabled model ability")
+}
+
+func TestChannelUpdatePreservesExistingAbilityEnabledState(t *testing.T) {
+	setupChannelStatusTest(t)
+
+	channel := Channel{
+		Id:     113,
+		Name:   "ability-update-preserve",
+		Key:    "key-113",
+		Status: common.ChannelStatusEnabled,
+		Models: "existing-model",
+		Group:  "default",
+	}
+	require.NoError(t, DB.Create(&channel).Error)
+	require.NoError(t, DB.Create(&Ability{
+		Group: "default", Model: "existing-model", ChannelId: channel.Id, Enabled: false,
+	}).Error)
+
+	channel.Models = "existing-model,new-model"
+	require.NoError(t, channel.Update())
+
+	var abilities []Ability
+	require.NoError(t, DB.Where("channel_id = ?", channel.Id).Order("model").Find(&abilities).Error)
+	require.Len(t, abilities, 2)
+	assert.False(t, abilities[0].Enabled, "existing disabled ability must survive channel model edits")
+	assert.True(t, abilities[1].Enabled, "new ability should inherit enabled channel state")
 }
 
 func TestAbilityUpdatesRefreshRouteIndex(t *testing.T) {

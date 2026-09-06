@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/setting/usage_mode"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,4 +49,37 @@ func TestValidateTaskPluginChannelRejectsDisabledFeature(t *testing.T) {
 	baseURL := "https://example.com"
 	channel := &model.Channel{Type: constant.ChannelTypeTaskPlugin, BaseURL: &baseURL}
 	require.ErrorContains(t, validateChannel(channel, false), "task plugin feature is disabled")
+}
+
+func TestValidateMediaTaskChannelRejectsWhenOptionalFeaturesAreDisabled(t *testing.T) {
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "false")
+	t.Cleanup(func() { usage_mode.SetPersistedOptionalFeatures(nil) })
+
+	mediaTypes := []int{
+		constant.ChannelTypeMidjourney,
+		constant.ChannelTypeMidjourneyPlus,
+		constant.ChannelTypeSunoAPI,
+		constant.ChannelTypeKling,
+		constant.ChannelTypeJimeng,
+		constant.ChannelTypeVidu,
+		constant.ChannelTypeDoubaoVideo,
+		constant.ChannelTypeSora,
+	}
+	for _, channelType := range mediaTypes {
+		t.Run(constant.GetChannelTypeName(channelType), func(t *testing.T) {
+			channel := &model.Channel{Type: channelType}
+			require.ErrorContains(t, validateChannel(channel, false), "media task feature is disabled")
+		})
+	}
+}
+
+func TestValidateMediaTaskChannelAllowsTaskPluginFeature(t *testing.T) {
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	t.Setenv("MODELPORT_ENABLE_MEDIA_TASKS", "false")
+	t.Setenv("MODELPORT_ENABLE_TASK_PLUGINS", "true")
+	t.Cleanup(func() { usage_mode.SetPersistedOptionalFeatures(nil) })
+
+	require.NoError(t, validateChannel(&model.Channel{Type: constant.ChannelTypeKling}, false))
 }

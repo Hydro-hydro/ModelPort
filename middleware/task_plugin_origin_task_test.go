@@ -31,7 +31,7 @@ func setupOriginTaskDB(t *testing.T) {
 	previousType := common.MainDatabaseType()
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, database.AutoMigrate(&model.Task{}, &model.Channel{}))
+	require.NoError(t, database.AutoMigrate(&model.Task{}, &model.Channel{}, &model.Ability{}))
 	model.DB = database
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	t.Cleanup(func() {
@@ -404,6 +404,36 @@ func TestDistributeHonorsOriginTaskChannelPin(t *testing.T) {
 	}
 	assert.True(t, nextCalled)
 	assert.Equal(t, channel.Id, common.GetContextKeyInt(c, constant.ContextKeyChannelId))
+}
+
+func TestDistributePinnedChannelRejectsDisabledAbility(t *testing.T) {
+	require.NoError(t, appI18n.Init())
+	setupOriginTaskDB(t)
+	previousMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemoryCacheEnabled })
+	channel := insertOriginTaskChannel(t, common.ChannelStatusEnabled)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "default", Model: "resolved-model", ChannelId: channel.Id, Enabled: false,
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/vendor/jobs", strings.NewReader(`{}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("resolved_task_model", "resolved-model")
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+	service.GetChannelConstraints(c).AddPin(dto.ChannelPin{
+		ChannelId: channel.Id,
+		Source:    dto.PinSourceToken,
+		Rank:      dto.PinRankToken,
+		RetryMode: dto.PinRetrySingleAttempt,
+	})
+
+	Distribute()(c)
+	assert.True(t, c.IsAborted())
+	assert.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "channel_id")
 }
 
 func TestDistributeTokenPinBeatsOriginPin(t *testing.T) {

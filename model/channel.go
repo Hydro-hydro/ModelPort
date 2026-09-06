@@ -780,12 +780,12 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	}
 
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		if err := channel.saveStatusStateTo(tx); err != nil {
-			return err
-		}
-		return tx.Model(&Ability{}).
-			Where("channel_id = ?", channelId).
-			Update("enabled", channel.Status == common.ChannelStatusEnabled).Error
+		// Channel availability and per-model ability availability are separate
+		// routing dimensions. Toggling a channel must not overwrite an
+		// operator's individual Ability.Enabled choices; the cache/index filters
+		// on both values and will restore only the abilities that remain enabled
+		// when the channel is enabled again.
+		return channel.saveStatusStateTo(tx)
 	})
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channel.Id, status, err))
@@ -799,10 +799,7 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 
 func EnableChannelByTag(tag string) error {
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error; err != nil {
-			return err
-		}
-		return tx.Model(&Ability{}).Where("tag = ?", tag).Update("enabled", true).Error
+		return tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error
 	})
 	if err == nil && common.MemoryCacheEnabled {
 		InitChannelCache()
@@ -812,10 +809,7 @@ func EnableChannelByTag(tag string) error {
 
 func DisableChannelByTag(tag string) error {
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusManuallyDisabled).Error; err != nil {
-			return err
-		}
-		return tx.Model(&Ability{}).Where("tag = ?", tag).Update("enabled", false).Error
+		return tx.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusManuallyDisabled).Error
 	})
 	if err == nil && common.MemoryCacheEnabled {
 		InitChannelCache()

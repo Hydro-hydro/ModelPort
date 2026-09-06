@@ -465,6 +465,11 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
 	}
+	if isMediaTaskChannelType(channel.Type) &&
+		!usage_mode.IsFeatureEnabled(usage_mode.FeatureMediaTasks) &&
+		!usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
+		return fmt.Errorf("media task feature is disabled")
+	}
 	if channel.Type == constant.ChannelTypeTaskPlugin {
 		if !usage_mode.IsFeatureEnabled(usage_mode.FeatureTaskPlugins) {
 			return fmt.Errorf("task plugin feature is disabled")
@@ -539,6 +544,26 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	}
 
 	return nil
+}
+
+// isMediaTaskChannelType identifies provider channels whose native entry point
+// is an asynchronous image, video, music, or Midjourney task. These channels
+// may still be used by an enabled task-plugin registry, so validation checks
+// the task-plugin feature separately from the native media-task feature.
+func isMediaTaskChannelType(channelType int) bool {
+	switch channelType {
+	case constant.ChannelTypeMidjourney,
+		constant.ChannelTypeMidjourneyPlus,
+		constant.ChannelTypeSunoAPI,
+		constant.ChannelTypeKling,
+		constant.ChannelTypeJimeng,
+		constant.ChannelTypeVidu,
+		constant.ChannelTypeDoubaoVideo,
+		constant.ChannelTypeSora:
+		return true
+	default:
+		return false
+	}
 }
 
 func RefreshCodexChannelCredential(c *gin.Context) {

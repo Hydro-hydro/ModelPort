@@ -293,6 +293,21 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 		}()
 	}
 
+	// Rebuilding abilities must not reset an operator's per-model switch. Keep
+	// the existing state for group/model pairs that survive the channel edit;
+	// only newly introduced pairs inherit the channel's current availability.
+	var existing []Ability
+	if err := tx.Where("channel_id = ?", channel.Id).Find(&existing).Error; err != nil {
+		if isNewTx {
+			tx.Rollback()
+		}
+		return err
+	}
+	enabledByModelGroup := make(map[string]bool, len(existing))
+	for _, ability := range existing {
+		enabledByModelGroup[ability.Group+"|"+ability.Model] = ability.Enabled
+	}
+
 	// First delete all abilities of this channel
 	err := tx.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
 	if err != nil {
@@ -314,11 +329,15 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 				continue
 			}
 			abilitySet[key] = struct{}{}
+			enabled := channel.Status == common.ChannelStatusEnabled
+			if previous, ok := enabledByModelGroup[key]; ok {
+				enabled = previous
+			}
 			ability := Ability{
 				Group:     group,
 				Model:     model,
 				ChannelId: channel.Id,
-				Enabled:   channel.Status == common.ChannelStatusEnabled,
+				Enabled:   enabled,
 				Priority:  channel.Priority,
 				Weight:    uint(channel.GetWeight()),
 				Tag:       channel.Tag,
