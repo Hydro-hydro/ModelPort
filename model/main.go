@@ -69,6 +69,220 @@ var DB *gorm.DB
 
 var LOG_DB *gorm.DB
 
+type schemaTableDefinition struct {
+	name string
+	core bool
+}
+
+// CurrentSchemaTableDefinitions lists every table that can be created by the
+// current personal edition. Keeping optional tables in the allow-list lets a
+// previously enabled optional feature survive a restart without treating it
+// as a legacy schema.
+func currentSchemaTableDefinitions() []schemaTableDefinition {
+	return []schemaTableDefinition{
+		{name: "channels", core: true},
+		{name: "tokens", core: true},
+		{name: "users", core: true},
+		{name: "user_sessions", core: true},
+		{name: "options", core: true},
+		{name: "login_encryption_keys", core: true},
+		{name: "abilities", core: true},
+		{name: "logs", core: true},
+		{name: "quota_data", core: true},
+		{name: "models", core: true},
+		{name: "vendors", core: true},
+		{name: "prefill_groups", core: true},
+		{name: "setups", core: true},
+		{name: "perf_metrics", core: true},
+		{name: "billing_operations", core: true},
+		{name: "casbin_rule", core: true},
+		{name: "authz_roles", core: true},
+		{name: "tasks"},
+		{name: "task_plugins"},
+		{name: "midjourneys"},
+		{name: "system_tasks"},
+		{name: "system_task_locks"},
+		{name: "system_instances"},
+	}
+}
+
+func normalizeSchemaTableName(name string) string {
+	name = strings.Trim(name, "`\"")
+	if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
+		name = name[dot+1:]
+	}
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+func databaseTables() (map[string]string, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("database is nil")
+	}
+	tables, err := DB.Migrator().GetTables()
+	if err != nil {
+		return nil, fmt.Errorf("list database tables: %w", err)
+	}
+	result := make(map[string]string, len(tables))
+	for _, table := range tables {
+		normalized := normalizeSchemaTableName(table)
+		// SQLite creates this sequence table for AUTOINCREMENT columns. It is
+		// an engine detail, not an application table.
+		if normalized == "sqlite_sequence" {
+			continue
+		}
+		result[normalized] = table
+	}
+	return result, nil
+}
+
+func currentSchemaTableMap() map[string]schemaTableDefinition {
+	result := make(map[string]schemaTableDefinition)
+	for _, definition := range currentSchemaTableDefinitions() {
+		result[definition.name] = definition
+	}
+	return result
+}
+
+func hasRowsInTable(table string) (bool, error) {
+	var count int64
+	if err := DB.Table(table).Count(&count).Error; err != nil {
+		return false, fmt.Errorf("count rows in %s: %w", table, err)
+	}
+	return count > 0, nil
+}
+
+func hasRowsInCurrentSchemaTable(tables map[string]string) (bool, error) {
+	for name := range currentSchemaTableMap() {
+		actual, ok := tables[name]
+		if !ok {
+			continue
+		}
+		hasRows, err := hasRowsInTable(actual)
+		if err != nil {
+			return false, err
+		}
+		if hasRows {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func missingCoreSchemaTables(tables map[string]string) []string {
+	missing := make([]string, 0)
+	for _, definition := range currentSchemaTableDefinitions() {
+		if !definition.core {
+			continue
+		}
+		if _, ok := tables[definition.name]; !ok {
+			missing = append(missing, definition.name)
+		}
+	}
+	return missing
+}
+
+// ValidateCurrentDatabase performs the read-only gate for a fresh personal
+// installation. It must run immediately after opening the database and before
+// option loading, AutoMigrate, authorization initialization, or key creation.
+// An entirely empty database is allowed for the setup wizard. Any populated
+// application table without a current Setup row is rejected rather than
+// repaired as a legacy database.
+func ValidateCurrentDatabase() error {
+	tables, err := databaseTables()
+	if err != nil {
+		return err
+	}
+	if len(tables) == 0 {
+		return nil
+	}
+
+	allowed := currentSchemaTableMap()
+	for name, actual := range tables {
+		if _, ok := allowed[name]; !ok {
+			return fmt.Errorf("database contains unsupported table %q; use a new data directory: %w", actual, ErrDatabaseSchemaMismatch)
+		}
+	}
+
+	setup, setupTableExists := tables["setups"]
+	var setups []Setup
+	if setupTableExists {
+		// Check columns before scanning rows so an older Setup table cannot be
+		// interpreted as an empty current table.
+		for _, column := range []string{"id", "version", "initialized_at", "edition", "schema_version"} {
+			if !DB.Migrator().HasColumn(&Setup{}, column) {
+				return fmt.Errorf("database setups table is missing current column %s; use a new data directory: %w", column, ErrSetupSchemaMismatch)
+			}
+		}
+		if err := DB.Table(setup).Order("id ASC").Find(&setups).Error; err != nil {
+			return fmt.Errorf("read setup record: %w", err)
+		}
+		if len(setups) > 1 {
+			return fmt.Errorf("database contains multiple setup records; use a new data directory: %w", ErrSetupSchemaMismatch)
+		}
+		if len(setups) == 1 && !setups[0].IsCurrentSchema() {
+			return fmt.Errorf("database setup record does not identify the current ModelPort personal schema; use a new data directory: %w", ErrSetupSchemaMismatch)
+		}
+	}
+
+	hasRows, err := hasRowsInCurrentSchemaTable(tables)
+	if err != nil {
+		return fmt.Errorf("validate database contents: %w", err)
+	}
+	if len(setups) == 0 && hasRows {
+		return fmt.Errorf("database contains application data but no current setup record; use a new data directory: %w", ErrSetupRecordMissing)
+	}
+
+	missingCore := missingCoreSchemaTables(tables)
+	if len(missingCore) > 0 {
+		return fmt.Errorf("database is missing current core schema tables (%s); use a new data directory: %w", strings.Join(missingCore, ", "), ErrDatabaseSchemaMismatch)
+	}
+	return nil
+}
+
+// ValidateCurrentLogDatabase performs the corresponding read-only check for a
+// separately configured SQL log database. ClickHouse has its own schema
+// bootstrap and is intentionally handled by migrateClickHouseLogDB.
+func ValidateCurrentLogDatabase() error {
+	if LOG_DB == nil {
+		return fmt.Errorf("log database is nil")
+	}
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		return nil
+	}
+	tables, err := LOG_DB.Migrator().GetTables()
+	if err != nil {
+		return fmt.Errorf("list log database tables: %w", err)
+	}
+	applicationTables := make([]string, 0, len(tables))
+	for _, table := range tables {
+		if normalizeSchemaTableName(table) == "sqlite_sequence" {
+			continue
+		}
+		if normalizeSchemaTableName(table) != "logs" {
+			return fmt.Errorf("log database contains unsupported table %q; use a new data directory", table)
+		}
+		applicationTables = append(applicationTables, table)
+	}
+	if len(applicationTables) == 0 {
+		return nil
+	}
+	if !LOG_DB.Migrator().HasTable(&Log{}) {
+		return fmt.Errorf("log database is missing the current logs table; use a new data directory")
+	}
+	for _, column := range []string{
+		"id", "user_id", "created_at", "type", "content", "username",
+		"token_name", "model_name", "quota", "prompt_tokens",
+		"completion_tokens", "use_time", "is_stream", "channel_id",
+		"token_id", "group", "ip", "request_id", "upstream_request_id",
+		"billing_operation_key", "other",
+	} {
+		if !LOG_DB.Migrator().HasColumn(&Log{}, column) {
+			return fmt.Errorf("log database is missing current logs.%s; use a new data directory", column)
+		}
+	}
+	return nil
+}
+
 func CheckSetup() {
 	setup := GetSetup()
 	if setup == nil {
@@ -162,6 +376,11 @@ func InitDB() (err error) {
 			db = db.Debug()
 		}
 		DB = db
+		// Reject non-current or populated legacy databases before reading
+		// persisted options or allowing any schema/authentication writes.
+		if err := ValidateCurrentDatabase(); err != nil {
+			return err
+		}
 		// MySQL charset/collation startup check: ensure Chinese-capable charset
 		if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
 			if err := checkMySQLChineseSupport(DB); err != nil {
@@ -237,6 +456,9 @@ func InitLogDB() (err error) {
 			db = db.Debug()
 		}
 		LOG_DB = db
+		if err := ValidateCurrentLogDatabase(); err != nil {
+			return err
+		}
 		// If log DB is MySQL, also ensure Chinese-capable charset
 		if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
 			if err := checkMySQLChineseSupport(LOG_DB); err != nil {

@@ -3,8 +3,9 @@ package model
 import "errors"
 
 var (
-	ErrSetupRecordMissing  = errors.New("setup record missing for a non-empty database")
-	ErrSetupSchemaMismatch = errors.New("setup record does not match the current schema")
+	ErrSetupRecordMissing     = errors.New("setup record missing for a non-empty database")
+	ErrSetupSchemaMismatch    = errors.New("setup record does not match the current schema")
+	ErrDatabaseSchemaMismatch = errors.New("database does not match the current personal schema")
 )
 
 const (
