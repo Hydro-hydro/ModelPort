@@ -75,7 +75,7 @@ type schemaTableDefinition struct {
 	bootstrap bool
 }
 
-// CurrentSchemaTableDefinitions lists every table that can be created by the
+// currentSchemaTableDefinitions lists every table that can be created by the
 // current personal edition. Keeping optional tables in the allow-list lets a
 // previously enabled optional feature survive a restart without treating it
 // as a legacy schema. Bootstrap tables may contain framework seed rows before
