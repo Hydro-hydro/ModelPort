@@ -60,6 +60,13 @@ func PostSetup(c *gin.Context) {
 		})
 		return
 	}
+	if setup := model.GetSetup(); setup != nil && !setup.IsCurrentSchema() {
+		c.JSON(200, gin.H{
+			"success": false,
+			"message": "数据库初始化记录版本不匹配，请使用新的数据目录重新部署",
+		})
+		return
+	}
 
 	var req SetupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

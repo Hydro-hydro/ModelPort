@@ -2,7 +2,10 @@ package model
 
 import "errors"
 
-var ErrSetupRecordMissing = errors.New("setup record missing for a non-empty database")
+var (
+	ErrSetupRecordMissing  = errors.New("setup record missing for a non-empty database")
+	ErrSetupSchemaMismatch = errors.New("setup record does not match the current schema")
+)
 
 const (
 	SetupEditionModelPort = "modelport-personal"

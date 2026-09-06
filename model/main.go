@@ -74,6 +74,9 @@ func CheckSetup() {
 	if setup == nil {
 		common.SysLog("system is not initialized")
 		constant.Setup = false
+	} else if !setup.IsCurrentSchema() {
+		common.SysLog("system setup record does not match the current ModelPort schema")
+		constant.Setup = false
 	} else {
 		// Setup record exists, system is initialized
 		common.SysLog("system is already initialized at: " + time.Unix(setup.InitializedAt, 0).String())

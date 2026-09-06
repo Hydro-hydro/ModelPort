@@ -72,6 +72,25 @@ func TestValidatePersonalOwnerAtStartupRejectsNonEmptyDatabaseWithoutSetupRecord
 	assert.ErrorIs(t, err, model.ErrSetupRecordMissing)
 }
 
+func TestValidatePersonalOwnerAtStartupRejectsMismatchedSetupSchema(t *testing.T) {
+	db := setupStartupOwnerTest(t)
+	require.NoError(t, db.Create(&model.User{
+		Id: 5, Username: "root", Password: "password", Role: common.RoleRootUser,
+		Status: common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Setup{
+		Version:       "legacy",
+		InitializedAt: 1,
+		Edition:       "new-api",
+		SchemaVersion: 0,
+	}).Error)
+
+	model.CheckSetup()
+
+	err := validatePersonalOwnerAtStartup()
+	assert.ErrorIs(t, err, model.ErrSetupSchemaMismatch)
+}
+
 func TestCheckSetupDoesNotCreateSetupRecordForExistingRoot(t *testing.T) {
 	db := setupStartupOwnerTest(t)
 	require.NoError(t, db.Create(&model.User{

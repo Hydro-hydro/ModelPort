@@ -303,6 +303,9 @@ func validatePersonalOwnerAtStartup() error {
 	if err := model.EnsurePersonalOwner(); err != nil {
 		return fmt.Errorf("个人版管理员账户校验失败: %w", err)
 	}
+	if setup := model.GetSetup(); setup != nil && !setup.IsCurrentSchema() {
+		return fmt.Errorf("个人版初始化记录版本不匹配，请使用新的数据目录重新部署: %w", model.ErrSetupSchemaMismatch)
+	}
 	if !constant.Setup {
 		var userCount int64
 		if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
