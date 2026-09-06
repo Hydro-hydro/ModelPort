@@ -338,14 +338,6 @@ export const STATIC_I18N_KEYS = [
   'No models available in this category',
   'Copied: {{model}}',
 
-  // Grok settings
-  'Grok Settings',
-  'Enable violation deduction',
-  'When enabled, violation requests will incur additional charges.',
-  'Official documentation',
-  'Violation deduction amount',
-  'Base amount. Actual deduction = base amount × system group rate.',
-
   // Chat2Link
   'No available Web chat links',
   'No enabled tokens available',

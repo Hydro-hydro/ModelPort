@@ -23,7 +23,6 @@ import { createSectionRegistry } from '../utils/section-registry'
 import { ClaudeSettingsCard } from './claude-settings-card'
 import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
-import { GrokSettingsCard } from './grok-settings-card'
 import { RoutingReliabilitySection } from './routing-reliability-section'
 
 function formatJsonForEditor(value: string, fallback: string) {
@@ -129,20 +128,6 @@ const MODELS_SECTIONS = [
             thinking_adapter_budget_tokens_percentage:
               settings['claude.thinking_adapter_budget_tokens_percentage'],
           },
-        }}
-      />
-    ),
-  },
-  {
-    id: 'grok',
-    titleKey: 'Grok',
-    build: (settings: ModelSettings) => (
-      <GrokSettingsCard
-        defaultValues={{
-          'grok.violation_deduction_enabled':
-            settings['grok.violation_deduction_enabled'] ?? true,
-          'grok.violation_deduction_amount':
-            settings['grok.violation_deduction_amount'] ?? 0.05,
         }}
       />
     ),
