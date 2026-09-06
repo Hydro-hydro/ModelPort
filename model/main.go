@@ -186,6 +186,52 @@ func missingCoreSchemaTables(tables map[string]string) []string {
 	return missing
 }
 
+// currentCoreSchemaColumnRequirements contains the columns that are required
+// for the current personal gateway to read and write each core table. The
+// startup gate deliberately checks a small, stable set instead of trying to
+// reproduce GORM's full migration planner. A database with one of these
+// columns missing is rejected before AutoMigrate can silently repair it.
+type currentCoreSchemaColumnRequirement struct {
+	table   string
+	model   interface{}
+	columns []string
+}
+
+func currentCoreSchemaColumnRequirements() []currentCoreSchemaColumnRequirement {
+	return []currentCoreSchemaColumnRequirement{
+		{table: "channels", model: &Channel{}, columns: []string{"id", "type", "key", "status", "name", "models", "group", "used_quota", "model_mapping"}},
+		{table: "tokens", model: &Token{}, columns: []string{"id", "user_id", "key", "status", "name", "remain_quota", "unlimited_quota", "model_limits_enabled", "model_limits", "group", "auto_groups", "deleted_at"}},
+		{table: "users", model: &User{}, columns: []string{"id", "username", "password", "role", "status", "used_quota", "request_count", "group", "setting", "auth_version", "deleted_at"}},
+		{table: "user_sessions", model: &UserSession{}, columns: []string{"sid", "user_id", "version", "user_auth_version", "status", "refresh_hash", "login_method", "created_at", "last_active_at", "expires_at", "revoked_at"}},
+		{table: "options", model: &Option{}, columns: []string{"key", "value"}},
+		{table: "login_encryption_keys", model: &LoginEncryptionKey{}, columns: []string{"id", "slot", "private_key_pem"}},
+		{table: "abilities", model: &Ability{}, columns: []string{"group", "model", "channel_id", "enabled", "priority", "weight"}},
+		{table: "logs", model: &Log{}, columns: []string{"id", "user_id", "created_at", "type", "content", "model_name", "quota", "prompt_tokens", "completion_tokens", "use_time", "is_stream", "channel_id", "token_id", "group", "request_id", "upstream_request_id", "billing_operation_key", "other"}},
+		{table: "quota_data", model: &QuotaData{}, columns: []string{"id", "user_id", "username", "model_name", "created_at", "use_group", "token_id", "channel_id", "token_used", "count", "quota"}},
+		{table: "models", model: &Model{}, columns: []string{"id", "model_name", "status", "sync_official", "created_time", "updated_time", "deleted_at", "name_rule"}},
+		{table: "vendors", model: &Vendor{}, columns: []string{"id", "name", "status", "created_time", "updated_time", "deleted_at"}},
+		{table: "prefill_groups", model: &PrefillGroup{}, columns: []string{"id", "name", "type", "items", "created_time", "updated_time", "deleted_at"}},
+		{table: "perf_metrics", model: &PerfMetric{}, columns: []string{"id", "model_name", "group", "bucket_ts", "request_count", "success_count", "total_latency_ms", "ttft_sum_ms", "ttft_count", "output_tokens", "generation_ms"}},
+		{table: "billing_operations", model: &BillingOperation{}, columns: []string{"id", "operation_key", "request_id", "task_id", "user_id", "token_id", "channel_id", "pre_consumed_quota", "actual_quota", "status", "token_applied", "stats_applied", "log_applied", "attempt_count", "next_retry_at", "locked_by", "lease_until", "last_error", "created_at", "updated_at"}},
+		{table: "casbin_rule", model: &CasbinRule{}, columns: []string{"id", "ptype", "v0", "v1", "v2", "v3", "v4", "v5"}},
+		{table: "authz_roles", model: &AuthzRole{}, columns: []string{"id", "key", "name", "description", "built_in", "enabled", "sort", "created_at", "updated_at"}},
+	}
+}
+
+func validateCurrentCoreSchemaColumns(db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+	for _, requirement := range currentCoreSchemaColumnRequirements() {
+		for _, column := range requirement.columns {
+			if !db.Migrator().HasColumn(requirement.model, column) {
+				return fmt.Errorf("database table %q is missing current column %q; use a new data directory: %w", requirement.table, column, ErrDatabaseSchemaMismatch)
+			}
+		}
+	}
+	return nil
+}
+
 // ValidateCurrentDatabase performs the read-only gate for a fresh personal
 // installation. It must run immediately after opening the database and before
 // option loading, AutoMigrate, authorization initialization, or key creation.
@@ -241,18 +287,19 @@ func ValidateCurrentDatabase() error {
 	if len(missingCore) > 0 {
 		return fmt.Errorf("database is missing current core schema tables (%s); use a new data directory: %w", strings.Join(missingCore, ", "), ErrDatabaseSchemaMismatch)
 	}
+	if err := validateCurrentCoreSchemaColumns(DB); err != nil {
+		return err
+	}
 	return nil
 }
 
 // ValidateCurrentLogDatabase performs the corresponding read-only check for a
-// separately configured SQL log database. ClickHouse has its own schema
-// bootstrap and is intentionally handled by migrateClickHouseLogDB.
+// separately configured SQL log database. An empty database is allowed so the
+// current log schema can be created by migrateLOGDB. Existing tables must be
+// the current logs schema; malformed tables are rejected before AutoMigrate.
 func ValidateCurrentLogDatabase() error {
 	if LOG_DB == nil {
 		return fmt.Errorf("log database is nil")
-	}
-	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
-		return nil
 	}
 	tables, err := LOG_DB.Migrator().GetTables()
 	if err != nil {
@@ -264,7 +311,7 @@ func ValidateCurrentLogDatabase() error {
 			continue
 		}
 		if normalizeSchemaTableName(table) != "logs" {
-			return fmt.Errorf("log database contains unsupported table %q; use a new data directory", table)
+			return fmt.Errorf("log database contains unsupported table %q; use a new data directory: %w", table, ErrDatabaseSchemaMismatch)
 		}
 		applicationTables = append(applicationTables, table)
 	}
@@ -272,7 +319,7 @@ func ValidateCurrentLogDatabase() error {
 		return nil
 	}
 	if !LOG_DB.Migrator().HasTable(&Log{}) {
-		return fmt.Errorf("log database is missing the current logs table; use a new data directory")
+		return fmt.Errorf("log database is missing the current logs table; use a new data directory: %w", ErrDatabaseSchemaMismatch)
 	}
 	for _, column := range []string{
 		"id", "user_id", "created_at", "type", "content", "username",
@@ -282,7 +329,7 @@ func ValidateCurrentLogDatabase() error {
 		"billing_operation_key", "other",
 	} {
 		if !LOG_DB.Migrator().HasColumn(&Log{}, column) {
-			return fmt.Errorf("log database is missing current logs.%s; use a new data directory", column)
+			return fmt.Errorf("log database is missing current logs.%s; use a new data directory: %w", column, ErrDatabaseSchemaMismatch)
 		}
 	}
 	return nil

@@ -159,3 +159,29 @@ func TestValidateCurrentDatabaseRejectsCurrentSetupWithMissingCoreTable(t *testi
 	err := ValidateCurrentDatabase()
 	assert.ErrorIs(t, err, ErrDatabaseSchemaMismatch)
 }
+
+func TestValidateCurrentDatabaseRejectsMissingCurrentColumn(t *testing.T) {
+	db := setupStartupPrecheckDB(t)
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	for _, feature := range usage_mode.OptionalFeatures() {
+		t.Setenv("MODELPORT_ENABLE_"+strings.ToUpper(string(feature)), "false")
+	}
+	require.NoError(t, migrateDB())
+	require.NoError(t, db.Migrator().DropColumn(&BillingOperation{}, "operation_key"))
+
+	err := ValidateCurrentDatabase()
+	assert.ErrorIs(t, err, ErrDatabaseSchemaMismatch)
+	assert.Contains(t, err.Error(), "billing_operations")
+	assert.Contains(t, err.Error(), "operation_key")
+}
+
+func TestValidateCurrentLogDatabaseRejectsMissingCurrentColumn(t *testing.T) {
+	db := setupStartupPrecheckDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}))
+	require.NoError(t, db.Migrator().DropColumn(&Log{}, "billing_operation_key"))
+	useLogSchemaTestDB(t, db)
+
+	err := ValidateCurrentLogDatabase()
+	assert.ErrorIs(t, err, ErrDatabaseSchemaMismatch)
+	assert.Contains(t, err.Error(), "logs.billing_operation_key")
+}
