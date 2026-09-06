@@ -70,14 +70,16 @@ var DB *gorm.DB
 var LOG_DB *gorm.DB
 
 type schemaTableDefinition struct {
-	name string
-	core bool
+	name      string
+	core      bool
+	bootstrap bool
 }
 
 // CurrentSchemaTableDefinitions lists every table that can be created by the
 // current personal edition. Keeping optional tables in the allow-list lets a
 // previously enabled optional feature survive a restart without treating it
-// as a legacy schema.
+// as a legacy schema. Bootstrap tables may contain framework seed rows before
+// the setup wizard creates the first application owner.
 func currentSchemaTableDefinitions() []schemaTableDefinition {
 	return []schemaTableDefinition{
 		{name: "channels", core: true},
@@ -85,7 +87,7 @@ func currentSchemaTableDefinitions() []schemaTableDefinition {
 		{name: "users", core: true},
 		{name: "user_sessions", core: true},
 		{name: "options", core: true},
-		{name: "login_encryption_keys", core: true},
+		{name: "login_encryption_keys", core: true, bootstrap: true},
 		{name: "abilities", core: true},
 		{name: "logs", core: true},
 		{name: "quota_data", core: true},
@@ -95,8 +97,8 @@ func currentSchemaTableDefinitions() []schemaTableDefinition {
 		{name: "setups", core: true},
 		{name: "perf_metrics", core: true},
 		{name: "billing_operations", core: true},
-		{name: "casbin_rule", core: true},
-		{name: "authz_roles", core: true},
+		{name: "casbin_rule", core: true, bootstrap: true},
+		{name: "authz_roles", core: true, bootstrap: true},
 		{name: "tasks"},
 		{name: "task_plugins"},
 		{name: "midjourneys"},
@@ -152,7 +154,10 @@ func hasRowsInTable(table string) (bool, error) {
 }
 
 func hasRowsInCurrentSchemaTable(tables map[string]string) (bool, error) {
-	for name := range currentSchemaTableMap() {
+	for name, definition := range currentSchemaTableMap() {
+		if definition.bootstrap {
+			continue
+		}
 		actual, ok := tables[name]
 		if !ok {
 			continue

@@ -94,6 +94,58 @@ func TestValidateCurrentDatabaseAllowsCurrentEmptySchemaForSetupWizard(t *testin
 	assert.Zero(t, setupCount)
 }
 
+func TestValidateCurrentDatabaseAllowsBootstrapRowsBeforeSetup(t *testing.T) {
+	db := setupStartupPrecheckDB(t)
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	for _, feature := range usage_mode.OptionalFeatures() {
+		t.Setenv("MODELPORT_ENABLE_"+strings.ToUpper(string(feature)), "false")
+	}
+	require.NoError(t, migrateDB())
+	require.NoError(t, db.Create(&LoginEncryptionKey{
+		Slot:          activeLoginEncryptionKeySlot,
+		PrivateKeyPEM: "test-key",
+	}).Error)
+	require.NoError(t, db.Create(&AuthzRole{
+		Key:     "root",
+		Name:    "Root",
+		BuiltIn: true,
+		Enabled: true,
+	}).Error)
+	require.NoError(t, db.Create(&CasbinRule{
+		Ptype: "p",
+		V0:    "admin",
+		V1:    "channel",
+		V2:    "read",
+	}).Error)
+
+	require.NoError(t, ValidateCurrentDatabase())
+}
+
+func TestValidateCurrentDatabaseRejectsBusinessRowsAlongsideBootstrapRows(t *testing.T) {
+	db := setupStartupPrecheckDB(t)
+	usage_mode.SetPersistedOptionalFeatures(nil)
+	for _, feature := range usage_mode.OptionalFeatures() {
+		t.Setenv("MODELPORT_ENABLE_"+strings.ToUpper(string(feature)), "false")
+	}
+	require.NoError(t, migrateDB())
+	require.NoError(t, db.Create(&AuthzRole{
+		Key:     "root",
+		Name:    "Root",
+		BuiltIn: true,
+		Enabled: true,
+	}).Error)
+	require.NoError(t, db.Create(&User{
+		Id:       9,
+		Username: "root",
+		Password: "password",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+	}).Error)
+
+	err := ValidateCurrentDatabase()
+	assert.ErrorIs(t, err, ErrSetupRecordMissing)
+}
+
 func TestValidateCurrentDatabaseRejectsCurrentSetupWithMissingCoreTable(t *testing.T) {
 	db := setupStartupPrecheckDB(t)
 	require.NoError(t, db.AutoMigrate(&Setup{}))
