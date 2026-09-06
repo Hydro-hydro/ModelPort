@@ -414,20 +414,6 @@ func FixAbility() (int, int, error) {
 	}
 	defer fixLock.Unlock()
 
-	// truncate abilities table
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		err := DB.Exec("DELETE FROM abilities").Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			return 0, 0, err
-		}
-	} else {
-		err := DB.Exec("TRUNCATE TABLE abilities").Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Truncate abilities failed: %s", err.Error()))
-			return 0, 0, err
-		}
-	}
 	var channels []*Channel
 	// Find all channels
 	err := DB.Model(&Channel{}).Find(&channels).Error
@@ -435,30 +421,53 @@ func FixAbility() (int, int, error) {
 		return 0, 0, err
 	}
 	if len(channels) == 0 {
+		// Keep the repair operation transactional even when there are no
+		// channels, so stale orphan ability rows are removed consistently.
+		if err := DB.Transaction(func(tx *gorm.DB) error {
+			return tx.Where("1 = ?", 1).Delete(&Ability{}).Error
+		}); err != nil {
+			return 0, 0, err
+		}
+		if common.MemoryCacheEnabled {
+			InitChannelCache()
+		}
 		return 0, 0, nil
 	}
-	successCount := 0
-	failCount := 0
-	for _, chunk := range lo.Chunk(channels, 50) {
-		ids := lo.Map(chunk, func(c *Channel, _ int) int { return c.Id })
-		// Delete all abilities of this channel
-		err = DB.Where("channel_id IN ?", ids).Delete(&Ability{}).Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			failCount += len(chunk)
-			continue
-		}
-		// Then add new abilities
-		for _, channel := range chunk {
-			err = channel.AddAbilities(nil)
-			if err != nil {
-				common.SysLog(fmt.Sprintf("Add abilities for channel %d failed: %s", channel.Id, err.Error()))
-				failCount++
-			} else {
-				successCount++
-			}
+	channelIDs := make([]int, 0, len(channels))
+	for _, channel := range channels {
+		if channel != nil && channel.Id > 0 {
+			channelIDs = append(channelIDs, channel.Id)
 		}
 	}
-	InitChannelCache()
-	return successCount, failCount, nil
+	successCount := 0
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		// Remove abilities for deleted channels in the same transaction. The
+		// remaining rows are rebuilt per channel so UpdateAbilities can retain
+		// each existing group/model enabled state.
+		if len(channelIDs) == 0 {
+			if err := tx.Where("1 = ?", 1).Delete(&Ability{}).Error; err != nil {
+				return err
+			}
+		} else if err := tx.Where("channel_id NOT IN ?", channelIDs).Delete(&Ability{}).Error; err != nil {
+			return err
+		}
+		for _, channel := range channels {
+			if channel == nil || channel.Id <= 0 {
+				continue
+			}
+			if err := channel.UpdateAbilities(tx); err != nil {
+				return fmt.Errorf("failed to rebuild abilities for channel %d: %w", channel.Id, err)
+			}
+			successCount++
+		}
+		return nil
+	})
+	if err != nil {
+		common.SysLog(fmt.Sprintf("Fix abilities transaction rolled back: %s", err.Error()))
+		return 0, len(channels), err
+	}
+	if common.MemoryCacheEnabled {
+		InitChannelCache()
+	}
+	return successCount, len(channels) - successCount, nil
 }

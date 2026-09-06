@@ -263,6 +263,37 @@ func TestChannelUpdatePreservesExistingAbilityEnabledState(t *testing.T) {
 	assert.True(t, abilities[1].Enabled, "new ability should inherit enabled channel state")
 }
 
+func TestFixAbilityRebuildsWithoutDroppingAbilityState(t *testing.T) {
+	setupChannelStatusTest(t)
+
+	channel := Channel{
+		Id:     114,
+		Name:   "fix-ability",
+		Key:    "key-114",
+		Status: common.ChannelStatusEnabled,
+		Models: "repair-model",
+		Group:  "default",
+	}
+	require.NoError(t, DB.Create(&channel).Error)
+	require.NoError(t, DB.Create(&[]Ability{
+		{Group: "default", Model: "repair-model", ChannelId: channel.Id, Enabled: false},
+		{Group: "orphan", Model: "orphan-model", ChannelId: 999, Enabled: true},
+	}).Error)
+
+	success, failures, err := FixAbility()
+	require.NoError(t, err)
+	assert.Equal(t, 1, success)
+	assert.Zero(t, failures)
+
+	var abilities []Ability
+	require.NoError(t, DB.Where("channel_id = ?", channel.Id).Find(&abilities).Error)
+	require.Len(t, abilities, 1)
+	assert.False(t, abilities[0].Enabled, "repair must preserve an explicitly disabled ability")
+	var orphanCount int64
+	require.NoError(t, DB.Model(&Ability{}).Where("channel_id = ?", 999).Count(&orphanCount).Error)
+	assert.Zero(t, orphanCount)
+}
+
 func TestAbilityUpdatesRefreshRouteIndex(t *testing.T) {
 	truncateTables(t)
 	previousMemoryCacheEnabled := common.MemoryCacheEnabled

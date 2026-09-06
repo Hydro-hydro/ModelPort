@@ -1001,6 +1001,22 @@ func UpdateChannel(c *gin.Context) {
 	}
 	clearChannelReadOnlyFields(&channel, requestData)
 
+	// PUT requests from integrations may omit fields that are not being edited.
+	// Preserve the persisted channel type before validation so an omitted type
+	// cannot be decoded as zero and accidentally turn a media channel into an
+	// unknown channel (or bypass the media-task feature gate).
+	var originChannel *model.Channel
+	if channel.Id > 0 {
+		if rawType, typeProvided := requestData["type"]; !typeProvided || rawType == nil {
+			originChannel, err = model.GetChannelById(channel.Id, true)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			channel.Type = originChannel.Type
+		}
+	}
+
 	if channel.Type == constant.ChannelTypeTaskPlugin &&
 		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.TaskPluginBind) {
 		c.JSON(http.StatusOK, gin.H{
@@ -1019,13 +1035,15 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	// Preserve existing ChannelInfo to ensure multi-key channels keep correct state even if the client does not send ChannelInfo in the request.
-	originChannel, err := model.GetChannelById(channel.Id, true)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
+	if originChannel == nil {
+		originChannel, err = model.GetChannelById(channel.Id, true)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	}
 	originProxy := originChannel.GetSetting().Proxy
 	proxyChanged := false
