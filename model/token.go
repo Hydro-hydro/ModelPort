@@ -35,6 +35,11 @@ type Token struct {
 // not be applied without making remain_quota or used_quota negative.
 var ErrTokenQuotaInsufficient = errors.New("token quota insufficient")
 
+// ErrTokenQuotaChanged indicates that a token's accounting counters changed
+// after a management form loaded them. Callers must reload before applying an
+// explicit quota edit so billing updates cannot be overwritten.
+var ErrTokenQuotaChanged = errors.New("token quota changed concurrently")
+
 func (token *Token) GetAutoGroups() ([]string, error) {
 	if token.AutoGroups == "" {
 		return nil, nil
@@ -309,14 +314,49 @@ func (token *Token) Insert() error {
 	return err
 }
 
-// Update Make sure your token's fields is completed, because this will update non-zero values
-func (token *Token) Update() (err error) {
+func (token *Token) update(fields ...string) error {
 	// 写库前失效缓存并设置 fence，防止并发读者把过期快照重新写回缓存。
 	if cacheErr := invalidateTokenCacheForMutation(token.Key); cacheErr != nil {
 		common.SysLog("failed to invalidate token cache before update: " + cacheErr.Error())
 	}
-	return DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups").Updates(token).Error
+	return DB.Model(token).Select(fields).Updates(token).Error
+}
+
+// Update persists token metadata only. Quota and accounting counters are
+// managed by billing or UpdateWithQuota and must not be copied from a stale
+// management snapshot.
+func (token *Token) Update() error {
+	return token.update("name", "status", "expired_time", "model_limits_enabled",
+		"model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups")
+}
+
+// UpdateWithQuota applies an explicit quota edit only when both accounting
+// counters still match the snapshot used by the caller. The row is locked for
+// the comparison and update, so a concurrent charge/refund either happens
+// before this edit or causes ErrTokenQuotaChanged; it can never be overwritten
+// by a stale form value.
+func (token *Token) UpdateWithQuota(desiredRemainQuota int, desiredUnlimitedQuota bool, expectedRemainQuota int, expectedUsedQuota int) error {
+	token.RemainQuota = desiredRemainQuota
+	token.UnlimitedQuota = desiredUnlimitedQuota
+	if cacheErr := invalidateTokenCacheForMutation(token.Key); cacheErr != nil {
+		common.SysLog("failed to invalidate token cache before quota update: " + cacheErr.Error())
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var current Token
+		if err := lockForUpdate(tx).
+			Select("id", "remain_quota", "used_quota").
+			Where("id = ?", token.Id).
+			First(&current).Error; err != nil {
+			return err
+		}
+		if current.RemainQuota != expectedRemainQuota || current.UsedQuota != expectedUsedQuota {
+			return ErrTokenQuotaChanged
+		}
+		return tx.Model(token).
+			Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
+				"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups").
+			Updates(token).Error
+	})
 }
 
 func (token *Token) SelectUpdate() (err error) {

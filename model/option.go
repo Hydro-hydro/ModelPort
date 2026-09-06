@@ -158,7 +158,34 @@ func loadOptionsFromDatabase() {
 		common.SysLog("failed to load options from database: " + err.Error())
 		return
 	}
+
+	// Turnstile validation depends on the other two values. Apply the related
+	// options in an order that matches the persisted target state instead of
+	// relying on the database's unspecified row order.
+	turnstileOptions := make(map[string]*Option, 3)
 	for _, option := range options {
+		switch option.Key {
+		case "TurnstileSiteKey", "TurnstileSecretKey", "TurnstileCheckEnabled":
+			turnstileOptions[option.Key] = option
+		}
+	}
+	turnstileOrder := []string{"TurnstileCheckEnabled", "TurnstileSiteKey", "TurnstileSecretKey"}
+	if enabled, ok := turnstileOptions["TurnstileCheckEnabled"]; ok && strings.TrimSpace(enabled.Value) == "true" {
+		turnstileOrder = []string{"TurnstileSiteKey", "TurnstileSecretKey", "TurnstileCheckEnabled"}
+	}
+	for _, key := range turnstileOrder {
+		option, ok := turnstileOptions[key]
+		if !ok {
+			continue
+		}
+		if err := updateOptionMap(option.Key, option.Value); err != nil {
+			common.SysLog("failed to update option map: " + err.Error())
+		}
+	}
+	for _, option := range options {
+		if _, ok := turnstileOptions[option.Key]; ok {
+			continue
+		}
 		if isRetiredPersonalOption(option.Key) {
 			continue
 		}

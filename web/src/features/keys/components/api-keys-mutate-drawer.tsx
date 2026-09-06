@@ -80,6 +80,7 @@ import {
   getApiKeyFormDefaultValues,
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
+  buildApiKeyUpdatePayload,
 } from '../lib'
 import type { ApiKey } from '../types'
 import {
@@ -283,8 +284,22 @@ export function ApiKeysMutateDrawer({
       const basePayload = transformFormDataToPayload(data)
 
       if (isUpdate && currentRow) {
+        const expectedToken =
+          apiKeyData?.success && apiKeyData.data ? apiKeyData.data : currentRow
+        const updatePayload = buildApiKeyUpdatePayload(
+          basePayload,
+          {
+            remain_quota_dollars: Boolean(
+              form.formState.dirtyFields.remain_quota_dollars
+            ),
+            unlimited_quota: Boolean(
+              form.formState.dirtyFields.unlimited_quota
+            ),
+          },
+          expectedToken
+        )
         const result = await updateApiKey({
-          ...basePayload,
+          ...updatePayload,
           id: currentRow.id,
         })
         if (result.success) {

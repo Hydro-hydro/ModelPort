@@ -14,6 +14,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -282,6 +284,111 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("update response leaked raw token key: %s", recorder.Body.String())
 	}
+}
+
+func TestUpdateTokenIgnoresStaleQuotaWithoutExpectedSnapshot(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 1, "stale-quota-token", "stale1234token5678")
+	require.NoError(t, db.Model(&model.Token{}).Where("id = ?", token.Id).Updates(map[string]any{
+		"remain_quota":    70,
+		"unlimited_quota": false,
+		"used_quota":      30,
+	}).Error)
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "metadata-update",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits":         "",
+		"model_limits_enabled": false,
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var got model.Token
+	require.NoError(t, db.First(&got, token.Id).Error)
+	assert.Equal(t, "metadata-update", got.Name)
+	assert.Equal(t, 70, got.RemainQuota)
+	assert.Equal(t, 30, got.UsedQuota)
+	assert.False(t, got.UnlimitedQuota)
+}
+
+func TestUpdateTokenQuotaEditRejectsConcurrentAccountingChange(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 1, "quota-token", "quota1234token5678")
+	require.NoError(t, db.Model(&model.Token{}).Where("id = ?", token.Id).Updates(map[string]any{
+		"unlimited_quota": false,
+		"used_quota":      0,
+	}).Error)
+
+	// The form loaded a 100/0 snapshot, then billing charged 30 units.
+	require.NoError(t, db.Model(&model.Token{}).Where("id = ?", token.Id).Updates(map[string]any{
+		"remain_quota": 70,
+		"used_quota":   30,
+	}).Error)
+	body := map[string]any{
+		"id":                    token.Id,
+		"name":                  "should-not-apply",
+		"expired_time":          -1,
+		"remain_quota":          80,
+		"unlimited_quota":       false,
+		"expected_remain_quota": 100,
+		"expected_used_quota":   0,
+		"model_limits_enabled":  false,
+		"model_limits":          "",
+		"group":                 "default",
+		"cross_group_retry":     false,
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	assert.Contains(t, response.Message, "token quota changed concurrently")
+	var got model.Token
+	require.NoError(t, db.First(&got, token.Id).Error)
+	assert.Equal(t, "quota-token", got.Name)
+	assert.Equal(t, 70, got.RemainQuota)
+	assert.Equal(t, 30, got.UsedQuota)
+}
+
+func TestUpdateTokenQuotaEditWithExpectedSnapshot(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 1, "quota-token", "quota-edit12345678")
+	require.NoError(t, db.Model(&model.Token{}).Where("id = ?", token.Id).Updates(map[string]any{
+		"unlimited_quota": false,
+		"used_quota":      0,
+	}).Error)
+
+	body := map[string]any{
+		"id":                    token.Id,
+		"name":                  "quota-edited",
+		"expired_time":          -1,
+		"remain_quota":          80,
+		"unlimited_quota":       false,
+		"expected_remain_quota": 100,
+		"expected_used_quota":   0,
+		"model_limits_enabled":  false,
+		"model_limits":          "",
+		"group":                 "default",
+		"cross_group_retry":     false,
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var got model.Token
+	require.NoError(t, db.First(&got, token.Id).Error)
+	assert.Equal(t, "quota-edited", got.Name)
+	assert.Equal(t, 80, got.RemainQuota)
+	assert.Zero(t, got.UsedQuota)
 }
 
 func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {

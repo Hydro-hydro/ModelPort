@@ -94,7 +94,15 @@ export interface ApiKeyFormData {
   group: string
   auto_groups: string[]
   cross_group_retry: boolean
+  expected_remain_quota?: number
+  expected_used_quota?: number
 }
+
+export type ApiKeyUpdateData = Omit<
+  ApiKeyFormData,
+  'remain_quota' | 'unlimited_quota'
+> &
+  Partial<Pick<ApiKeyFormData, 'remain_quota' | 'unlimited_quota'>>
 
 export interface TokenAutoGroupsConfig {
   groups: string[]

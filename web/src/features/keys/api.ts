@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 
 import type {
   ApiKey,
+  ApiKeyUpdateData,
   ApiResponse,
   GetApiKeysParams,
   GetApiKeysResponse,
@@ -79,7 +80,7 @@ export async function createApiKey(
 
 // Update an existing API key
 export async function updateApiKey(
-  data: ApiKeyFormData & { id: number }
+  data: ApiKeyUpdateData & { id: number }
 ): Promise<ApiResponse<ApiKey>> {
   const res = await api.put('/api/token/', data)
   return res.data

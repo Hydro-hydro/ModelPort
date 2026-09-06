@@ -22,7 +22,7 @@ import { z } from 'zod'
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
 import { DEFAULT_GROUP } from '../constants'
-import type { ApiKey, ApiKeyFormData } from '../types'
+import type { ApiKey, ApiKeyFormData, ApiKeyUpdateData } from '../types'
 
 // ============================================================================
 // Form Schema
@@ -157,6 +157,34 @@ export function transformFormDataToPayload(
         ? data.auto_groups
         : [],
     cross_group_retry: data.group === 'auto' ? !!data.cross_group_retry : false,
+  }
+}
+
+export type ApiKeyQuotaDirtyFields = Partial<
+  Record<'remain_quota_dollars' | 'unlimited_quota', boolean>
+>
+
+export function buildApiKeyUpdatePayload(
+  payload: ApiKeyFormData,
+  dirtyFields: ApiKeyQuotaDirtyFields,
+  expectedToken: Pick<ApiKey, 'remain_quota' | 'used_quota'>
+): ApiKeyUpdateData {
+  const quotaChanged =
+    Boolean(dirtyFields.remain_quota_dollars) ||
+    Boolean(dirtyFields.unlimited_quota)
+  if (!quotaChanged) {
+    const {
+      remain_quota: _remainQuota,
+      unlimited_quota: _unlimitedQuota,
+      ...metadataPayload
+    } = payload
+    return metadataPayload
+  }
+
+  return {
+    ...payload,
+    expected_remain_quota: expectedToken.remain_quota,
+    expected_used_quota: expectedToken.used_quota,
   }
 }
 

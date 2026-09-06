@@ -33,7 +33,31 @@ func (input *tokenAutoGroupsInput) UnmarshalJSON(data []byte) error {
 
 type tokenRequest struct {
 	model.Token
-	AutoGroups tokenAutoGroupsInput `json:"auto_groups"`
+	AutoGroups          tokenAutoGroupsInput `json:"auto_groups"`
+	ExpectedRemainQuota *int                 `json:"expected_remain_quota"`
+	ExpectedUsedQuota   *int                 `json:"expected_used_quota"`
+	remainQuotaSet      bool
+	unlimitedQuotaSet   bool
+}
+
+// UnmarshalJSON records whether quota fields were sent separately from their
+// zero values. The update endpoint needs this distinction because an omitted
+// quota must remain untouched, while an explicit quota edit requires an
+// optimistic concurrency check.
+func (request *tokenRequest) UnmarshalJSON(data []byte) error {
+	type tokenRequestAlias tokenRequest
+	var decoded tokenRequestAlias
+	if err := common.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]any
+	if err := common.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*request = tokenRequest(decoded)
+	_, request.remainQuotaSet = fields["remain_quota"]
+	_, request.unlimitedQuotaSet = fields["unlimited_quota"]
+	return nil
 }
 
 type tokenResponse struct {
@@ -358,17 +382,6 @@ func UpdateToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
-	if !token.UnlimitedQuota {
-		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
-			return
-		}
-		maxQuotaValue := maxTokenQuota()
-		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
-			return
-		}
-	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
 		common.ApiError(c, err)
@@ -384,14 +397,35 @@ func UpdateToken(c *gin.Context) {
 			return
 		}
 	}
+	quotaEdit := request.remainQuotaSet || request.unlimitedQuotaSet
+	quotaCAS := statusOnly == "" && quotaEdit && request.ExpectedRemainQuota != nil && request.ExpectedUsedQuota != nil
+	desiredRemainQuota := cleanToken.RemainQuota
+	desiredUnlimitedQuota := cleanToken.UnlimitedQuota
+	if quotaCAS {
+		if request.remainQuotaSet {
+			desiredRemainQuota = token.RemainQuota
+		}
+		if request.unlimitedQuotaSet {
+			desiredUnlimitedQuota = token.UnlimitedQuota
+		}
+		if !desiredUnlimitedQuota {
+			if desiredRemainQuota < 0 {
+				common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
+				return
+			}
+			maxQuotaValue := maxTokenQuota()
+			if desiredRemainQuota > maxQuotaValue {
+				common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
+				return
+			}
+		}
+	}
 	if statusOnly != "" {
 		cleanToken.Status = token.Status
 	} else {
-		// If you add more fields, please also update token.Update()
+		// Keep editable metadata fields in sync with model.Token.Update().
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime
-		cleanToken.RemainQuota = token.RemainQuota
-		cleanToken.UnlimitedQuota = token.UnlimitedQuota
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
@@ -406,7 +440,18 @@ func UpdateToken(c *gin.Context) {
 			}
 		}
 	}
-	err = cleanToken.Update()
+	if quotaCAS {
+		err = cleanToken.UpdateWithQuota(
+			desiredRemainQuota,
+			desiredUnlimitedQuota,
+			*request.ExpectedRemainQuota,
+			*request.ExpectedUsedQuota,
+		)
+	} else {
+		// Quota fields without an expected snapshot are treated as stale form
+		// data. Metadata edits must never write them back over billing updates.
+		err = cleanToken.Update()
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
