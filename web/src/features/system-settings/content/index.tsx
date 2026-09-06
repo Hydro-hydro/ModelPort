@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { SettingsPage } from '../components/settings-page'
-import type { ContentSettings, SystemOption } from '../types'
+import type { ContentSettings } from '../types'
 import {
   CONTENT_DEFAULT_SECTION,
   getContentSectionContent,
@@ -43,42 +43,6 @@ const defaultContentSettings: ContentSettings = {
   MjActionCheckSuccessEnabled: false,
 }
 
-function resolveContentSettings(
-  settings: ContentSettings,
-  raw: SystemOption[] | undefined
-): ContentSettings {
-  if (!raw || raw.length === 0) return settings
-
-  const optionMap = new Map(raw.map((item) => [item.key, item.value]))
-  const next = { ...settings }
-
-  const legacyMap = [
-    { current: 'console_setting.api_info', legacy: 'ApiInfo' },
-    { current: 'console_setting.faq', legacy: 'FAQ' },
-  ] as const
-
-  for (const { current, legacy } of legacyMap) {
-    if (!optionMap.has(current)) {
-      const legacyValue = optionMap.get(legacy)
-      if (legacyValue !== undefined) {
-        next[current] = legacyValue
-      }
-    }
-  }
-
-  if (!optionMap.has('console_setting.uptime_kuma_groups')) {
-    const legacyUrl = optionMap.get('UptimeKumaUrl')
-    const legacySlug = optionMap.get('UptimeKumaSlug')
-    if (legacyUrl && legacySlug) {
-      next['console_setting.uptime_kuma_groups'] = JSON.stringify([
-        { id: 1, categoryName: 'Legacy', url: legacyUrl, slug: legacySlug },
-      ])
-    }
-  }
-
-  return next
-}
-
 export function ContentSettings() {
   return (
     <SettingsPage
@@ -88,7 +52,6 @@ export function ContentSettings() {
       getSectionContent={getContentSectionContent}
       getSectionMeta={getContentSectionMeta}
       loadingMessage='Loading content settings...'
-      resolveSettings={resolveContentSettings}
     />
   )
 }
