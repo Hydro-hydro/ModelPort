@@ -107,11 +107,11 @@ func currentSchemaTableDefinitions() []schemaTableDefinition {
 }
 
 func normalizeSchemaTableName(name string) string {
-	name = strings.Trim(name, "`\"")
+	name = strings.Trim(strings.TrimSpace(name), "`\"")
 	if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
 		name = name[dot+1:]
 	}
-	return strings.ToLower(strings.TrimSpace(name))
+	return strings.ToLower(strings.Trim(strings.TrimSpace(name), "`\""))
 }
 
 func databaseTables() (map[string]string, error) {
