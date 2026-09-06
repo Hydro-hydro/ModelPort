@@ -2,6 +2,8 @@
 
 本文档提供使用宝塔面板 Docker 功能从当前仓库构建并部署 ModelPort 的步骤。
 
+> 部署边界：ModelPort 只支持当前版本的新库初始化，不提供旧 New API 数据库迁移或历史数据兼容。请使用新的数据目录完成首次部署，不要把旧实例的数据目录直接挂载到新部署中。
+
 > 📖 官方文档：[宝塔面板部署](https://docs.newapi.pro/zh/docs/installation/deployment-methods/bt-docker-installation)
 
 ***
@@ -82,6 +84,8 @@ services:
 cd /www/wwwroot/modelport
 docker compose up -d --build
 ```
+
+以上命令适用于由当前 ModelPort 版本初始化、且仍受当前版本支持的数据目录。更新过程只重新构建当前仓库源码，不会迁移旧 New API 数据库；如果数据目录来自旧实例，请创建新的 `./data` 目录并重新完成初始化。
 
 ***
 

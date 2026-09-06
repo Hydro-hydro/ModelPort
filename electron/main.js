@@ -223,8 +223,9 @@ function startServer() {
   return new Promise((resolve, reject) => {
     const isDev = process.env.NODE_ENV === 'development';
 
-    const userDataPath = app.getPath('userData');
-    const dataDir = path.join(userDataPath, 'data');
+    // Keep the desktop data location independent from the protected upstream
+    // package name so every platform uses the same ModelPort directory.
+    const dataDir = path.join(app.getPath('appData'), 'ModelPort', 'data');
     
     // 设置环境变量供 preload.js 使用
     process.env.ELECTRON_DATA_DIR = dataDir;
@@ -261,7 +262,7 @@ function startServer() {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    env.SQLITE_PATH = path.join(dataDir, 'new-api.db');
+    env.SQLITE_PATH = path.join(dataDir, 'modelport.db');
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📁 您的数据存储位置：');

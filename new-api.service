@@ -10,9 +10,12 @@ Description=ModelPort Personal API Gateway
 After=network.target
 
 [Service]
-User=ubuntu  # 注意修改用户名
-WorkingDirectory=/opt/modelport  # 按实际安装目录修改
-ExecStart=/opt/modelport/new-api --port 3000 --log-dir /opt/modelport/logs  # 按实际路径和端口修改
+# 按实际部署用户修改
+User=ubuntu
+# 按实际安装目录修改
+WorkingDirectory=/opt/modelport
+# 按实际路径和端口修改
+ExecStart=/opt/modelport/new-api --port 3000 --log-dir /opt/modelport/logs
 EnvironmentFile=-/opt/modelport/.env
 Restart=always
 RestartSec=5

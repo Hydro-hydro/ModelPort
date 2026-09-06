@@ -1,6 +1,6 @@
 # New API Electron Desktop App
 
-This directory contains the Electron wrapper for New API, providing a native desktop application with system tray support for Windows, macOS, and Linux.
+This directory contains the Electron wrapper for ModelPort, based on New API and providing a native desktop application with system tray support for Windows, macOS, and Linux.
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ This will:
 - Use the Rsbuild frontend development server on port 5173
 - Open an Electron window with DevTools enabled
 - Create a system tray icon (menu bar on macOS)
-- Store database in `../data/new-api.db`
+- Connect to the separately started Go backend; when started with `make dev-api`, its default SQLite file is `modelport.db` in the repository root
 
 ## Building for Production
 
@@ -74,8 +74,10 @@ const PORT = 3000; // Change to desired port
 ```
 
 ### Database Location
-- **Development**: `../data/new-api.db` (project directory)
+- **Development**: the Go backend owns the database path. Set `SQLITE_PATH` explicitly when starting it; `make dev-api` defaults to `modelport.db` in the repository root.
 - **Production**:
-  - macOS: `~/Library/Application Support/New API/data/`
-  - Windows: `%APPDATA%/New API/data/`
-  - Linux: `~/.config/New API/data/`
+  - macOS: `~/Library/Application Support/ModelPort/data/modelport.db`
+  - Windows: `%APPDATA%/ModelPort/data/modelport.db`
+  - Linux: `~/.config/ModelPort/data/modelport.db`
+
+The packaged desktop app creates the production directory on first launch. It uses a new SQLite file and does not migrate an old New API database; start with a new data directory for a fresh deployment.
