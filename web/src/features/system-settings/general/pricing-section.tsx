@@ -135,12 +135,9 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
   const displayType =
     form.watch('general_setting.quota_display_type') ??
     DEFAULT_CURRENCY_CONFIG.quotaDisplayType
-  const displayInCurrencyEnabled = form.watch('DisplayInCurrencyEnabled')
-  const showTokensOnlyOption = displayType === 'TOKENS'
   const showQuotaPerUnit =
     displayType === 'TOKENS' ||
     defaultValues.QuotaPerUnit !== DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-  const showDisplayInCurrencyOption = displayInCurrencyEnabled === false
 
   return (
     <>
@@ -211,11 +208,9 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                         <SelectItem value='CUSTOM'>
                           {t('Custom Currency')}
                         </SelectItem>
-                        {showTokensOnlyOption && (
-                          <SelectItem value='TOKENS'>
-                            {t('Tokens Only')}
-                          </SelectItem>
-                        )}
+                        <SelectItem value='TOKENS'>
+                          {t('Tokens Only')}
+                        </SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -288,34 +283,30 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
               </div>
             )}
 
-            {showDisplayInCurrencyOption && (
-              <FormField
-                control={form.control}
-                name='DisplayInCurrencyEnabled'
-                render={({ field }) => (
-                  <SettingsSwitchItem>
-                    <SettingsSwitchContent>
-                      <FormLabel>{t('Display in Currency')}</FormLabel>
-                      <FormDescription>
-                        {displayType === 'TOKENS'
-                          ? t(
-                              'Token-only mode shows raw usage units regardless of this setting.'
-                            )
-                          : t(
-                              'Show usage prices in currency instead of units.'
-                            )}
-                      </FormDescription>
-                    </SettingsSwitchContent>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </SettingsSwitchItem>
-                )}
-              />
-            )}
+            <FormField
+              control={form.control}
+              name='DisplayInCurrencyEnabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Display in Currency')}</FormLabel>
+                    <FormDescription>
+                      {displayType === 'TOKENS'
+                        ? t(
+                            'Token-only mode shows raw usage units regardless of this setting.'
+                          )
+                        : t('Show usage prices in currency instead of units.')}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
 
             <FormField
               control={form.control}

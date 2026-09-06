@@ -52,6 +52,11 @@ describe('route group editor data adapters', () => {
     expect(isRouteGroupRatioJson('{"default":-1}')).toBe(false)
   })
 
+  test('rejects non-object or non-numeric route group ratio JSON', () => {
+    expect(isRouteGroupRatioJson('["default"]')).toBe(false)
+    expect(isRouteGroupRatioJson('{"default":"1"}')).toBe(false)
+  })
+
   test('serializes pricing rows with trimmed names and normalized ratios', () => {
     const serialized = serializeRouteGroupPricingRows([
       { _id: 'row-1', name: ' default ', ratio: '1.5' },
@@ -141,5 +146,11 @@ describe('route group editor data adapters', () => {
     expect(isRouteGroupOverrideJson('{"default":{}}')).toBe(true)
     expect(isRouteGroupOverrideJson('{"default":{"premium":-1}}')).toBe(false)
     expect(isRouteGroupOverrideJson('{"default":[]}')).toBe(false)
+  })
+
+  test('rejects string override ratios in JSON mode', () => {
+    expect(isRouteGroupOverrideJson('{"default":{"premium":"0.8"}}')).toBe(
+      false
+    )
   })
 })

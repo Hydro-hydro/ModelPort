@@ -35,6 +35,26 @@ const STATUS_RELATED_KEYS = new Set([
   'general_setting.custom_currency_exchange_rate',
 ])
 
+// The model catalog reads these values through the pricing endpoint. Keep its
+// cache fresh after an option update so changed prices and route-group ratios
+// are visible without waiting for the query stale time to elapse.
+const PRICING_RELATED_KEYS = new Set([
+  'ModelPrice',
+  'ModelRatio',
+  'CacheRatio',
+  'CreateCacheRatio',
+  'CompletionRatio',
+  'ImageRatio',
+  'AudioRatio',
+  'AudioCompletionRatio',
+  'GroupRatio',
+  'GroupGroupRatio',
+  'AutoGroups',
+  'billing_setting.billing_mode',
+  'billing_setting.billing_expr',
+  'tool_price_setting.prices',
+])
+
 export function useUpdateOption() {
   const queryClient = useQueryClient()
 
@@ -44,6 +64,10 @@ export function useUpdateOption() {
       if (data.success) {
         // Always refresh system-options
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
+
+        if (PRICING_RELATED_KEYS.has(variables.key)) {
+          queryClient.invalidateQueries({ queryKey: ['pricing'] })
+        }
 
         // If updating frontend-display-related config, also refresh status
         if (STATUS_RELATED_KEYS.has(variables.key)) {

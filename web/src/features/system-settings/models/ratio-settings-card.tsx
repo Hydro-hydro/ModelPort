@@ -34,6 +34,11 @@ import { useUpdateOption } from '../hooks/use-update-option'
 import { positiveIntegerSchema } from '../utils/numeric-field'
 import { GroupRatioForm } from './group-ratio-form'
 import { ModelRatioForm } from './model-ratio-form'
+import {
+  isRouteAutoGroupJson,
+  isRouteGroupOverrideJson,
+  isRouteGroupRatioJson,
+} from './route-group-editor-utils'
 import { ToolPriceSettings } from './tool-price-settings'
 import { UpstreamRatioSync } from './upstream-ratio-sync'
 import {
@@ -121,12 +126,16 @@ const createModelSchema = (t: Translate) =>
 
 const createGroupSchema = (t: Translate) =>
   z.object({
-    GroupRatio: createJsonStringField(t),
-    GroupGroupRatio: createJsonStringField(t),
+    GroupRatio: createJsonStringField(t, {
+      predicate: (parsed) => isRouteGroupRatioJson(JSON.stringify(parsed)),
+      predicateMessage: 'JSON structure is invalid',
+    }),
+    GroupGroupRatio: createJsonStringField(t, {
+      predicate: (parsed) => isRouteGroupOverrideJson(JSON.stringify(parsed)),
+      predicateMessage: 'JSON structure is invalid',
+    }),
     AutoGroups: createJsonStringField(t, {
-      predicate: (parsed) =>
-        Array.isArray(parsed) &&
-        parsed.every((item) => typeof item === 'string'),
+      predicate: (parsed) => isRouteAutoGroupJson(JSON.stringify(parsed)),
       predicateMessage: 'Expected a JSON array of group identifiers',
     }),
     MaxTokenAutoGroups: positiveIntegerSchema(t('Enter a positive integer')),
@@ -168,6 +177,7 @@ export function RatioSettingsCard({
       if (data.success) {
         toast.success(t('Model prices reset successfully'))
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
+        queryClient.invalidateQueries({ queryKey: ['pricing'] })
         setConfirmOpen(false)
       } else {
         toast.error(data.message || t('Failed to reset model ratios'))
