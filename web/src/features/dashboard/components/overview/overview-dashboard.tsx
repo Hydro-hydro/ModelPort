@@ -98,7 +98,8 @@ interface QuickAction {
 
 interface RequestExample {
   endpoint: string
-  model: string
+  model?: string
+  modelConfigured: boolean
   keyName: string
   keyId?: number
   displayKey: string
@@ -161,13 +162,13 @@ function formatDisplayKey(key?: string): string {
 function buildCurlCommand(args: {
   endpoint: string
   apiKey: string
-  model: string
+  model?: string
 }): string {
   return [
     `curl ${args.endpoint} \\`,
     '  -H "Content-Type: application/json" \\',
     `  -H "Authorization: Bearer ${args.apiKey}" \\`,
-    `  -d '{"model":"${args.model}","messages":[{"role":"user","content":"Say hello in one sentence."}]}'`,
+    `  -d '{"model":"${args.model || 'your-model'}","messages":[{"role":"user","content":"Say hello in one sentence."}]}'`,
   ].join('\n')
 }
 
@@ -280,6 +281,15 @@ function RequestPreview(props: {
     model: props.example.model,
   })
   const previewLines = previewCurl.split('\n')
+  let requestSubtitle: string
+  if (props.example.ready) {
+    requestSubtitle = props.example.keyName
+  } else if (!props.example.modelConfigured) {
+    requestSubtitle = t('Configure a channel and model before sending requests')
+  } else {
+    requestSubtitle = t('Create an API key to unlock the real request')
+  }
+
   const handleCopyRequest = async () => {
     if (!props.example.keyId || isCopying) return
 
@@ -334,9 +344,7 @@ function RequestPreview(props: {
               {t('First API request')}
             </div>
             <div className='text-muted-foreground truncate text-xs'>
-              {props.example.ready
-                ? props.example.keyName
-                : t('Create an API key to unlock the real request')}
+              {requestSubtitle}
             </div>
           </div>
         </div>
@@ -353,8 +361,22 @@ function RequestPreview(props: {
             {isCopying ? t('Loading') : t('Copy')}
           </Button>
         ) : (
-          <Button size='sm' variant='outline' render={<Link to='/keys' />}>
-            {t('Create API Key')}
+          <Button
+            size='sm'
+            variant='outline'
+            render={
+              <Link
+                to={
+                  props.example.modelConfigured && !props.example.keyId
+                    ? '/keys'
+                    : '/channels'
+                }
+              />
+            }
+          >
+            {props.example.modelConfigured
+              ? t('Create API Key')
+              : t('Configure routes')}
           </Button>
         )}
       </div>
@@ -499,10 +521,10 @@ export function OverviewDashboard() {
         description: t('Verify routing with Playground or your client'),
         to: '/playground',
         icon: TerminalSquare,
-        completed: requestCount > 0,
+        completed: requestCount > 0 && (modelsQuery.data?.length ?? 0) > 0,
       },
     ],
-    [preferredKey, requestCount, t]
+    [modelsQuery.data?.length, preferredKey, requestCount, t]
   )
 
   const quickActions = useMemo<QuickAction[]>(
@@ -551,23 +573,32 @@ export function OverviewDashboard() {
       },
       {
         label: t('Model selected'),
-        value: modelsQuery.data?.[0] ?? t('Loading'),
+        value: modelsQuery.isLoading
+          ? t('Loading')
+          : (modelsQuery.data?.[0] ?? t('No available models')),
         icon: Timer,
         tone: 'chart-4',
       },
     ],
-    [apiInfoItems.length, modelsQuery.data, preferredKey, t]
+    [
+      apiInfoItems.length,
+      modelsQuery.data,
+      modelsQuery.isLoading,
+      preferredKey,
+      t,
+    ]
   )
 
   const requestExample = useMemo<RequestExample>(() => {
     const endpoint = normalizeEndpoint(apiInfoItems[0]?.url)
-    const model = modelsQuery.data?.[0] ?? 'gpt-4o-mini'
+    const model = modelsQuery.data?.[0]
     const keyName = preferredKey?.name ?? t('No API key yet')
     const ready = Boolean(preferredKey?.id && model)
 
     return {
       endpoint,
       model,
+      modelConfigured: Boolean(model),
       keyName,
       keyId: preferredKey?.id,
       displayKey: preferredKey
