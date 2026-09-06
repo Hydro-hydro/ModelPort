@@ -53,10 +53,8 @@ MODELPORT_ENABLE_SYSTEM_TASKS=true
 ### 本地开发
 
 ```bash
-cd web
-bun install
-VITE_REACT_APP_VERSION=$(cat ../VERSION) bun run build
-cd ..
+# 构建前端并同步到 Go 的嵌入目录
+make build-web
 GOWORK=off go run main.go
 ```
 

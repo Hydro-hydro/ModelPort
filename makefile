@@ -16,6 +16,8 @@ build-web:
 	@echo "Building web frontend..."
 	@cd $(WEB_DIR) && bun install --frozen-lockfile
 	@cd $(WEB_DIR) && DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$$(cat ../VERSION) bun run build
+	@rm -rf $(WEB_DIR)/embed
+	@cp -R $(WEB_DIR)/dist $(WEB_DIR)/embed
 
 build-all-web: build-web
 
